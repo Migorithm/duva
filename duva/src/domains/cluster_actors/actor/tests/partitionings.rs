@@ -85,10 +85,9 @@ async fn test_rebalance_request_happypath() {
 async fn test_start_rebalance_before_connection_is_made() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
 
     // WHEN
-    let _ = cluster_actor.start_rebalance(&cache_manager).await;
+    let _ = cluster_actor.start_rebalance().await;
 
     // THEN
     // No pending requests should be created since the member is not connected
@@ -100,11 +99,11 @@ async fn test_start_rebalance_before_connection_is_made() {
 async fn test_start_rebalance_only_when_replica_is_found() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
+
     let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
     // WHEN
-    let _ = cluster_actor.start_rebalance(&cache_manager).await;
+    let _ = cluster_actor.start_rebalance().await;
 
     // THEN
     assert!(cluster_actor.migrations_in_progress.is_none());
@@ -116,7 +115,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
 async fn test_start_rebalance_happy_path() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
+
     let (buf, _) = cluster_actor.test_add_peer(
         6559,
         Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
@@ -125,7 +124,7 @@ async fn test_start_rebalance_happy_path() {
 
     // WHEN
 
-    cluster_actor.start_rebalance(&cache_manager).await;
+    cluster_actor.start_rebalance().await;
 
     // THEN
     assert_expected_queryio(
@@ -145,9 +144,9 @@ async fn test_start_rebalance_happy_path() {
 async fn test_start_rebalance_schedules_migration_batches() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) =
-        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
-            .await;
+    // let (_con_idx, cache_manager) =
+    //     Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
+    //         .await;
 
     // ! test_key_1 and test_key_2 are migrated to testnode_a
     let target_repl_id = ReplicationId::Key("testnode_a".into());
@@ -158,7 +157,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // WHEN
     cluster_actor.self_handler = cluster_handler.clone();
-    cluster_actor.start_rebalance(&cache_manager).await;
+    cluster_actor.start_rebalance().await;
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
@@ -213,8 +212,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
         .unwrap();
 
     // WHEN
-    let (_con_idx, cache_manager) = Helper::cache_manager();
-    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager).await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone()))).await;
 
     // THEN
     assert!(cluster_actor.migrations_in_progress.is_none());
@@ -229,10 +227,8 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
-    let (_con_idx, cache_manager) = Helper::cache_manager();
-    cluster_actor
-        .maybe_update_hashring(Some(Box::new(cluster_actor.hash_ring.clone())), &cache_manager)
-        .await;
+
+    cluster_actor.maybe_update_hashring(Some(Box::new(cluster_actor.hash_ring.clone()))).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -245,8 +241,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
-    let (_con_idx, cache_manager) = Helper::cache_manager();
-    cluster_actor.maybe_update_hashring(None, &cache_manager).await;
+    cluster_actor.maybe_update_hashring(None).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -319,7 +314,6 @@ async fn test_send_migrate_and_wait_callback_error() {
 async fn test_migrate_keys_target_peer_not_found() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
 
     let tasks = PendingMigrationTask::new(
         ReplicationId::Key("non_existent_peer".to_string()),
@@ -328,7 +322,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let (callback_tx, callback_rx) = Callback::create();
 
     // WHEN
-    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
+    cluster_actor.migrate_batch(tasks, callback_tx).await;
 
     // THEN
     let result = callback_rx.recv().await;
@@ -340,14 +334,13 @@ async fn test_migrate_keys_target_peer_not_found() {
 async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     let batch = PendingMigrationTask::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
     let (tx, _rx) = Callback::create();
     // WHEN
-    cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;
+    cluster_actor.migrate_batch(batch.clone(), tx).await;
 
     // THEN
     assert_expected_queryio(
@@ -361,13 +354,13 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
 async fn test_receive_batch_when_empty_cache_entries() {
     //GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_con_idx, cache_manager) = Helper::cache_manager();
+
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
     let batch = BatchEntries { batch_id: "empty_test".into(), entries: vec![] };
-    cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
+    cluster_actor.receive_batch(batch.clone(), _id).await;
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
@@ -379,7 +372,6 @@ async fn test_receive_batch_when_consensus_is_required() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
-    let (_con_idx, cache_manager) = Helper::cache_manager();
     let current_index = cluster_actor.replication.logger.last_log_index;
     let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
@@ -391,7 +383,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     let batch = BatchEntries { batch_id: "success_test".into(), entries: entries.clone() };
 
     // WHEN
-    cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
+    cluster_actor.receive_batch(batch, ack_to.clone()).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.replication.logger.last_log_index, current_index + 1);
@@ -502,7 +494,7 @@ async fn test_find_target_peer_for_replication() {
 async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-    let (_con_idx, _cache_manager) = Helper::cache_manager();
+
     let (callback, _callback_rx) = Callback::create();
 
     cluster_actor
@@ -514,7 +506,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     let non_existent_batch_id = "non_existent_batch".into();
 
     // WHEN
-    cluster_actor.handle_migration_ack(non_existent_batch_id, &_cache_manager).await;
+    cluster_actor.handle_migration_ack(non_existent_batch_id).await;
 
     // THEN
     assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
@@ -551,6 +543,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Add the last pending migration with the test keys
     let (callback, callback_rx) = Callback::create();
     let batch_id = BatchId("last_batch".to_string());
+    cluster_actor.cache_manager = cache_manager.clone();
     cluster_actor
         .migrations_in_progress
         .as_mut()
@@ -562,7 +555,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1);
 
     // WHEN
-    cluster_actor.handle_migration_ack(batch_id, &cache_manager).await;
+    cluster_actor.handle_migration_ack(batch_id).await;
 
     // THEN
 
@@ -603,9 +596,9 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
             (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
         ])
         .unwrap();
-
+    cluster_actor.cache_manager = cache_manager.clone();
     // WHEN - Replica receives hash ring update
-    cluster_actor.maybe_update_hashring(Some(Box::new(new_ring.clone())), &cache_manager).await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(new_ring.clone()))).await;
 
     // THEN - Hash ring should be updated
     assert_eq!(cluster_actor.hash_ring, new_ring);

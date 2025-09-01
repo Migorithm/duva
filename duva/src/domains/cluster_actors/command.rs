@@ -1,3 +1,4 @@
+use crate::domains::QueryIO;
 use crate::domains::cluster_actors::replication::{
     ReplicationId, ReplicationInfo, ReplicationRole,
 };
@@ -90,8 +91,8 @@ impl ConsensusRequest {
 #[derive(Debug, PartialEq)]
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, index: u64 },
-    LogIndex(u64),
     Err(String),
+    Result(QueryIO),
 }
 
 impl From<String> for ConsensusClientResponse {

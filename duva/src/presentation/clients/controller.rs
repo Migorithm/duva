@@ -156,17 +156,16 @@ impl ClientController {
             .await?;
 
         let current_index = match res.recv().await {
-            | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
+            | ConsensusClientResponse::AlreadyProcessed { key: keys, .. } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 //TODO revisit required. When it has been already processed, just route this to reader controller
                 let _action = NonMutatingAction::MGet { keys };
-                Ok(index)
+                self.handle_non_mutating(_action).await
             },
-            | ConsensusClientResponse::LogIndex(idx) => Ok(idx),
+            | ConsensusClientResponse::Result(result) => Ok(result),
             | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }?;
 
-        // * State change
-        self.cache_manager.apply_log(write_req, current_index).await
+        Ok(current_index)
     }
 }
