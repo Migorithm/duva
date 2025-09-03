@@ -124,13 +124,13 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 
     let heartbeat = Helper::heartbeat(
         0,
-        0,
+        1,
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
     cluster_actor.cache_manager = cache_manager.clone();
-    cluster_actor.replicate(heartbeat).await;
+    cluster_actor.replicate(heartbeat.clone()).await;
 
     // WHEN - commit until 2
     let task = tokio::spawn(async move {
@@ -151,9 +151,9 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
     cluster_actor.replicate(heartbeat).await;
 
     // THEN
+    task.await.unwrap();
     assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 2);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
-    task.await.unwrap();
 }
 
 #[tokio::test]

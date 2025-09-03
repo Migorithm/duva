@@ -350,7 +350,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.increase_con_idx();
-
             let res = self.commit_entry(req.request, self.logger().last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
@@ -410,7 +409,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&from) else {
             return;
         };
-        peer.set_current_log_index(repl_res.log_idx);
+        // TODO revisit the way we set commit index on "replication ack" which means to be log acks
+        peer.set_commit_idx(repl_res.log_idx);
 
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
@@ -878,6 +878,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * write logs
+
         if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
             self.send_replication_ack(
                 &heartbeat.from,
@@ -973,33 +974,37 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
 
-    async fn replicate_state(&mut self, leader_con_idx: HeartBeat) {
+    async fn replicate_state(&mut self, leader_hb: HeartBeat) {
         let old_con_idx = self.replication.logger.con_idx.load(Ordering::Relaxed);
-        if leader_con_idx.con_idx > old_con_idx {
-            for log_index in (old_con_idx + 1)..=leader_con_idx.con_idx {
-                let Some(log) = self.replication.logger.read_at(log_index) else {
-                    warn!("log has never been replicated!");
-                    self.send_replication_ack(
-                        &leader_con_idx.from,
-                        ReplicationAck::reject(
-                            self.logger().last_log_index,
-                            RejectionReason::LogInconsistency,
-                            self.replication.term,
-                        ),
-                    )
-                    .await;
-                    return;
-                };
+        if leader_hb.con_idx > old_con_idx {
+            let logs = self.replication.logger.range(old_con_idx, leader_hb.con_idx);
 
+            let new_con_idx = old_con_idx + logs.len() as u64;
+            for log in logs {
                 self.increase_con_idx();
-                if let Err(e) = self.commit_entry(log.request, log_index).await {
+
+                if let Err(e) = self.commit_entry(log.request, log.log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
-                } else {
-                    self.cache_manager.pings().await;
-                };
+                }
+            }
+            self.cache_manager.pings().await;
+
+            // TODO send commit index anyway
+            if new_con_idx != leader_hb.con_idx {
+                warn!("log has never been replicated!");
+                self.send_replication_ack(
+                    &leader_hb.from,
+                    // TODO do NOT use ReplicationAck
+                    ReplicationAck::reject(
+                        dbg!(self.logger().last_log_index),
+                        RejectionReason::LogInconsistency,
+                        self.replication.term,
+                    ),
+                )
+                .await;
             }
         }
     }
@@ -1358,7 +1363,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cluster_nodes: &[PeerState],
     ) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_current_log_index(con_idx);
+            peer.set_commit_idx(con_idx);
             peer.record_heartbeat();
         }
 
