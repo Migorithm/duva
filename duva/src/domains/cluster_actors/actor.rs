@@ -965,7 +965,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate_state(&mut self, leader_con_idx: HeartBeat) {
-        let old_con_idx = self.replication.logger.con_idx.load(Ordering::Acquire);
+        let old_con_idx = self.replication.logger.con_idx.load(Ordering::Relaxed);
         if leader_con_idx.con_idx > old_con_idx {
             for log_index in (old_con_idx + 1)..=leader_con_idx.con_idx {
                 let Some(log) = self.replication.logger.read_at(log_index) else {
@@ -990,8 +990,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 } else {
                     self.cache_manager.pings().await;
                 };
-
-                self.replication.logger.con_idx.store(log_index, Ordering::Release);
+                self.increase_con_idx();
             }
         }
     }
