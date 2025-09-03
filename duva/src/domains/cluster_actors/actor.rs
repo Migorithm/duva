@@ -337,6 +337,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
+            // TODO remove clone inside
             &req.request,
             self.replication.term,
             req.session_req.clone(),
@@ -349,9 +350,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.increase_con_idx();
-            req.callback.send(ConsensusClientResponse::Result(
-                self.cache_manager.apply_log(req.request, self.logger().last_log_index).await,
-            ));
+
+            let res = self.commit_entry(req.request, self.logger().last_log_index).await;
+            req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
         self.consensus_tracker.add(self.logger().last_log_index, req, repl_cnt);
@@ -845,8 +846,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.client_sessions.set_response(voting.session_req.take());
 
         let log_entry = self.logger().read_at(log_index).unwrap();
-        let res = self.cache_manager.apply_log(log_entry.request, log_index).await;
+        let res = self.commit_entry(log_entry.request, log_index).await;
+
         voting.callback.send(ConsensusClientResponse::Result(res));
+    }
+
+    async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
+        // TODO could be  if self.last_applied < index{ .. }
+        let res = self.cache_manager.apply_entry(entry, index).await;
+
+        self.replication.last_applied = index;
+
+        return res;
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -980,7 +991,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     return;
                 };
 
-                if let Err(e) = self.cache_manager.apply_log(log.request, log_index).await {
+                self.increase_con_idx();
+                if let Err(e) = self.commit_entry(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
@@ -988,7 +1000,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 } else {
                     self.cache_manager.pings().await;
                 };
-                self.increase_con_idx();
             }
         }
     }

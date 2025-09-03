@@ -71,11 +71,7 @@ impl CacheManager {
         Ok(res)
     }
 
-    pub(crate) async fn apply_log(
-        &self,
-        log_entry: LogEntry,
-        current_index: u64,
-    ) -> Result<QueryIO> {
+    pub(crate) async fn apply_entry(&self, log_entry: LogEntry, log_index: u64) -> Result<QueryIO> {
         use LogEntry::*;
 
         let res = match log_entry {
@@ -84,7 +80,7 @@ impl CacheManager {
                 if let Some(expires_at) = expires_at {
                     entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
                 }
-                QueryIO::SimpleString(self.route_set(entry, current_index).await?.into())
+                QueryIO::SimpleString(self.route_set(entry, log_index).await?.into())
             },
             | Append { key, value } => {
                 QueryIO::SimpleString(self.route_append(key, value).await?.to_string().into())
@@ -92,17 +88,17 @@ impl CacheManager {
             | Delete { keys } => {
                 QueryIO::SimpleString(self.route_delete(keys).await?.to_string().into())
             },
-            | IncrBy { key, delta: value } => QueryIO::SimpleString(
-                self.route_numeric_delta(key, value, current_index).await?.into(),
-            ),
+            | IncrBy { key, delta: value } => {
+                QueryIO::SimpleString(self.route_numeric_delta(key, value, log_index).await?.into())
+            },
             | DecrBy { key, delta: value } => QueryIO::SimpleString(
-                self.route_numeric_delta(key, -value, current_index).await?.into(),
+                self.route_numeric_delta(key, -value, log_index).await?.into(),
             ),
             | LPush { key, value } => {
-                QueryIO::SimpleString(self.route_lpush(key, value, current_index).await?.into())
+                QueryIO::SimpleString(self.route_lpush(key, value, log_index).await?.into())
             },
             | LPushX { key, value } => {
-                QueryIO::SimpleString(self.route_lpushx(key, value, current_index).await?.into())
+                QueryIO::SimpleString(self.route_lpushx(key, value, log_index).await?.into())
             },
             | LPop { key, count } => {
                 let values = self.route_lpop(key, count).await?;
@@ -112,10 +108,10 @@ impl CacheManager {
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
             | RPush { key, value } => {
-                QueryIO::SimpleString(self.route_rpush(key, value, current_index).await?.into())
+                QueryIO::SimpleString(self.route_rpush(key, value, log_index).await?.into())
             },
             | RPushX { key, value } => {
-                QueryIO::SimpleString(self.route_rpushx(key, value, current_index).await?.into())
+                QueryIO::SimpleString(self.route_rpushx(key, value, log_index).await?.into())
             },
             | RPop { key, count } => {
                 let values = self.route_rpop(key, count).await?;
@@ -124,16 +120,16 @@ impl CacheManager {
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
-            | LTrim { key, start, end } => QueryIO::SimpleString(
-                self.route_ltrim(key, start, end, current_index).await?.into(),
-            ),
-            | LSet { key, index, value } => QueryIO::SimpleString(
-                self.route_lset(key, index, value, current_index).await?.into(),
-            ),
+            | LTrim { key, start, end } => {
+                QueryIO::SimpleString(self.route_ltrim(key, start, end, log_index).await?.into())
+            },
+            | LSet { key, index, value } => {
+                QueryIO::SimpleString(self.route_lset(key, index, value, log_index).await?.into())
+            },
 
             | MSet { entries } => {
                 self.route_mset(entries).await;
-                QueryIO::SimpleString(IndexedValueCodec::encode("", current_index).into())
+                QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
             },
             | NoOp => QueryIO::Null,
         };
