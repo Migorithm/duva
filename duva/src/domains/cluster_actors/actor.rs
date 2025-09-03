@@ -846,11 +846,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.increase_con_idx();
         self.client_sessions.set_response(voting.session_req.take());
 
-        //TODO refactor
         let log_entry = self.logger().read_at(log_index).unwrap();
-        voting.callback.send(ConsensusClientResponse::Result(
-            self.cache_manager.apply_log(log_entry.request, log_index).await,
-        ));
+        let res = self.cache_manager.apply_log(log_entry.request, log_index).await;
+        voting.callback.send(ConsensusClientResponse::Result(res));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
