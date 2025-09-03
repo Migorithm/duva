@@ -841,8 +841,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        // * Increase the high water mark
-        // ! Revisit this logic! con_idx should be updated only after leader learns the average match index of followers
         self.increase_con_idx();
         self.client_sessions.set_response(voting.session_req.take());
 
