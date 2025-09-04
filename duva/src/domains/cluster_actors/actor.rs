@@ -447,6 +447,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
         self.become_leader().await;
 
+        // TODO
+        let force_reconcile =
+            self.logger().range(self.replication.last_applied, self.logger().last_log_index);
+
         // * Replica notification
         self.send_rpc_to_replicas().await;
 
