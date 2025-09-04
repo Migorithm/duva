@@ -42,8 +42,9 @@ impl Peer {
     pub(crate) fn curr_log_index(&self) -> u64 {
         self.state.con_idx
     }
-    pub(crate) fn set_current_log_index(&mut self, log_index: u64) {
-        self.state.con_idx = log_index;
+
+    pub(crate) fn set_commit_idx(&mut self, con_idx: u64) {
+        self.state.con_idx = con_idx;
     }
     pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());

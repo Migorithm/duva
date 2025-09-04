@@ -23,6 +23,7 @@ pub(crate) struct ReplicationState<T> {
     pub(crate) banlist: HashSet<BannedPeer>,
     pub(crate) election_state: ElectionState,
     pub(crate) logger: ReplicatedLogs<T>,
+    pub(crate) last_applied: u64,
 }
 
 impl<T> ReplicationState<T> {
@@ -41,6 +42,7 @@ impl<T> ReplicationState<T> {
             self_port,
             term: 0,
             banlist: Default::default(),
+            last_applied: 0,
             logger,
         }
     }
