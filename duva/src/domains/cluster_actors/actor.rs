@@ -447,15 +447,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
         self.become_leader().await;
 
-        let logs_to_reconcile =
-            self.logger().range(self.replication.last_applied, self.logger().last_log_index);
-        for op in logs_to_reconcile {
-            self.increase_con_idx();
-            if let Err(e) = self.commit_entry(op.request, op.log_index).await {
-                error!("failed to apply log: {e}, perhaps post validation failed?")
-            }
-        }
-
         // * Replica notification
         self.send_rpc_to_replicas().await;
 
@@ -1062,6 +1053,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.term,
             None,
         );
+
+        // * force reconciliation
+        let logs_to_reconcile =
+            self.logger().range(self.replication.last_applied, self.logger().last_log_index);
+        for op in logs_to_reconcile {
+            self.increase_con_idx();
+            if let Err(e) = self.commit_entry(op.request, op.log_index).await {
+                error!("failed to apply log: {e}, perhaps post validation failed?")
+            }
+        }
         REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
     fn become_candidate(&mut self) {
