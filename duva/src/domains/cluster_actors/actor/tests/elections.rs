@@ -194,6 +194,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
         term: candidate_term,
         prev_log_index: 0,
         prev_log_term: 0,
+        con_idx: 1, // Because of NoOp, it will increase by 1
         from: candidate_actor.replication.self_identifier(),
         replid: candidate_actor.replication.replid.clone(),
         append_entries: vec![WriteOperation {

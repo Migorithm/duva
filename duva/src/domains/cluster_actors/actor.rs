@@ -447,6 +447,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
         self.become_leader().await;
 
+        let logs_to_reconcile =
+            self.logger().range(self.replication.last_applied, self.logger().last_log_index);
+        for op in logs_to_reconcile {
+            self.increase_con_idx();
+            if let Err(e) = self.commit_entry(op.request, op.log_index).await {
+                error!("failed to apply log: {e}, perhaps post validation failed?")
+            }
+        }
+
         // * Replica notification
         self.send_rpc_to_replicas().await;
 
@@ -854,7 +863,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
         // TODO could be  if self.last_applied < index{ .. }
         let res = self.cache_manager.apply_entry(entry, index).await;
-
         self.replication.last_applied = index;
 
         return res;
