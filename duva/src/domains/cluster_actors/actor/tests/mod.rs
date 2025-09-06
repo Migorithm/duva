@@ -110,7 +110,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { id, con_idx, replid, role }
+                PeerState { id, match_idx: con_idx, replid, role }
             },
             kill_switch,
         );
@@ -200,7 +200,7 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { id, con_idx: follower_con_idx, replid, role }
+                        PeerState { id, match_idx: follower_con_idx, replid, role }
                     },
                     kill_switch,
                 ),

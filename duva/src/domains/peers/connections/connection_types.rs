@@ -20,7 +20,7 @@ impl ConnectedPeerInfo {
             | (_, ReplicationId::Undecided) => self.replid.clone(),
             | _ => self.replid.clone(),
         };
-        PeerState { id: self.id.clone(), con_idx: self.con_idx, replid, role: self.role.clone() }
+        PeerState { id: self.id.clone(), match_idx: self.con_idx, replid, role: self.role.clone() }
     }
 }
 

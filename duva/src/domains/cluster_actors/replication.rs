@@ -61,7 +61,7 @@ impl<T> ReplicationState<T> {
     pub(super) fn self_info(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
-            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
+            match_idx: self.logger.con_idx.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             role: self.role.clone(),
         }

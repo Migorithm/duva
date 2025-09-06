@@ -695,37 +695,37 @@ mod test {
             cluster_nodes: vec![
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30004".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30002".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30003".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30005".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30006".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30001".into()),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
@@ -797,7 +797,7 @@ mod test {
             .map(|peer| {
                 NodeReplInfo::from_peer_state(&PeerState {
                     id: peer.peer_id.clone(),
-                    con_idx: 0,
+                    match_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 })
