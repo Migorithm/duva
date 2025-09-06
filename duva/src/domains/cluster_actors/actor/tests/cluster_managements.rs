@@ -100,7 +100,7 @@ async fn test_reconnection_on_gossip() {
             w: write.into(),
             host_ip: ip,
             self_repl_info: replication_state,
-            connected_peer_info: Default::default(),
+            peer_state: Default::default(),
         };
 
         if inbound_stream.recv_handshake().await.is_ok() {
@@ -112,7 +112,7 @@ async fn test_reconnection_on_gossip() {
     cluster_actor
         .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
             id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
-            con_idx: 0,
+            last_log_index: 0,
             replid: cluster_actor.replication.replid.clone(),
             role: ReplicationRole::Follower,
         }])
@@ -161,6 +161,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 
 #[tokio::test]
 async fn test_update_cluster_members_updates_fields() {
+    // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_, peer_id) = cluster_actor.test_add_peer(6379, None, false);
     let initial = cluster_actor.members.get(&peer_id).unwrap();
@@ -168,17 +169,18 @@ async fn test_update_cluster_members_updates_fields() {
     let initial_last_seen = initial.phi.last_seen();
     let initial_role = initial.state().role.clone();
 
-    let cluster_nodes = vec![PeerState {
+    let peer_states = vec![PeerState {
         id: peer_id.clone(),
-        con_idx: 100,
+        last_log_index: 100,
         replid: cluster_actor.replication.replid.clone(),
         role: ReplicationRole::Leader,
     }];
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-    cluster_actor.update_cluster_members(&peer_id, 123, &cluster_nodes).await;
+    // WHEN
+    cluster_actor.update_cluster_members(&peer_id, &peer_states).await;
 
     let updated = cluster_actor.members.get(&peer_id).unwrap();
-    assert_eq!(updated.curr_log_index(), 123);
+    //THEN
     assert_eq!(updated.state().role, ReplicationRole::Leader);
     assert_ne!(updated.state().role, initial_role);
     assert!(updated.phi.last_seen() > initial_last_seen);

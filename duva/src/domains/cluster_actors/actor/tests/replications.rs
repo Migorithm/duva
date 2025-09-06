@@ -93,7 +93,7 @@ async fn follower_cluster_actor_replicate_log() {
     // WHEN - term
     let heartbeat = Helper::heartbeat(
         0,
-        0,
+        Some(0),
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
@@ -124,7 +124,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 
     let heartbeat = Helper::heartbeat(
         0,
-        1,
+        Some(1),
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
@@ -147,7 +147,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
             }
         }
     });
-    let heartbeat = Helper::heartbeat(0, 2, vec![]);
+    let heartbeat = Helper::heartbeat(0, Some(2), vec![]);
     cluster_actor.replicate(heartbeat).await;
 
     // THEN
@@ -170,7 +170,7 @@ async fn replicate_stores_only_latest_session_per_client() {
 
     let heartbeat = Helper::heartbeat(
         0,
-        0,
+        Some(0),
         vec![
             Helper::session_write(1, 0, "foo", "bar", session1.clone()),
             Helper::session_write(2, 0, "foo2", "bar", session2.clone()),
@@ -189,21 +189,21 @@ async fn replicate_stores_only_latest_session_per_client() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     // GIVEN
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
+    let mut follower_c_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Log two entries but don't commit them yet
     let heartbeat = Helper::heartbeat(
         0,
-        0, // con_idx=0, nothing committed yet
+        Some(0), // con_idx=0, nothing committed yet
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
-    cluster_actor.cache_manager = cache_manager.clone();
+    follower_c_actor.cache_manager = cache_manager.clone();
 
     // This just appends the entries to the log but doesn't commit them
-    cluster_actor.replicate(heartbeat).await;
+    follower_c_actor.replicate(heartbeat).await;
 
     // WHEN - commit only up to index 1
     let task = tokio::spawn(async move {
@@ -230,8 +230,8 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
 
     // Send a heartbeat with con_idx=1 to commit only the first entry
     const CON_IDX: u64 = 1;
-    let heartbeat = Helper::heartbeat(0, CON_IDX, vec![]);
-    cluster_actor.replicate(heartbeat).await;
+    let heartbeat = Helper::heartbeat(0, CON_IDX.into(), vec![]);
+    follower_c_actor.replicate(heartbeat).await;
 
     // THEN
     // Give the task a chance to process the message
@@ -241,14 +241,14 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     task.abort();
 
     // Verify state
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
+    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
+    assert_eq!(follower_c_actor.replication.logger.last_log_index, 2);
 }
 
 #[tokio::test]
 async fn test_apply_multiple_committed_entries() {
     // GIVEN
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
+    let mut follower_c_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Add multiple entries
     let entries = vec![
@@ -257,14 +257,14 @@ async fn test_apply_multiple_committed_entries() {
         Helper::write(3, 0, "key3", "value3"),
     ];
 
-    let heartbeat = Helper::heartbeat(1, 0, entries);
+    let heartbeat = Helper::heartbeat(1, 0.into(), entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
     // First append entries but don't commit
-    cluster_actor.cache_manager = cache_manager.clone();
-    cluster_actor.replicate(heartbeat).await;
+    follower_c_actor.cache_manager = cache_manager.clone();
+    follower_c_actor.replicate(heartbeat).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -282,11 +282,11 @@ async fn test_apply_multiple_committed_entries() {
         applied_keys
     });
 
-    cluster_actor.cache_manager = cache_manager.clone();
+    follower_c_actor.cache_manager = cache_manager.clone();
 
     // WHEN - commit all entries
-    let commit_heartbeat = Helper::heartbeat(1, 3, vec![]);
-    cluster_actor.replicate(commit_heartbeat).await;
+    let commit_heartbeat = Helper::heartbeat(1, Some(3), vec![]);
+    follower_c_actor.replicate(commit_heartbeat).await;
 
     // THEN
     // Verify that all entries were committed and applied in order
@@ -296,25 +296,25 @@ async fn test_apply_multiple_committed_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 3);
+    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 3);
 }
 
 #[tokio::test]
 async fn test_partial_commit_with_new_entries() {
     // GIVEN
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
+    let mut follower_c_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // First, append some entries
     let first_entries =
         vec![Helper::write(1, 0, "key1", "value1"), Helper::write(2, 0, "key2", "value2")];
 
-    let first_heartbeat = Helper::heartbeat(1, 0, first_entries);
+    let first_heartbeat = Helper::heartbeat(1, Some(0), first_entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
-    cluster_actor.cache_manager = cache_manager.clone();
-    cluster_actor.replicate(first_heartbeat).await;
+    follower_c_actor.cache_manager = cache_manager.clone();
+    follower_c_actor.replicate(first_heartbeat).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -335,9 +335,9 @@ async fn test_partial_commit_with_new_entries() {
     // WHEN - commit partial entries and append new ones
     let second_entries = vec![Helper::write(3, 0, "key3", "value3")];
 
-    let second_heartbeat = Helper::heartbeat(1, 1, second_entries);
+    let second_heartbeat = Helper::heartbeat(1, Some(1), second_entries);
 
-    cluster_actor.replicate(second_heartbeat).await;
+    follower_c_actor.replicate(second_heartbeat).await;
 
     // THEN
     // Verify that only key1 was applied
@@ -347,8 +347,8 @@ async fn test_partial_commit_with_new_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1"]);
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 3); // All entries are in the log
+    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
+    assert_eq!(follower_c_actor.replication.logger.last_log_index, 3); // All entries are in the log
 }
 
 #[tokio::test]
@@ -368,7 +368,7 @@ async fn follower_truncates_log_on_term_mismatch() {
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
-    let mut heartbeat = Helper::heartbeat(2, 0, vec![Helper::write(4, 0, "key2", "val2")]);
+    let mut heartbeat = Helper::heartbeat(2, Some(0), vec![Helper::write(4, 0, "key2", "val2")]);
     heartbeat.prev_log_term = 0;
     heartbeat.prev_log_index = 2;
 
@@ -383,16 +383,16 @@ async fn follower_truncates_log_on_term_mismatch() {
 async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
     // GIVEN: A follower with an empty log
 
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let mut follower_c_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=0
-    let mut heartbeat = Helper::heartbeat(1, 0, vec![Helper::write(1, 0, "key1", "val1")]);
+    let mut heartbeat = Helper::heartbeat(1, Some(0), vec![Helper::write(1, 0, "key1", "val1")]);
 
-    let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
+    let result = follower_c_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Entries are accepted
     assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 1); // Assuming write_log_entries updates log_index
+    assert_eq!(follower_c_actor.replication.logger.last_log_index, 1); // Assuming write_log_entries updates log_index
 }
 
 #[tokio::test]
@@ -402,7 +402,7 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=1
-    let mut heartbeat = Helper::heartbeat(1, 0, vec![Helper::write(2, 0, "key2", "val2")]);
+    let mut heartbeat = Helper::heartbeat(1, Some(0), vec![Helper::write(2, 0, "key2", "val2")]);
     heartbeat.prev_log_index = 1;
     heartbeat.prev_log_term = 1;
 
@@ -417,14 +417,14 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
 async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let replid = cluster_actor.replication.replid.clone();
+    let mut leader_c_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let replid = leader_c_actor.replication.replid.clone();
     // - add 5 followers
     let (cluster_sender, _) = ClusterActorQueue::new(100);
 
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
     Helper::cluster_member(
-        &mut cluster_actor,
+        &mut leader_c_actor,
         follower_buffs.clone(),
         cluster_sender,
         0,
@@ -439,14 +439,14 @@ async fn req_consensus_inserts_consensus_voting() {
         ConsensusRequest::new(w_req.clone(), callback, Some(session_request.clone()));
 
     // WHEN
-    cluster_actor.req_consensus(consensus_request).await;
+    leader_c_actor.req_consensus(consensus_request).await;
 
     // THEN
-    assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 1);
+    assert_eq!(leader_c_actor.consensus_tracker.len(), 1);
+    assert_eq!(leader_c_actor.replication.logger.last_log_index, 1);
 
     assert_eq!(
-        cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
+        leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
         session_request
     );
 
@@ -455,14 +455,15 @@ async fn req_consensus_inserts_consensus_voting() {
         assert_expected_queryio(
             &follower,
             QueryIO::AppendEntriesRPC(HeartBeat {
-                from: cluster_actor.replication.self_identifier(),
-                replid: cluster_actor.replication.replid.clone(),
+                from: leader_c_actor.replication.self_identifier(),
+                replid: leader_c_actor.replication.replid.clone(),
                 append_entries: vec![WriteOperation {
                     request: w_req.clone(),
                     log_index: 1,
                     term: 0,
                     session_req: Some(session_request.clone()),
                 }],
+                leader_commit_idx: Some(0),
                 ..Default::default()
             }),
         )

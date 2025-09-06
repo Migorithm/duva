@@ -15,7 +15,7 @@ fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
     // THEN
     assert_eq!(res[0], "role:leader");
     assert!(res[1].starts_with("leader_repl_id:"));
-    assert_eq!(res[2], "high_watermark:0");
+    assert_eq!(res[2], "last_log_index:0");
     assert_eq!(res[3], format!("self_identifier:127.0.0.1:{}", env.port));
 
     Ok(())

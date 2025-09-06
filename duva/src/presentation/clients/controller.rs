@@ -11,7 +11,6 @@ use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::types::Callback;
-use std::sync::atomic::Ordering;
 use tracing::info;
 
 #[derive(Clone, Debug)]
@@ -43,11 +42,7 @@ impl ClientController {
                 let repl_info =
                     self.cluster_communication_manager.route_get_replication_state().await?;
                 self.cache_manager
-                    .route_save(
-                        SaveTarget::File(file),
-                        repl_info.replid,
-                        repl_info.con_idx.load(Ordering::Acquire),
-                    )
+                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_idx)
                     .await?;
 
                 QueryIO::Null

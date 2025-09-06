@@ -8,8 +8,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::PeerState;
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -50,7 +49,7 @@ impl<T> ReplicationState<T> {
     pub(crate) fn info(&self) -> ReplicationInfo {
         ReplicationInfo {
             replid: self.replid.clone(),
-            con_idx: self.logger.con_idx.clone(),
+            last_log_idx: self.logger.last_log_index,
             role: self.role.clone(),
             self_host: self.self_host.clone(),
             self_port: self.self_port,
@@ -61,7 +60,7 @@ impl<T> ReplicationState<T> {
     pub(super) fn self_info(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
-            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
+            last_log_index: self.logger.last_log_index,
             replid: self.replid.clone(),
             role: self.role.clone(),
         }
@@ -80,7 +79,9 @@ impl<T> ReplicationState<T> {
         HeartBeat {
             from: self.self_identifier(),
             term: self.term,
-            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
+            leader_commit_idx: self
+                .is_leader()
+                .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.banlist.iter().cloned().collect(),
@@ -197,7 +198,7 @@ impl From<String> for ReplicationRole {
 #[derive(Debug)]
 pub struct ReplicationInfo {
     pub(crate) replid: ReplicationId,
-    pub(crate) con_idx: Arc<AtomicU64>,
+    pub(crate) last_log_idx: u64,
     pub(crate) role: ReplicationRole,
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
@@ -212,7 +213,7 @@ impl ReplicationInfo {
         vec![
             format!("role:{}", self.role),
             format!("leader_repl_id:{}", self.replid),
-            format!("high_watermark:{}", self.con_idx.load(Ordering::Relaxed)),
+            format!("last_log_index:{}", self.last_log_idx),
             format!("self_identifier:{}", self.self_identifier()),
         ]
     }

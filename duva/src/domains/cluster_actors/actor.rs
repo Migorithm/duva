@@ -224,12 +224,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let outbound_stream = OutboundStream {
-            r,
-            w,
-            my_repl_info: self.replication.info(),
-            connected_node_info: None,
-        };
+        let outbound_stream =
+            OutboundStream { r, w, self_repl_info: self.replication.info(), peer_state: None };
 
         tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
@@ -249,7 +245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             w,
             host_ip,
             self_repl_info: self.replication.info(),
-            connected_peer_info: Default::default(),
+            peer_state: Default::default(),
         };
 
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
@@ -292,8 +288,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
-        self.update_cluster_members(&heartbeat.from, heartbeat.con_idx, &heartbeat.cluster_nodes)
-            .await;
+        self.update_cluster_members(&heartbeat.from, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring).await;
@@ -347,8 +342,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         let repl_cnt = self.replicas().count();
+        // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
-            // * If there are no replicas, we can send the response immediately
             self.increase_con_idx();
             let res = self.commit_entry(req.request, self.logger().last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
@@ -409,8 +404,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&from) else {
             return;
         };
-        // TODO revisit the way we set commit index on "replication ack" which means to be log acks
-        peer.set_commit_idx(repl_res.log_idx);
+
+        peer.set_match_idx(repl_res.log_idx);
 
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
@@ -589,7 +584,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_log_index()))
+            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_match_index()))
         })
     }
 
@@ -625,7 +620,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
-            let log_index = peer.curr_log_index();
+            let log_index = peer.curr_match_index();
             (peer.is_replica(&self.replication.replid)).then_some((peer, log_index))
         })
     }
@@ -819,7 +814,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members
             .values()
             .filter(|peer| peer.is_replica(&self.replication.replid))
-            .map(|peer| peer.curr_log_index())
+            .map(|peer| peer.curr_match_index())
             .min()
     }
 
@@ -827,7 +822,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
-        let log_index = peer.curr_log_index();
+        let log_index = peer.curr_match_index();
 
         let Some(mut voting) = self.consensus_tracker.remove(&log_index) else {
             return;
@@ -877,7 +872,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * write logs
-
         if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
             self.send_replication_ack(
                 &heartbeat.from,
@@ -975,10 +969,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn replicate_state(&mut self, leader_hb: HeartBeat) {
         let old_con_idx = self.replication.logger.con_idx.load(Ordering::Relaxed);
-        if leader_hb.con_idx > old_con_idx {
-            let logs = self.replication.logger.range(old_con_idx, leader_hb.con_idx);
+        let leader_commit_idx =
+            leader_hb.leader_commit_idx.expect("Leader must send leader commit index");
+        if leader_commit_idx > old_con_idx {
+            let logs = self.replication.logger.range(old_con_idx, leader_commit_idx);
 
-            let new_con_idx = old_con_idx + logs.len() as u64;
             for log in logs {
                 self.increase_con_idx();
 
@@ -991,20 +986,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }
             self.cache_manager.pings().await;
 
-            // TODO send commit index anyway
-            if new_con_idx != leader_hb.con_idx {
-                warn!("log has never been replicated!");
-                self.send_replication_ack(
-                    &leader_hb.from,
-                    // TODO do NOT use ReplicationAck
-                    ReplicationAck::reject(
-                        dbg!(self.logger().last_log_index),
-                        RejectionReason::LogInconsistency,
-                        self.replication.term,
-                    ),
-                )
-                .await;
-            }
+            // * send the latest log index
+            self.send_replication_ack(
+                &leader_hb.from,
+                ReplicationAck::ack(self.logger().last_log_index, self.replication.term),
+            )
+            .await;
         }
     }
 
@@ -1365,14 +1352,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
-    async fn update_cluster_members(
-        &mut self,
-        from: &PeerIdentifier,
-        con_idx: u64,
-        cluster_nodes: &[PeerState],
-    ) {
+    async fn update_cluster_members(&mut self, from: &PeerIdentifier, cluster_nodes: &[PeerState]) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_commit_idx(con_idx);
             peer.record_heartbeat();
         }
 
