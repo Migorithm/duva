@@ -100,7 +100,7 @@ async fn test_reconnection_on_gossip() {
             w: write.into(),
             host_ip: ip,
             self_repl_info: replication_state,
-            connected_peer_info: Default::default(),
+            peer_state: Default::default(),
         };
 
         if inbound_stream.recv_handshake().await.is_ok() {

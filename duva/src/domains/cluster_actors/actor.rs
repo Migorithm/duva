@@ -224,12 +224,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let outbound_stream = OutboundStream {
-            r,
-            w,
-            my_repl_info: self.replication.info(),
-            connected_node_info: None,
-        };
+        let outbound_stream =
+            OutboundStream { r, w, self_repl_info: self.replication.info(), peer_state: None };
 
         tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
@@ -249,7 +245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             w,
             host_ip,
             self_repl_info: self.replication.info(),
-            connected_peer_info: Default::default(),
+            peer_state: Default::default(),
         };
 
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));

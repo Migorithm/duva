@@ -75,7 +75,7 @@ impl Peer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     pub(crate) id: PeerIdentifier,
     pub(crate) last_log_index: u64,
@@ -84,6 +84,15 @@ pub struct PeerState {
 }
 
 impl PeerState {
+    pub(crate) fn decide_peer_state(self, my_repl_id: &ReplicationId) -> Self {
+        let replid = match (&self.replid, my_repl_id) {
+            | (ReplicationId::Undecided, _) => my_repl_id.clone(),
+            | (_, ReplicationId::Undecided) => self.replid.clone(),
+            | _ => self.replid.clone(),
+        };
+        Self { replid, ..self }
+    }
+
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.id
     }
