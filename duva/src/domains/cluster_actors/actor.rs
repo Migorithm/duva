@@ -1354,11 +1354,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn update_cluster_members(
         &mut self,
         from: &PeerIdentifier,
-        con_idx: u64,
+        log_index: u64,
         cluster_nodes: &[PeerState],
     ) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_idx(con_idx);
+            peer.set_match_idx(log_index);
             peer.record_heartbeat();
         }
 

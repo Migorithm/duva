@@ -43,6 +43,7 @@ impl Peer {
         self.state.last_log_index
     }
 
+    // ! leader operation
     pub(crate) fn set_match_idx(&mut self, log_index: u64) {
         self.state.last_log_index = log_index;
     }
