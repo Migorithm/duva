@@ -177,11 +177,10 @@ async fn test_update_cluster_members_updates_fields() {
     }];
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     // WHEN
-    cluster_actor.update_cluster_members(&peer_id, 123, &peer_states).await;
+    cluster_actor.update_cluster_members(&peer_id, &peer_states).await;
 
     let updated = cluster_actor.members.get(&peer_id).unwrap();
     //THEN
-    assert_eq!(updated.curr_match_index(), 123);
     assert_eq!(updated.state().role, ReplicationRole::Leader);
     assert_ne!(updated.state().role, initial_role);
     assert!(updated.phi.last_seen() > initial_last_seen);

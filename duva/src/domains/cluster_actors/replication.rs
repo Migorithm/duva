@@ -79,7 +79,9 @@ impl<T> ReplicationState<T> {
         HeartBeat {
             from: self.self_identifier(),
             term: self.term,
-            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
+            leader_commit_idx: self
+                .is_leader()
+                .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.banlist.iter().cloned().collect(),

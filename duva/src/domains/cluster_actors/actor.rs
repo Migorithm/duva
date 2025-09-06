@@ -288,8 +288,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
-        self.update_cluster_members(&heartbeat.from, heartbeat.con_idx, &heartbeat.cluster_nodes)
-            .await;
+        self.update_cluster_members(&heartbeat.from, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring).await;
@@ -970,8 +969,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn replicate_state(&mut self, leader_hb: HeartBeat) {
         let old_con_idx = self.replication.logger.con_idx.load(Ordering::Relaxed);
-        if leader_hb.con_idx > old_con_idx {
-            let logs = self.replication.logger.range(old_con_idx, leader_hb.con_idx);
+        let leader_commit_idx =
+            leader_hb.leader_commit_idx.expect("Leader must send leader commit index");
+        if leader_commit_idx > old_con_idx {
+            let logs = self.replication.logger.range(old_con_idx, leader_commit_idx);
 
             for log in logs {
                 self.increase_con_idx();
@@ -1351,14 +1352,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
-    async fn update_cluster_members(
-        &mut self,
-        from: &PeerIdentifier,
-        log_index: u64,
-        cluster_nodes: &[PeerState],
-    ) {
+    async fn update_cluster_members(&mut self, from: &PeerIdentifier, cluster_nodes: &[PeerState]) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_idx(log_index);
             peer.record_heartbeat();
         }
 

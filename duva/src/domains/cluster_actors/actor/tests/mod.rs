@@ -140,10 +140,14 @@ impl Helper {
         }
     }
 
-    fn heartbeat(term: u64, con_idx: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
+    fn heartbeat(
+        term: u64,
+        leader_commit_idx: Option<u64>,
+        op_logs: Vec<WriteOperation>,
+    ) -> HeartBeat {
         HeartBeat {
             term,
-            con_idx,
+            leader_commit_idx,
             prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
