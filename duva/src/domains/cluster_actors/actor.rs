@@ -589,7 +589,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_log_index()))
+            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_match_index()))
         })
     }
 
@@ -625,7 +625,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
-            let log_index = peer.curr_log_index();
+            let log_index = peer.curr_match_index();
             (peer.is_replica(&self.replication.replid)).then_some((peer, log_index))
         })
     }
@@ -819,7 +819,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members
             .values()
             .filter(|peer| peer.is_replica(&self.replication.replid))
-            .map(|peer| peer.curr_log_index())
+            .map(|peer| peer.curr_match_index())
             .min()
     }
 
@@ -827,7 +827,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
-        let log_index = peer.curr_log_index();
+        let log_index = peer.curr_match_index();
 
         let Some(mut voting) = self.consensus_tracker.remove(&log_index) else {
             return;

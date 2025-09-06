@@ -14,10 +14,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-
 use bytes::Bytes;
-
-use std::sync::atomic::Ordering;
 
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
@@ -38,12 +35,11 @@ impl InboundStream {
         // TODO find use of capa?
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
-        let (peer_leader_repl_id, peer_con_idx, role) = self.recv_psync().await?;
+        let (replid, log_index, role) = self.recv_psync().await?;
 
         let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
-        self.connected_peer_info =
-            ConnectedPeerInfo { id, replid: peer_leader_repl_id, con_idx: peer_con_idx, role };
+        self.connected_peer_info = ConnectedPeerInfo { id, replid, log_index, role };
 
         Ok(())
     }
@@ -85,7 +81,7 @@ impl InboundStream {
         let (id, self_replid, self_repl_offset, self_role) = (
             self.self_repl_info.self_identifier(),
             self.self_repl_info.replid.clone(),
-            self.self_repl_info.con_idx.load(Ordering::Relaxed),
+            self.self_repl_info.last_log_idx,
             self.self_repl_info.role.clone(),
         );
 

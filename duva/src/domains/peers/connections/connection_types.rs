@@ -9,7 +9,7 @@ use crate::make_smart_pointer;
 pub(crate) struct ConnectedPeerInfo {
     pub(crate) id: PeerIdentifier,
     pub(crate) replid: ReplicationId,
-    pub(crate) con_idx: u64,
+    pub(crate) log_index: u64,
     pub(crate) role: ReplicationRole,
 }
 
@@ -20,7 +20,12 @@ impl ConnectedPeerInfo {
             | (_, ReplicationId::Undecided) => self.replid.clone(),
             | _ => self.replid.clone(),
         };
-        PeerState { id: self.id.clone(), match_idx: self.con_idx, replid, role: self.role.clone() }
+        PeerState {
+            id: self.id.clone(),
+            last_log_index: self.log_index,
+            replid,
+            role: self.role.clone(),
+        }
     }
 }
 

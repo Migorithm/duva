@@ -16,7 +16,6 @@ use crate::types::Callback;
 use crate::write_array;
 use anyhow::Context;
 use bytes::Bytes;
-use std::sync::atomic::Ordering;
 
 use tracing::trace;
 
@@ -35,7 +34,7 @@ impl OutboundStream {
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
             replid: Default::default(),
-            con_idx: Default::default(),
+            log_index: Default::default(),
             role: Default::default(),
         };
 
@@ -57,7 +56,7 @@ impl OutboundStream {
                                 | 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
-                                    self.my_repl_info.con_idx.load(Ordering::Acquire).to_string(),
+                                    self.my_repl_info.last_log_idx.to_string(),
                                     self.my_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
@@ -67,7 +66,7 @@ impl OutboundStream {
                     },
                     | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
-                        connection_info.con_idx = offset;
+                        connection_info.log_index = offset;
                         connection_info.id = PeerIdentifier(id);
                         connection_info.role = role;
                         self.connected_node_info = Some(connection_info);

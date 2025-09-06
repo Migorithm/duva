@@ -39,12 +39,12 @@ impl Peer {
     pub(crate) fn replid(&self) -> &ReplicationId {
         &self.state.replid
     }
-    pub(crate) fn curr_log_index(&self) -> u64 {
-        self.state.match_idx
+    pub(crate) fn curr_match_index(&self) -> u64 {
+        self.state.last_log_index
     }
 
-    pub(crate) fn set_match_idx(&mut self, con_idx: u64) {
-        self.state.match_idx = con_idx;
+    pub(crate) fn set_match_idx(&mut self, log_index: u64) {
+        self.state.last_log_index = log_index;
     }
     pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());
@@ -78,8 +78,7 @@ impl Peer {
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     pub(crate) id: PeerIdentifier,
-    // * match_index is not a state that a follower maintains or is aware of. It's used by leader to track replication progress
-    pub(crate) match_idx: u64,
+    pub(crate) last_log_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
 }
@@ -106,7 +105,7 @@ impl PeerState {
         Some(Self {
             id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
-            match_idx: log_index,
+            last_log_index: log_index,
             role: role.to_string().into(),
         })
     }
@@ -165,10 +164,10 @@ impl PeerState {
         if self.id == *peer_id {
             return format!(
                 "{} myself,{} 0 {} {}",
-                self.id, self.replid, self.match_idx, self.role
+                self.id, self.replid, self.last_log_index, self.role
             );
         }
-        format!("{} {} 0 {} {}", self.id, self.replid, self.match_idx, self.role)
+        format!("{} {} 0 {} {}", self.id, self.replid, self.last_log_index, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
