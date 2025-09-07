@@ -8,7 +8,6 @@ use crate::{
     make_smart_pointer,
     types::Callback,
 };
-pub(crate) type ReplicationVote = Callback<ConsensusClientResponse>;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
@@ -18,13 +17,13 @@ make_smart_pointer!(LogConsensusTracker, HashMap<u64, LogConsensusVoting>);
 #[derive(Debug)]
 pub struct LogConsensusVoting {
     pub(crate) voters: Vec<PeerIdentifier>,
-    pub(crate) callback: ReplicationVote,
+    pub(crate) callback: Callback<ConsensusClientResponse>,
     pub(crate) cnt: u8,
     pub(crate) session_req: Option<SessionRequest>,
 }
 impl LogConsensusVoting {
     pub(crate) fn new(
-        callback: ReplicationVote,
+        callback: Callback<ConsensusClientResponse>,
         replica_count: usize,
         session_req: Option<SessionRequest>,
     ) -> Self {
