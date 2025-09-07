@@ -105,7 +105,7 @@ async fn test_vote_election_deny_vote_older_log() {
         .follower_write_entries(vec![WriteOperation {
             log_index: initial_term + 2,
             term: initial_term,
-            request: LogEntry::Set { key: "k".into(), value: "v".into(), expires_at: None },
+            entry: LogEntry::Set { key: "k".into(), value: "v".into(), expires_at: None },
             session_req: None,
         }])
         .unwrap(); // Follower log: idx 2, term 2
@@ -198,7 +198,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
         from: candidate_actor.replication.self_identifier(),
         replid: candidate_actor.replication.replid.clone(),
         append_entries: vec![WriteOperation {
-            request: LogEntry::NoOp,
+            entry: LogEntry::NoOp,
             log_index: candidate_actor.replication.logger.last_log_index,
             term: candidate_actor.replication.logger.last_log_term,
             session_req: None,

@@ -5,7 +5,7 @@ use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
-    pub(crate) request: LogEntry,
+    pub(crate) entry: LogEntry,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
     pub(crate) session_req: Option<SessionRequest>,

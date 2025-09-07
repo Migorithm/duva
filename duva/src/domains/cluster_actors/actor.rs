@@ -347,7 +347,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             let entry = self.logger().read_at(last_log_index).unwrap();
             self.increase_con_idx();
-            let res = self.commit_entry(entry.request, last_log_index).await;
+            let res = self.commit_entry(entry.entry, last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
@@ -846,7 +846,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.client_sessions.set_response(voting.session_req.take());
 
         let log_entry = self.logger().read_at(log_index).unwrap();
-        let res = self.commit_entry(log_entry.request, log_index).await;
+        let res = self.commit_entry(log_entry.entry, log_index).await;
 
         voting.callback.send(ConsensusClientResponse::Result(res));
     }
@@ -982,7 +982,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             for log in logs {
                 self.increase_con_idx();
 
-                if let Err(e) = self.commit_entry(log.request, log.log_index).await {
+                if let Err(e) = self.commit_entry(log.entry, log.log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
@@ -1048,7 +1048,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.logger().range(self.replication.last_applied, self.logger().last_log_index);
         for op in logs_to_reconcile {
             self.increase_con_idx();
-            if let Err(e) = self.commit_entry(op.request, op.log_index).await {
+            if let Err(e) = self.commit_entry(op.entry, op.log_index).await {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
         }

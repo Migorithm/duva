@@ -402,7 +402,7 @@ async fn test_receive_batch_when_consensus_is_required() {
             from: cluster_actor.replication.self_identifier(),
             replid: cluster_actor.replication.replid.clone(),
             append_entries: vec![WriteOperation {
-                request: LogEntry::MSet { entries: entries.clone() },
+                entry: LogEntry::MSet { entries: entries.clone() },
                 log_index: 1,
                 term: 0,
                 session_req: None,

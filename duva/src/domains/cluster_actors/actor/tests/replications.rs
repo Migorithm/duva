@@ -107,11 +107,11 @@ async fn follower_cluster_actor_replicate_log() {
     assert_eq!(logs[0].log_index, 1);
     assert_eq!(logs[1].log_index, 2);
     assert_eq!(
-        logs[0].request,
+        logs[0].entry,
         LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None }
     );
     assert_eq!(
-        logs[1].request,
+        logs[1].entry,
         LogEntry::Set { key: "foo2".into(), value: "bar".into(), expires_at: None }
     );
 }
@@ -458,7 +458,7 @@ async fn req_consensus_inserts_consensus_voting() {
                 from: leader_c_actor.replication.self_identifier(),
                 replid: leader_c_actor.replication.replid.clone(),
                 append_entries: vec![WriteOperation {
-                    request: w_req.clone(),
+                    entry: w_req.clone(),
                     log_index: 1,
                     term: 0,
                     session_req: Some(session_request.clone()),
