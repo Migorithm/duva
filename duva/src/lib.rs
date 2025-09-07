@@ -114,7 +114,6 @@ impl StartUpFacade {
 
         StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),
-
             cache_manager,
         }
     }
