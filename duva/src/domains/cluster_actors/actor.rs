@@ -426,8 +426,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.term);
             return;
         };
-        self.reset_election_timeout();
-        self.maybe_update_term(heartbeat.term);
+        self.reset_election_timeout(heartbeat.term);
+
         self.replicate(heartbeat).await;
 
         // TODO Replace the following with watcher
@@ -966,9 +966,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    fn reset_election_timeout(&mut self) {
+    fn reset_election_timeout(&mut self, new_term: u64) {
         self.heartbeat_scheduler.reset_election_timeout();
         self.replication.election_state = ElectionState::Follower { voted_for: None };
+        self.replication.role = ReplicationRole::Follower;
+        if new_term > self.replication.term {
+            self.replication.term = new_term;
+        }
     }
 
     async fn replicate_state(&mut self, leader_hb: HeartBeat) {
@@ -996,14 +1000,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 ReplicationAck::ack(self.logger().last_log_index, self.replication.term),
             )
             .await;
-        }
-    }
-
-    fn maybe_update_term(&mut self, new_term: u64) {
-        if new_term > self.replication.term {
-            self.replication.term = new_term;
-            self.replication.election_state = ElectionState::Follower { voted_for: None };
-            self.replication.role = ReplicationRole::Follower;
         }
     }
 
