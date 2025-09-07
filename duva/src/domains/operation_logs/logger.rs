@@ -35,7 +35,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) fn write_single_entry(
         &mut self,
-        req: &LogEntry,
+        req: LogEntry,
         current_term: u64,
         session_req: Option<SessionRequest>,
     ) -> anyhow::Result<()> {

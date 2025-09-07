@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     domains::{
-        cluster_actors::{ConsensusClientResponse, ConsensusRequest, SessionRequest},
+        cluster_actors::{ConsensusClientResponse, SessionRequest},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
@@ -13,8 +13,14 @@ pub(crate) type ReplicationVote = Callback<ConsensusClientResponse>;
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
 impl LogConsensusTracker {
-    pub(crate) fn add(&mut self, key: u64, req: ConsensusRequest, replica_count: usize) {
-        self.insert(key, LogConsensusVoting::new(req.callback, replica_count, req.session_req));
+    pub(crate) fn add(
+        &mut self,
+        key: u64,
+        callback: Callback<ConsensusClientResponse>,
+        replica_count: usize,
+        session_req: Option<SessionRequest>,
+    ) {
+        self.insert(key, LogConsensusVoting::new(callback, replica_count, session_req));
     }
 }
 make_smart_pointer!(LogConsensusTracker, HashMap<u64, LogConsensusVoting>);
@@ -27,7 +33,7 @@ pub struct LogConsensusVoting {
     pub(crate) session_req: Option<SessionRequest>,
 }
 impl LogConsensusVoting {
-    fn new(
+    pub(crate) fn new(
         callback: ReplicationVote,
         replica_count: usize,
         session_req: Option<SessionRequest>,

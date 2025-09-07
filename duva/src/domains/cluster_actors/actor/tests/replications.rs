@@ -23,7 +23,7 @@ fn logger_create_entries_from_lowest() {
     );
     repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
-    let log = &LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
+    let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
     repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
 
     let logs = repl_state.logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
@@ -72,7 +72,7 @@ async fn test_generate_follower_entries() {
         .replication
         .logger
         .write_single_entry(
-            &LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
+            LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.replication.term,
             None,
         )

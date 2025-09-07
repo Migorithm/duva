@@ -14,6 +14,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::consensus::LogConsensusVoting;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
@@ -196,7 +197,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback.send(self.cluster_join_sync.waiter.take());
     }
 
-    // TODO enable DI
     #[instrument(skip(self, optional_callback))]
     pub(crate) async fn connect_to_server<C: TAsyncReadWrite>(
         &mut self,
@@ -333,23 +333,28 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
             // TODO remove clone inside
-            &req.request,
+            req.request,
             self.replication.term,
             req.session_req.clone(),
         ) {
             req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
+        let last_log_index = self.logger().last_log_index;
 
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
+            let entry = self.logger().read_at(last_log_index).unwrap();
             self.increase_con_idx();
-            let res = self.commit_entry(req.request, self.logger().last_log_index).await;
+            let res = self.commit_entry(entry.request, last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
-        self.consensus_tracker.add(self.logger().last_log_index, req, repl_cnt);
+        self.consensus_tracker.insert(
+            last_log_index,
+            LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
+        );
         self.send_rpc_to_replicas().await;
     }
 
@@ -1035,11 +1040,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ = self.replication.logger.write_single_entry(
-            &LogEntry::NoOp,
-            self.replication.term,
-            None,
-        );
+        let _ =
+            self.replication.logger.write_single_entry(LogEntry::NoOp, self.replication.term, None);
 
         // * force reconciliation
         let logs_to_reconcile =
