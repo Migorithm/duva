@@ -332,7 +332,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
-            // TODO remove clone inside
             req.request,
             self.replication.term,
             req.session_req.clone(),
