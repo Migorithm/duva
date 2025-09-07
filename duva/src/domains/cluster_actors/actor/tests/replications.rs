@@ -435,8 +435,11 @@ async fn req_consensus_inserts_consensus_voting() {
     let client_id = Uuid::now_v7().to_string();
     let session_request = SessionRequest::new(1, client_id);
     let w_req = LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-    let consensus_request =
-        ConsensusRequest::new(w_req.clone(), callback, Some(session_request.clone()));
+    let consensus_request = ConsensusRequest {
+        entry: w_req.clone(),
+        callback,
+        session_req: Some(session_request.clone()),
+    };
 
     // WHEN
     leader_c_actor.req_consensus(consensus_request).await;
@@ -483,13 +486,13 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     cluster_actor.client_sessions.set_response(Some(client_req.clone()));
     let handler = cluster_actor.self_handler.clone();
     tokio::spawn(cluster_actor.handle());
-    let (tx, rx) = Callback::create();
+    let (callback, rx) = Callback::create();
     handler
-        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            tx,
-            Some(client_req),
-        ))))
+        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
+            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            callback,
+            session_req: Some(client_req),
+        })))
         .await
         .unwrap();
 
@@ -642,11 +645,15 @@ async fn test_leader_req_consensus_with_processed_session() {
 
     // WHEN - send request with already processed session
     let (tx, rx) = Callback::create();
-    let consensus_request = ConsensusRequest::new(
-        LogEntry::Set { key: "test_key".into(), value: "test_value".into(), expires_at: None },
-        tx,
-        Some(session_req),
-    );
+    let consensus_request = ConsensusRequest {
+        entry: LogEntry::Set {
+            key: "test_key".into(),
+            value: "test_value".into(),
+            expires_at: None,
+        },
+        callback: tx,
+        session_req: Some(session_req),
+    };
 
     cluster_actor.leader_req_consensus(consensus_request).await;
 

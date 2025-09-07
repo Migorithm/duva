@@ -216,11 +216,11 @@ impl Helper {
         callback: Callback<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) -> ConsensusRequest {
-        ConsensusRequest::new(
-            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+        ConsensusRequest {
+            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             callback,
             session_req,
-        )
+        }
     }
 }
 

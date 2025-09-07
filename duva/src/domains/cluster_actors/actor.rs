@@ -302,7 +302,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-            let key = req.request.all_keys().into_iter().map(String::from).collect();
+            let key = req.entry.all_keys().into_iter().map(String::from).collect();
             req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
             return;
         };
@@ -312,7 +312,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        match self.hash_ring.key_ownership(req.request.all_keys().into_iter()) {
+        match self.hash_ring.key_ownership(req.entry.all_keys().into_iter()) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
@@ -332,7 +332,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
-            req.request,
+            req.entry,
             self.replication.term,
             req.session_req.clone(),
         ) {
@@ -1256,11 +1256,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (callback, rx) = Callback::create();
 
-        self.req_consensus(ConsensusRequest::new(
-            LogEntry::MSet { entries: migrate_batch.entries.clone() },
+        self.req_consensus(ConsensusRequest {
+            entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
             callback,
-            None,
-        ))
+            session_req: None,
+        })
         .await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
@@ -1293,11 +1293,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // make consensus request for delete
         let (callback, rx) = Callback::create();
-        let w_req = ConsensusRequest::new(
-            LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
+        let w_req = ConsensusRequest {
+            entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
-            None,
-        );
+            session_req: None,
+        };
         self.req_consensus(w_req).await;
         // ! background synchronization is required.
         tokio::spawn({
