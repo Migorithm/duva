@@ -133,6 +133,7 @@ async fn test_start_rebalance_happy_path() {
             from: cluster_actor.replication.self_identifier(),
             hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
             replid: cluster_actor.replication.replid.clone(),
+            leader_commit_idx: Some(0),
             ..Default::default()
         }),
     )
@@ -406,6 +407,7 @@ async fn test_receive_batch_when_consensus_is_required() {
                 term: 0,
                 session_req: None,
             }],
+            leader_commit_idx: Some(0),
             ..Default::default()
         }),
     )

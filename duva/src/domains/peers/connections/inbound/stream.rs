@@ -7,17 +7,13 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 
-use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-
 use bytes::Bytes;
-
-use std::sync::atomic::Ordering;
 
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
@@ -26,7 +22,7 @@ pub(crate) struct InboundStream {
     pub(crate) w: WriteConnected,
     pub(crate) host_ip: String,
     pub(crate) self_repl_info: ReplicationInfo,
-    pub(crate) connected_peer_info: ConnectedPeerInfo,
+    pub(crate) peer_state: PeerState,
 }
 
 impl InboundStream {
@@ -38,18 +34,13 @@ impl InboundStream {
         // TODO find use of capa?
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
-        let (peer_leader_repl_id, peer_con_idx, role) = self.recv_psync().await?;
+        let (replid, last_log_index, role) = self.recv_psync().await?;
 
         let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
-        self.connected_peer_info =
-            ConnectedPeerInfo { id, replid: peer_leader_repl_id, con_idx: peer_con_idx, role };
+        self.peer_state = PeerState { id, replid, last_log_index, role };
 
         Ok(())
-    }
-
-    pub(crate) fn connected_peer_state(&self) -> PeerState {
-        self.connected_peer_info.decide_peer_state(&self.self_repl_info.replid)
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -85,7 +76,7 @@ impl InboundStream {
         let (id, self_replid, self_repl_offset, self_role) = (
             self.self_repl_info.self_identifier(),
             self.self_repl_info.replid.clone(),
-            self.self_repl_info.con_idx.load(Ordering::Relaxed),
+            self.self_repl_info.last_log_idx,
             self.self_repl_info.role.clone(),
         );
 
@@ -122,7 +113,7 @@ impl InboundStream {
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;
 
-        let peer_state = self.connected_peer_state();
+        let peer_state = self.peer_state.decide_peer_state(&self.self_repl_info.replid);
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);

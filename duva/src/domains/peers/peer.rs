@@ -39,12 +39,13 @@ impl Peer {
     pub(crate) fn replid(&self) -> &ReplicationId {
         &self.state.replid
     }
-    pub(crate) fn curr_log_index(&self) -> u64 {
-        self.state.con_idx
+    pub(crate) fn curr_match_index(&self) -> u64 {
+        self.state.last_log_index
     }
 
-    pub(crate) fn set_commit_idx(&mut self, con_idx: u64) {
-        self.state.con_idx = con_idx;
+    // ! leader operation
+    pub(crate) fn set_match_idx(&mut self, log_index: u64) {
+        self.state.last_log_index = log_index;
     }
     pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());
@@ -75,15 +76,24 @@ impl Peer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     pub(crate) id: PeerIdentifier,
-    pub(crate) con_idx: u64,
+    pub(crate) last_log_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
 }
 
 impl PeerState {
+    pub(crate) fn decide_peer_state(self, my_repl_id: &ReplicationId) -> Self {
+        let replid = match (&self.replid, my_repl_id) {
+            | (ReplicationId::Undecided, _) => my_repl_id.clone(),
+            | (_, ReplicationId::Undecided) => self.replid.clone(),
+            | _ => self.replid.clone(),
+        };
+        Self { replid, ..self }
+    }
+
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.id
     }
@@ -105,7 +115,7 @@ impl PeerState {
         Some(Self {
             id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
-            con_idx: log_index,
+            last_log_index: log_index,
             role: role.to_string().into(),
         })
     }
@@ -162,9 +172,12 @@ impl PeerState {
 
     pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
         if self.id == *peer_id {
-            return format!("{} myself,{} 0 {} {}", self.id, self.replid, self.con_idx, self.role);
+            return format!(
+                "{} myself,{} 0 {} {}",
+                self.id, self.replid, self.last_log_index, self.role
+            );
         }
-        format!("{} {} 0 {} {}", self.id, self.replid, self.con_idx, self.role)
+        format!("{} {} 0 {} {}", self.id, self.replid, self.last_log_index, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {

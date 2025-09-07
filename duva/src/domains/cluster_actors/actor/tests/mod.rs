@@ -110,7 +110,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { id, con_idx, replid, role }
+                PeerState { id, last_log_index: con_idx, replid, role }
             },
             kill_switch,
         );
@@ -140,10 +140,14 @@ impl Helper {
         }
     }
 
-    fn heartbeat(term: u64, con_idx: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
+    fn heartbeat(
+        term: u64,
+        leader_commit_idx: Option<u64>,
+        op_logs: Vec<WriteOperation>,
+    ) -> HeartBeat {
         HeartBeat {
             term,
-            con_idx,
+            leader_commit_idx,
             prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
@@ -200,7 +204,7 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { id, con_idx: follower_con_idx, replid, role }
+                        PeerState { id, last_log_index: follower_con_idx, replid, role }
                     },
                     kill_switch,
                 ),

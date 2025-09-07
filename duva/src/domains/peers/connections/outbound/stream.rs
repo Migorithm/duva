@@ -4,8 +4,8 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::peers::peer::PeerState;
 
-use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -16,7 +16,6 @@ use crate::types::Callback;
 use crate::write_array;
 use anyhow::Context;
 use bytes::Bytes;
-use std::sync::atomic::Ordering;
 
 use tracing::trace;
 
@@ -24,20 +23,15 @@ use tracing::trace;
 pub(crate) struct OutboundStream {
     pub(crate) r: ReadConnected,
     pub(crate) w: WriteConnected,
-    pub(crate) my_repl_info: ReplicationInfo,
-    pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
+    pub(crate) self_repl_info: ReplicationInfo,
+    pub(crate) peer_state: Option<PeerState>,
 }
 
 impl OutboundStream {
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-        let mut connection_info = ConnectedPeerInfo {
-            id: Default::default(),
-            replid: Default::default(),
-            con_idx: Default::default(),
-            role: Default::default(),
-        };
+        let mut peer_state = PeerState::default();
 
         loop {
             let res = self.r.read_values().await?;
@@ -56,9 +50,9 @@ impl OutboundStream {
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 | 2 => Ok(write_array!(
                                     "PSYNC",
-                                    self.my_repl_info.replid.clone(),
-                                    self.my_repl_info.con_idx.load(Ordering::Acquire).to_string(),
-                                    self.my_repl_info.role.clone()
+                                    self.self_repl_info.replid.clone(),
+                                    self.self_repl_info.last_log_idx.to_string(),
+                                    self.self_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
@@ -66,11 +60,11 @@ impl OutboundStream {
                         self.w.write(msg).await?
                     },
                     | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
-                        connection_info.replid = ReplicationId::Key(repl_id);
-                        connection_info.con_idx = offset;
-                        connection_info.id = PeerIdentifier(id);
-                        connection_info.role = role;
-                        self.connected_node_info = Some(connection_info);
+                        peer_state.replid = ReplicationId::Key(repl_id);
+                        peer_state.last_log_index = offset;
+                        peer_state.id = PeerIdentifier(id);
+                        peer_state.role = role;
+                        self.peer_state = Some(peer_state);
 
                         self.reply_with_ok().await?;
                         return Ok(());
@@ -92,10 +86,9 @@ impl OutboundStream {
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;
-        let connection_info =
-            self.connected_node_info.take().context("Connected node info not found")?;
+        let connection_info = self.peer_state.take().context("Connected node info not found")?;
 
-        if self.my_repl_info.replid == ReplicationId::Undecided {
+        if self.self_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
                 .send(ConnectionMessage::FollowerSetReplId(
                     connection_info.replid.clone(),
@@ -103,7 +96,7 @@ impl OutboundStream {
                 ))
                 .await;
         }
-        let peer_state = connection_info.decide_peer_state(&self.my_repl_info.replid);
+        let peer_state = connection_info.decide_peer_state(&self.self_repl_info.replid);
 
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());

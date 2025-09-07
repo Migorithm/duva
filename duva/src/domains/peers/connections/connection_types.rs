@@ -1,28 +1,5 @@
-use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
-use crate::domains::peers::peer::PeerState;
 use crate::domains::{TRead, TWrite};
-use crate::prelude::PeerIdentifier;
-
 use crate::make_smart_pointer;
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ConnectedPeerInfo {
-    pub(crate) id: PeerIdentifier,
-    pub(crate) replid: ReplicationId,
-    pub(crate) con_idx: u64,
-    pub(crate) role: ReplicationRole,
-}
-
-impl ConnectedPeerInfo {
-    pub(crate) fn decide_peer_state(&self, my_repl_id: &ReplicationId) -> PeerState {
-        let replid = match (&self.replid, my_repl_id) {
-            | (ReplicationId::Undecided, _) => my_repl_id.clone(),
-            | (_, ReplicationId::Undecided) => self.replid.clone(),
-            | _ => self.replid.clone(),
-        };
-        PeerState { id: self.id.clone(), con_idx: self.con_idx, replid, role: self.role.clone() }
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct WriteConnected(pub(crate) Box<dyn TWrite>);
