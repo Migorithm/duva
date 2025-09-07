@@ -1,3 +1,4 @@
+use crate::domains::QueryIO;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use anyhow::{Context, Result};
@@ -93,7 +94,7 @@ impl Segment {
         for op in operations.into_iter() {
             index_data.push(LookupIndex::new(op.log_index, current_offset));
             // Each operation is prefixed with REPLICATE_PREFIX (1 byte) and followed by serialized data
-            let serialized = op.serialize();
+            let serialized = QueryIO::WriteOperation(op).serialize();
             current_offset += serialized.len();
         }
 
@@ -308,7 +309,7 @@ impl TWriteAheadLog for FileOpLogs {
         // Update index before writing
         self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
 
-        let serialized = op.serialize();
+        let serialized = QueryIO::WriteOperation(op).serialize();
 
         let mut writer = self.active_segment.create_writer()?;
         writer.write_all(&serialized)?;
@@ -503,7 +504,7 @@ impl TWriteAheadLog for FileOpLogs {
 
         for op in ops.into_iter() {
             let log_index = op.log_index;
-            let serialized = op.serialize();
+            let serialized = QueryIO::WriteOperation(op).serialize();
             new_segment.lookups.push(LookupIndex::new(log_index, current_offset));
             current_offset += serialized.len();
             writer.write_all(&serialized)?;

@@ -32,12 +32,6 @@ pub enum LogEntry {
     NoOp,
 }
 
-impl WriteOperation {
-    pub(crate) fn serialize(self) -> Bytes {
-        QueryIO::WriteOperation(self).serialize()
-    }
-}
-
 impl LogEntry {
     /// Deserialize `WriteOperation`s from the given bytes.
     pub(crate) fn deserialize(bytes: impl Into<Bytes>) -> anyhow::Result<Vec<WriteOperation>> {
