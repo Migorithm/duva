@@ -14,6 +14,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::consensus::LogConsensusVoting;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
@@ -196,7 +197,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback.send(self.cluster_join_sync.waiter.take());
     }
 
-    // TODO enable DI
     #[instrument(skip(self, optional_callback))]
     pub(crate) async fn connect_to_server<C: TAsyncReadWrite>(
         &mut self,
@@ -302,7 +302,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-            let key = req.request.all_keys().into_iter().map(String::from).collect();
+            let key = req.entry.all_keys().into_iter().map(String::from).collect();
             req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
             return;
         };
@@ -312,7 +312,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        match self.hash_ring.key_ownership(req.request.all_keys().into_iter()) {
+        match self.hash_ring.key_ownership(req.entry.all_keys().into_iter()) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
@@ -332,24 +332,28 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
-            // TODO remove clone inside
-            &req.request,
+            req.entry,
             self.replication.term,
             req.session_req.clone(),
         ) {
             req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
+        let last_log_index = self.logger().last_log_index;
 
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
+            let entry = self.logger().read_at(last_log_index).unwrap();
             self.increase_con_idx();
-            let res = self.commit_entry(req.request, self.logger().last_log_index).await;
+            let res = self.commit_entry(entry.entry, last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
-        self.consensus_tracker.add(self.logger().last_log_index, req, repl_cnt);
+        self.consensus_tracker.insert(
+            last_log_index,
+            LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
+        );
         self.send_rpc_to_replicas().await;
     }
 
@@ -841,7 +845,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.client_sessions.set_response(voting.session_req.take());
 
         let log_entry = self.logger().read_at(log_index).unwrap();
-        let res = self.commit_entry(log_entry.request, log_index).await;
+        let res = self.commit_entry(log_entry.entry, log_index).await;
 
         voting.callback.send(ConsensusClientResponse::Result(res));
     }
@@ -977,7 +981,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             for log in logs {
                 self.increase_con_idx();
 
-                if let Err(e) = self.commit_entry(log.request, log.log_index).await {
+                if let Err(e) = self.commit_entry(log.entry, log.log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
@@ -1035,18 +1039,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ = self.replication.logger.write_single_entry(
-            &LogEntry::NoOp,
-            self.replication.term,
-            None,
-        );
+        let _ =
+            self.replication.logger.write_single_entry(LogEntry::NoOp, self.replication.term, None);
 
         // * force reconciliation
         let logs_to_reconcile =
             self.logger().range(self.replication.last_applied, self.logger().last_log_index);
         for op in logs_to_reconcile {
             self.increase_con_idx();
-            if let Err(e) = self.commit_entry(op.request, op.log_index).await {
+            if let Err(e) = self.commit_entry(op.entry, op.log_index).await {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
         }
@@ -1255,11 +1256,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (callback, rx) = Callback::create();
 
-        self.req_consensus(ConsensusRequest::new(
-            LogEntry::MSet { entries: migrate_batch.entries.clone() },
+        self.req_consensus(ConsensusRequest {
+            entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
             callback,
-            None,
-        ))
+            session_req: None,
+        })
         .await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
@@ -1292,11 +1293,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // make consensus request for delete
         let (callback, rx) = Callback::create();
-        let w_req = ConsensusRequest::new(
-            LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
+        let w_req = ConsensusRequest {
+            entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
-            None,
-        );
+            session_req: None,
+        };
         self.req_consensus(w_req).await;
         // ! background synchronization is required.
         tokio::spawn({

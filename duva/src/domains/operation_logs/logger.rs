@@ -35,12 +35,12 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) fn write_single_entry(
         &mut self,
-        req: &LogEntry,
+        entry: LogEntry,
         current_term: u64,
         session_req: Option<SessionRequest>,
     ) -> anyhow::Result<()> {
         let op = WriteOperation {
-            request: req.clone(),
+            entry,
             log_index: (self.last_log_index + 1),
             term: current_term,
             session_req,

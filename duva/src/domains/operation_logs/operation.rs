@@ -5,7 +5,7 @@ use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
-    pub(crate) request: LogEntry,
+    pub(crate) entry: LogEntry,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
     pub(crate) session_req: Option<SessionRequest>,
@@ -30,12 +30,6 @@ pub enum LogEntry {
     LTrim { key: String, start: isize, end: isize },
     LSet { key: String, index: isize, value: String },
     NoOp,
-}
-
-impl WriteOperation {
-    pub(crate) fn serialize(self) -> Bytes {
-        QueryIO::WriteOperation(self).serialize()
-    }
 }
 
 impl LogEntry {

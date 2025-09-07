@@ -624,7 +624,7 @@ mod test {
     fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
-            request: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: 1,
             term: 0,
             session_req: None,
@@ -672,7 +672,7 @@ mod test {
             ban_list: banned_list,
             append_entries: vec![
                 WriteOperation {
-                    request: LogEntry::Set {
+                    entry: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: None,
@@ -682,7 +682,7 @@ mod test {
                     session_req: None,
                 },
                 WriteOperation {
-                    request: LogEntry::Set {
+                    entry: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: Some(323232),

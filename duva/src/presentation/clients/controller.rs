@@ -138,23 +138,22 @@ impl ClientController {
     pub(crate) async fn handle_mutating(
         &self,
         session_req: SessionRequest,
-        write_req: LogEntry,
+        entry: LogEntry,
     ) -> anyhow::Result<QueryIO> {
         // * Consensus / Persisting logs
-        let (tx, res) = Callback::create();
+        let (callback, res) = Callback::create();
         self.cluster_communication_manager
-            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                write_req,
-                tx,
-                Some(session_req),
-            )))
+            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest {
+                entry,
+                callback,
+                session_req: Some(session_req),
+            }))
             .await?;
 
         let current_index = match res.recv().await {
             | ConsensusClientResponse::Result(result) => result,
             | ConsensusClientResponse::AlreadyProcessed { key: keys, .. } => {
                 // * Conversion! request has already been processed so we need to convert it to get
-                //TODO revisit required. When it has been already processed, just route this to reader controller
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action).await
             },

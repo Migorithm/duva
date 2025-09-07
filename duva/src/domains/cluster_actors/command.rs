@@ -74,18 +74,9 @@ impl From<ClientMessage> for ClusterCommand {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConsensusRequest {
-    pub(crate) request: LogEntry,
+    pub(crate) entry: LogEntry,
     pub(crate) callback: Callback<ConsensusClientResponse>,
     pub(crate) session_req: Option<SessionRequest>,
-}
-impl ConsensusRequest {
-    pub(crate) fn new(
-        request: LogEntry,
-        callback: Callback<ConsensusClientResponse>,
-        session_req: Option<SessionRequest>,
-    ) -> Self {
-        Self { request, callback, session_req }
-    }
 }
 
 #[derive(Debug)]
