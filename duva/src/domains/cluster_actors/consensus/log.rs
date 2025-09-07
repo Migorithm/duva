@@ -12,17 +12,7 @@ pub(crate) type ReplicationVote = Callback<ConsensusClientResponse>;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
-impl LogConsensusTracker {
-    pub(crate) fn add(
-        &mut self,
-        key: u64,
-        callback: Callback<ConsensusClientResponse>,
-        replica_count: usize,
-        session_req: Option<SessionRequest>,
-    ) {
-        self.insert(key, LogConsensusVoting::new(callback, replica_count, session_req));
-    }
-}
+
 make_smart_pointer!(LogConsensusTracker, HashMap<u64, LogConsensusVoting>);
 
 #[derive(Debug)]
