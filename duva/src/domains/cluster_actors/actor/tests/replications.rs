@@ -58,7 +58,6 @@ async fn test_generate_follower_entries() {
     ];
 
     cluster_actor.replication.logger.con_idx.store(3, Ordering::Release);
-
     cluster_actor.replication.logger.follower_write_entries(test_logs).unwrap();
 
     //WHEN
