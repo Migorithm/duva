@@ -5,7 +5,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.89.0
     restart: unless-stopped
-    command: ["--config=/etc/otel-collector-config.yaml"]
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
@@ -17,16 +17,17 @@ services:
     networks:
       - observability
 
-  
+
 
   # Loki for log aggregation
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:latest
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/loki-config.yaml
     volumes:
       - loki-data:/loki
+      - ./observability/loki-config.yaml:/etc/loki/loki-config.yaml:ro
     networks:
       - observability
 
