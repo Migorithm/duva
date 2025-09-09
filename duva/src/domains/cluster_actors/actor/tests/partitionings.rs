@@ -551,7 +551,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     ));
 
     // Add the last pending migration with the test keys
-    let (callback, callback_rx) = Callback::create();
+    let (callback, _) = Callback::create();
     let batch_id = BatchId("last_batch".to_string());
     cluster_actor.cache_manager = cache_manager.clone();
     cluster_actor
@@ -566,16 +566,10 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // WHEN
     let pre_num_batches = cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches();
-
     cluster_actor.handle_migration_ack(batch_id).await;
 
     // THEN
-
-    // Verify callback was successful
-    let result = callback_rx.recv().await;
-
     // Verify keys were deleted from cache after successful migration
-
     assert!(matches!(
         cache_manager.route_get("migrate_key_1").await,
         Ok(CacheValue { value: TypedValue::Null, .. })
