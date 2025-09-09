@@ -224,11 +224,9 @@ impl StartUpFacade {
                         .cluster_communication_manager
                         .route_subscribe_topology_change()
                         .await?;
-                    let write_handler = writer.run(observer);
 
                     tokio::spawn(
-                        reader
-                            .handle_client_stream(self.client_controller(), write_handler.clone()),
+                        reader.handle_client_stream(self.client_controller(), writer.run(observer)),
                     );
                 },
             }
