@@ -404,8 +404,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, from,repl_res), fields(peer_id = %from))]
-    pub(crate) async fn ack_replication(&mut self, from: PeerIdentifier, repl_res: ReplicationAck) {
-        let Some(peer) = self.members.get_mut(&from) else {
+    pub(crate) async fn ack_replication(
+        &mut self,
+        from: &PeerIdentifier,
+        repl_res: ReplicationAck,
+    ) {
+        let Some(peer) = self.members.get_mut(from) else {
             return;
         };
 
@@ -822,7 +826,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    async fn track_replication_progress(&mut self, voter: PeerIdentifier) {
+    async fn track_replication_progress(&mut self, voter: &PeerIdentifier) {
         let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
@@ -834,7 +838,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if voting.is_eligible_voter(&voter) {
             info!("Received acks for log index num: {}", log_index);
-            voting.increase_vote(voter);
+            voting.increase_vote(voter.clone());
         }
         if voting.cnt < voting.get_required_votes() {
             self.consensus_tracker.insert(log_index, voting);
@@ -1238,7 +1242,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn receive_batch(
         &mut self,
         migrate_batch: BatchEntries,
-        from: PeerIdentifier,
+        from: &PeerIdentifier,
     ) {
         // If cache entries are empty, skip consensus and directly send success ack
         if migrate_batch.entries.is_empty() {
@@ -1263,13 +1267,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn({
             let handler = self.self_handler.clone();
             let cache_manager = self.cache_manager.clone();
+            let send_to = from.clone();
             async move {
                 rx.recv().await;
                 let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
                         batch_id: migrate_batch.batch_id,
-                        to: from,
+                        to: send_to,
                     })
                     .await;
             }

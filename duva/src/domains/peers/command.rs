@@ -8,7 +8,7 @@ pub(crate) use peer_messages::*;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PeerCommand {
     pub(crate) from: PeerIdentifier,
-    pub(crate) msg: PeerMessage,
+    pub(crate) msg: Vec<PeerMessage>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -369,7 +369,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
 
     // WHEN
     let batch = BatchEntries { batch_id: "empty_test".into(), entries: vec![] };
-    cluster_actor.receive_batch(batch.clone(), _id).await;
+    cluster_actor.receive_batch(batch.clone(), &_id).await;
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
@@ -392,7 +392,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     let batch = BatchEntries { batch_id: "success_test".into(), entries: entries.clone() };
 
     // WHEN
-    cluster_actor.receive_batch(batch, ack_to.clone()).await;
+    cluster_actor.receive_batch(batch, &ack_to).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.replication.logger.last_log_index, current_index + 1);
@@ -565,13 +565,14 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1);
 
     // WHEN
+    let pre_num_batches = cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches();
+
     cluster_actor.handle_migration_ack(batch_id).await;
 
     // THEN
 
     // Verify callback was successful
-    let callback_result = callback_rx.recv().await;
-    assert!(callback_result.is_ok());
+    let result = callback_rx.recv().await;
 
     // Verify keys were deleted from cache after successful migration
 
@@ -583,6 +584,10 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         cache_manager.route_get("migrate_key_2").await,
         Ok(CacheValue { value: TypedValue::Null, .. })
     ));
+    assert_eq!(
+        pre_num_batches - 1,
+        cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches()
+    );
 }
 
 #[tokio::test]
