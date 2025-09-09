@@ -13,56 +13,75 @@ pub(crate) async fn authenticate(
     auth_req: ConnectionRequest,
 ) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
     let replication_state = cluster_manager.route_get_replication_state().await?;
+    let role = replication_state.role;
+    match (auth_req, role.clone()) {
+        | (ConnectionRequest::New, _) => {
+            let client_id = Uuid::now_v7().to_string();
+            stream
+                .serialized_write(ConnectionResponses::Connectable(ConnectionResponse {
+                    client_id: client_id.clone(),
+                    request_id: Default::default(),
+                    topology: cluster_manager.route_get_topology().await?,
+                    is_leader_node: role == ReplicationRole::Leader,
+                    replication_id: replication_state.replid.clone(),
+                }))
+                .await?;
 
-    // if the request is not new authentication but the client is already authenticated
-    if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
-        stream
-            .serialized_write(ConnectionResponse {
-                is_leader_node: false,
-                client_id: Default::default(),
-                request_id: Default::default(),
-                topology: Default::default(),
-                replication_id: Default::default(),
-            })
-            .await?;
-        // ! The following will be removed once we allow for follower read.
-        return Err(anyhow::anyhow!("Follower node cannot authenticate"));
+            let (r, w) = stream.into_split();
+            let reader = ClientStreamReader { r, client_id };
+            let sender = ClientStreamWriter(w);
+            return Ok((reader, sender));
+        },
+        | (ConnectionRequest::ConnectToLeader(_), ReplicationRole::Follower) => {
+            stream.serialized_write(ConnectionResponses::NotConnectable).await?;
+            return Err(anyhow::anyhow!("Connect to follower node"));
+        },
+        | (ConnectionRequest::ConnectToLeader(connection_request), ReplicationRole::Leader)
+        | (ConnectionRequest::ConnectToFollower(connection_request), _) => {
+            let (client_id, request_id) = connection_request.deconstruct()?;
+
+            stream
+                .serialized_write(ConnectionResponses::Connectable(ConnectionResponse {
+                    client_id: client_id.to_string(),
+                    request_id,
+                    topology: cluster_manager.route_get_topology().await?,
+                    is_leader_node: role == ReplicationRole::Leader,
+                    replication_id: replication_state.replid.clone(),
+                }))
+                .await?;
+
+            let (r, w) = stream.into_split();
+            let reader = ClientStreamReader { r, client_id };
+            let sender = ClientStreamWriter(w);
+            return Ok((reader, sender));
+        },
     }
-
-    let (client_id, request_id) = auth_req.deconstruct()?;
-
-    stream
-        .serialized_write(ConnectionResponse {
-            client_id: client_id.to_string(),
-            request_id,
-            topology: cluster_manager.route_get_topology().await?,
-            is_leader_node: replication_state.role == ReplicationRole::Leader,
-            replication_id: replication_state.replid.clone(),
-        })
-        .await?;
-
-    let (r, w) = stream.into_split();
-    let reader = ClientStreamReader { r, client_id };
-    let sender = ClientStreamWriter(w);
-
-    Ok((reader, sender))
 }
 
-// TODO make the following enum and make it explicit about why it wants to connect
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
+pub enum ConnectionRequest {
+    New,
+    ConnectToLeader(RequestBody),
+    ConnectToFollower(RequestBody),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
-pub struct ConnectionRequest {
-    pub client_id: Option<String>,
+pub struct RequestBody {
+    pub client_id: String,
     pub request_id: u64,
 }
 
-impl ConnectionRequest {
+impl RequestBody {
     pub(crate) fn deconstruct(self) -> anyhow::Result<(String, u64)> {
-        let client_id = self.client_id.map_or_else(
-            || Ok(Uuid::now_v7()),
-            |id| Uuid::parse_str(&id).map_err(|e| IoError::Custom(e.to_string())),
-        )?;
+        let client_id =
+            Uuid::parse_str(&self.client_id).map_err(|e| IoError::Custom(e.to_string()))?;
         Ok((client_id.to_string(), self.request_id))
     }
+}
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+pub enum ConnectionResponses {
+    Connectable(ConnectionResponse),
+    NotConnectable,
 }
 
 #[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
