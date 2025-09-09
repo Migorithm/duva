@@ -225,8 +225,9 @@ impl StartUpFacade {
                         .route_subscribe_topology_change()
                         .await?;
 
+                    let stream_writer = writer.run(observer);
                     tokio::spawn(
-                        reader.handle_client_stream(self.client_controller(), writer.run(observer)),
+                        reader.handle_client_stream(self.client_controller(), stream_writer),
                     );
                 },
             }

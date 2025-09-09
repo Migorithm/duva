@@ -18,11 +18,11 @@ pub struct ClientStreamReader {
 }
 
 impl ClientStreamReader {
-    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, sender),fields(client_id= %self.client_id))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, stream_writer_sender),fields(client_id= %self.client_id))]
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,
-        sender: Sender<QueryIO>,
+        stream_writer_sender: Sender<QueryIO>,
     ) {
         loop {
             // * extract queries
@@ -32,7 +32,7 @@ impl ClientStreamReader {
                 if err.should_break() {
                     return;
                 }
-                let _ = sender.send(QueryIO::Err(err.to_string().into())).await;
+                let _ = stream_writer_sender.send(QueryIO::Err(err.to_string().into())).await;
                 continue;
             }
 
@@ -50,7 +50,7 @@ impl ClientStreamReader {
             for req in requests {
                 match req {
                     | Err(err) => {
-                        let _ = sender.send(QueryIO::Err(err.into())).await;
+                        let _ = stream_writer_sender.send(QueryIO::Err(err.into())).await;
                         break;
                     },
                     | Ok(ClientRequest { action, session_req }) => {
@@ -70,7 +70,7 @@ impl ClientStreamReader {
                             error!("failure on state change / query {e}");
                             QueryIO::Err(e.to_string().into())
                         });
-                        if sender.send(response).await.is_err() {
+                        if stream_writer_sender.send(response).await.is_err() {
                             return;
                         }
                     },
