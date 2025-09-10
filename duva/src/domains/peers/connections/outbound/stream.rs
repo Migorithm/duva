@@ -89,12 +89,12 @@ impl OutboundStream {
         let connection_info = self.peer_state.take().context("Connected node info not found")?;
 
         if self.self_repl_info.replid == ReplicationId::Undecided {
-            let _ = cluster_handler
+            cluster_handler
                 .send(ConnectionMessage::FollowerSetReplId(
                     connection_info.replid.clone(),
                     connection_info.id.clone(),
                 ))
-                .await;
+                .await?;
         }
         let peer_state = connection_info.decide_peer_state(&self.self_repl_info.replid);
 
@@ -102,7 +102,7 @@ impl OutboundStream {
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
 
-        let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;
+        cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await?;
         Ok(())
     }
 }

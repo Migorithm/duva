@@ -78,8 +78,7 @@ impl ClusterCommunicationManager {
         peer_identifier: PeerIdentifier,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::ReplicaOf(peer_identifier, tx)).await;
-
+        self.send(ClientMessage::ReplicaOf(peer_identifier, tx)).await?;
         rx.recv().await
     }
 
@@ -89,12 +88,12 @@ impl ClusterCommunicationManager {
         lazy_option: LazyOption,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx)).await;
+        self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx)).await?;
         rx.recv().await
     }
     pub(crate) async fn route_cluster_reshard(&self) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::ClusterReshard(tx)).await;
+        self.send(ClientMessage::ClusterReshard(tx)).await?;
         rx.recv().await
     }
 
@@ -114,7 +113,7 @@ impl ClusterCommunicationManager {
         &self,
     ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Topology>> {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
+        self.send(ClientMessage::SubscribeToTopologyChange(tx)).await?;
         Ok(rx.recv().await)
     }
 }

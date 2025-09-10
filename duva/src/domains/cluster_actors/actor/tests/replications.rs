@@ -532,7 +532,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let follower_res = ReplicationAck { log_idx: 1, term: 0, rej_reason: None };
     let (first_repl, _) = cluster_actor.replicas().next().unwrap();
     // Leader already has 1 vote, so we only need 1 more votes to reach consensus
-    cluster_actor.ack_replication(first_repl.clone(), follower_res.clone()).await;
+    cluster_actor.ack_replication(&first_repl.clone(), follower_res.clone()).await;
 
     // up to this point, tracker hold the consensus
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
@@ -540,7 +540,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 
     // ! Majority votes made
     let (last_repl, _) = cluster_actor.members.iter().last().unwrap();
-    cluster_actor.ack_replication(last_repl.clone(), follower_res).await;
+    cluster_actor.ack_replication(&last_repl.clone(), follower_res).await;
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -581,9 +581,9 @@ async fn test_same_voter_can_vote_only_once() {
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
     let follower_res = ReplicationAck { log_idx: 1, term: 0, rej_reason: None };
     let from = PeerIdentifier("repl1".to_string());
-    cluster_actor.ack_replication(from.clone(), follower_res.clone()).await;
-    cluster_actor.ack_replication(from.clone(), follower_res.clone()).await;
-    cluster_actor.ack_replication(from, follower_res).await;
+    cluster_actor.ack_replication(&from, follower_res.clone()).await;
+    cluster_actor.ack_replication(&from, follower_res.clone()).await;
+    cluster_actor.ack_replication(&from, follower_res).await;
 
     // THEN - no change in consensus tracker even though the same voter voted multiple times
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);

@@ -40,12 +40,10 @@ impl PeerListener {
 
     async fn start(&mut self) {
         while let Ok(cmds) = self.read_command().await {
-            for cmd in cmds {
-                let _ = self
-                    .cluster_handler
-                    .send(PeerCommand { from: self.peer_id.clone(), msg: cmd })
-                    .await;
-            }
+            let _ = self
+                .cluster_handler
+                .send(PeerCommand { from: self.peer_id.clone(), msg: cmds })
+                .await;
         }
     }
 

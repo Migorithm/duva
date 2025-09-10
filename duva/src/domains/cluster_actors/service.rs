@@ -115,23 +115,28 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
     }
 
-    async fn process_peer_message(&mut self, peer_message: PeerMessage, from: PeerIdentifier) {
+    async fn process_peer_message(
+        &mut self,
+        peer_messages: Vec<PeerMessage>,
+        from: PeerIdentifier,
+    ) {
         use PeerMessage::*;
-
-        match peer_message {
-            | ClusterHeartBeat(heartbeat) => self.receive_cluster_heartbeat(heartbeat).await,
-            | RequestVote(request_vote) => self.vote_election(request_vote).await,
-            | AckReplication(repl_res) => self.ack_replication(from, repl_res).await,
-            | AppendEntriesRPC(heartbeat) => self.append_entries_rpc(heartbeat).await,
-            | ElectionVoteReply(request_vote_reply) => {
-                self.receive_election_vote(request_vote_reply).await
-            },
-            | StartRebalance => self.start_rebalance().await,
-            | ReceiveBatch(migrate_batch) => self.receive_batch(migrate_batch, from).await,
-            | MigrationBatchAck(migration_batch_ack) => {
-                self.handle_migration_ack(migration_batch_ack).await
-            },
-        };
+        for peer_message in peer_messages {
+            match peer_message {
+                | ClusterHeartBeat(heartbeat) => self.receive_cluster_heartbeat(heartbeat).await,
+                | RequestVote(request_vote) => self.vote_election(request_vote).await,
+                | AckReplication(repl_res) => self.ack_replication(&from, repl_res).await,
+                | AppendEntriesRPC(heartbeat) => self.append_entries_rpc(heartbeat).await,
+                | ElectionVoteReply(request_vote_reply) => {
+                    self.receive_election_vote(request_vote_reply).await
+                },
+                | StartRebalance => self.start_rebalance().await,
+                | ReceiveBatch(migrate_batch) => self.receive_batch(migrate_batch, &from).await,
+                | MigrationBatchAck(migration_batch_ack) => {
+                    self.handle_migration_ack(migration_batch_ack).await
+                },
+            };
+        }
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, conn_msg))]
