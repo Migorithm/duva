@@ -25,13 +25,13 @@ impl CacheEntry {
 
     pub(crate) fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
         if let Some(expiry) = self.value.expiry {
-            return expiry > *current_datetime;
+            return expiry > current_datetime.timestamp_millis();
         }
         true
     }
 
     pub(crate) fn expiry(&self) -> Option<DateTime<Utc>> {
-        self.value.expiry
+        self.value.expiry.map(|ts| DateTime::from_timestamp_millis(ts)).flatten()
     }
 
     pub(crate) fn key(&self) -> &str {
@@ -46,7 +46,7 @@ impl CacheEntry {
     }
 
     pub(crate) fn expire_in(&self) -> anyhow::Result<Option<Duration>> {
-        if let Some(expiry) = self.value.expiry {
+        if let Some(expiry) = self.expiry() {
             let dr = expiry
                 .signed_duration_since(Utc::now())
                 .to_std()

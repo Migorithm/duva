@@ -17,10 +17,9 @@ impl CacheEntry {
         let mut result = Vec::new();
 
         let (key, value) = self.clone().destructure();
-        if let Some(expiry) = value.expiry {
-            let milli_seconds = expiry.timestamp_millis();
+        if let Some(expiry_in_millis) = value.expiry {
             result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
-            result.extend_from_slice(&milli_seconds.to_le_bytes());
+            result.extend_from_slice(&expiry_in_millis.to_le_bytes());
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);

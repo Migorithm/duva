@@ -11,6 +11,7 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 
 use crate::types::Callback;
+use anyhow::Context;
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
@@ -378,7 +379,10 @@ impl CacheManager {
         };
 
         let now = Utc::now();
-        let ttl_in_sec = exp.signed_duration_since(now).num_seconds();
+        let ttl_in_sec = DateTime::from_timestamp_millis(exp)
+            .context("conversion from i64 to datetime failed")?
+            .signed_duration_since(now)
+            .num_seconds();
         let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
         Ok(ttl)
     }

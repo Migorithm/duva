@@ -10,7 +10,7 @@ use crate::domains::caches::cache_objects::{THasExpiry, types::quicklist::QuickL
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct CacheValue {
     pub(crate) value: TypedValue,
-    pub(crate) expiry: Option<DateTime<Utc>>,
+    pub(crate) expiry: Option<i64>,
 }
 
 impl CacheValue {
@@ -18,7 +18,7 @@ impl CacheValue {
         Self { value: value.into(), expiry: None }
     }
     pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
-        Self { expiry: Some(expiry), ..self }
+        Self { expiry: Some(expiry.timestamp_millis()), ..self }
     }
 
     pub(crate) fn try_to_string(&self) -> anyhow::Result<String> {
@@ -113,7 +113,7 @@ impl bincode::Encode for CacheValue {
             | TypedValue::String(b) => bincode::Encode::encode(&b.to_vec(), encoder)?,
             | TypedValue::List(list) => bincode::Encode::encode(&list, encoder)?,
         }
-        let expiry_timestamp = self.expiry.map(|dt| dt.timestamp_millis());
+        let expiry_timestamp = self.expiry.map(|dt| dt);
         bincode::Encode::encode(&expiry_timestamp, encoder)?;
         Ok(())
     }
