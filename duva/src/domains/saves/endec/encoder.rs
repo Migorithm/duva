@@ -404,7 +404,7 @@ mod test {
         let binary_data = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
         let value = CacheEntry::new(
             "binary_key",
-            TypedValue::String(bytes::Bytes::from(binary_data.clone())),
+            TypedValue::String(bytes::Bytes::from(binary_data.clone()).into()),
         );
         let encoded = value.encode_with_key().unwrap();
 

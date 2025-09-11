@@ -219,7 +219,7 @@ impl From<CacheValue> for QueryIO {
     fn from(v: CacheValue) -> Self {
         match v {
             | CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
-            | CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s),
+            | CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s.into()),
             // TODO rendering full list at once is not supported yet
             | CacheValue { value: TypedValue::List(_b), .. } => {
                 panic!("List is not supported");
