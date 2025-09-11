@@ -393,6 +393,16 @@ impl<T> DerefMut for BytesDecoder<'_, T> {
 mod test {
     use super::*;
 
+    // For convenience in tests
+    impl PartialEq<&str> for CacheValue {
+        fn eq(&self, other: &&str) -> bool {
+            match self {
+                | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == other.as_bytes(),
+                | _ => false,
+            }
+        }
+    }
+
     #[test]
     fn test_size_decoding() {
         static V1: [u8; 1] = [0x0D];

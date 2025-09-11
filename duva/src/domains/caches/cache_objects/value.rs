@@ -97,33 +97,6 @@ impl TypedValue {
     }
 }
 
-impl PartialEq<&str> for TypedValue {
-    fn eq(&self, other: &&str) -> bool {
-        match self {
-            | TypedValue::String(b) => b.as_ref() == other.as_bytes(),
-            | _ => false,
-        }
-    }
-}
-
-impl PartialEq<&str> for CacheValue {
-    fn eq(&self, other: &&str) -> bool {
-        match self {
-            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == other.as_bytes(),
-            | _ => false,
-        }
-    }
-}
-
-impl PartialEq<&[u8]> for CacheValue {
-    fn eq(&self, other: &&[u8]) -> bool {
-        match self {
-            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == *other,
-            | _ => false,
-        }
-    }
-}
-
 impl THasExpiry for CacheValue {
     fn has_expiry(&self) -> bool {
         self.expiry.is_some()
