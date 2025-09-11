@@ -22,9 +22,6 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     /// Forces pending writes to be physically recorded on disk.
     fn fsync(&mut self) -> Result<()>;
 
-    /// Replicate all logs from the leader. This is intended to only be called from a follower.
-    fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()>;
-
     /// Retrieves the log at a given index.
     fn read_at(&self, at: u64) -> Option<WriteOperation>;
 

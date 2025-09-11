@@ -40,7 +40,7 @@ async fn test_generate_follower_entries() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = ClusterActorQueue::new(100);
+    let (cluster_sender, _) = ClusterActorQueue::create(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
     Helper::cluster_member(
@@ -419,7 +419,7 @@ async fn req_consensus_inserts_consensus_voting() {
     let mut leader_c_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = leader_c_actor.replication.replid.clone();
     // - add 5 followers
-    let (cluster_sender, _) = ClusterActorQueue::new(100);
+    let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
     Helper::cluster_member(
@@ -508,7 +508,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     cluster_actor.cache_manager = cache_manager.clone();
 
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = ClusterActorQueue::new(100);
+    let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
@@ -559,7 +559,7 @@ async fn test_same_voter_can_vote_only_once() {
     cluster_actor.cache_manager = cache_manager.clone();
 
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = ClusterActorQueue::new(100);
+    let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add followers to create quorum
 

@@ -123,7 +123,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         topology_writer: File,
         cache_manager: CacheManager,
     ) -> Self {
-        let (self_handler, receiver) = ClusterActorQueue::new(2000);
+        let (self_handler, receiver) = ClusterActorQueue::create(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
             init_repl_state.is_leader(),
@@ -827,7 +827,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn track_replication_progress(&mut self, voter: &PeerIdentifier) {
-        let Some(peer) = self.find_replica_mut(&voter) else {
+        let Some(peer) = self.find_replica_mut(voter) else {
             return;
         };
         let log_index = peer.curr_match_index();
@@ -836,7 +836,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if voting.is_eligible_voter(&voter) {
+        if voting.is_eligible_voter(voter) {
             info!("Received acks for log index num: {}", log_index);
             voting.increase_vote(voter.clone());
         }
@@ -859,7 +859,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let res = self.cache_manager.apply_entry(entry, index).await;
         self.replication.last_applied = index;
 
-        return res;
+        res
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -1246,7 +1246,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         // If cache entries are empty, skip consensus and directly send success ack
         if migrate_batch.entries.is_empty() {
-            let Some(peer) = self.members.get_mut(&from) else {
+            let Some(peer) = self.members.get_mut(from) else {
                 warn!("No Member Found");
                 return;
             };

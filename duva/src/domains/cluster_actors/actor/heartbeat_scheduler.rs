@@ -161,7 +161,7 @@ mod tests {
 
     // Helper function to create a test scheduler
     async fn setup_scheduler(master_mode: bool) -> (HeartBeatScheduler, ClusterActorReceiver) {
-        let (sender, rx) = ClusterActorQueue::new(10);
+        let (sender, rx) = ClusterActorQueue::create(10);
         let scheduler = HeartBeatScheduler::run(sender, master_mode, 200);
         (scheduler, rx)
     }
@@ -216,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_leader_heartbeat_periodically() {
-        let (tx, mut rx) = ClusterActorQueue::new(10);
+        let (tx, mut rx) = ClusterActorQueue::create(10);
         let heartbeat_interval = 100; // 100ms
         let stop_signal =
             HeartBeatScheduler::send_append_entries_rpc(heartbeat_interval, tx.into());
@@ -247,7 +247,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_election_timeout() {
-        let (tx, _) = ClusterActorQueue::new(10);
+        let (tx, _) = ClusterActorQueue::create(10);
         let controller = HeartBeatScheduler::start_election_timer(tx);
 
         // Test stopping the election timeout
@@ -260,7 +260,7 @@ mod tests {
         assert!(stop_result.is_ok(), "Should be able to send stop command");
 
         // Test election trigger after timeout
-        let (tx2, mut rx2) = ClusterActorQueue::new(10);
+        let (tx2, mut rx2) = ClusterActorQueue::create(10);
         // ! Keep the sender alive! otherwise, the receiver will close immediately
         let _sender = HeartBeatScheduler::start_election_timer(tx2);
 
@@ -280,7 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_leader_heartbeat() {
-        let (tx, _rx) = ClusterActorQueue::new(10);
+        let (tx, _rx) = ClusterActorQueue::create(10);
         let controller = HeartBeatScheduler::start_election_timer(tx);
 
         // Test sending UpdateLeaderHeartBeat command

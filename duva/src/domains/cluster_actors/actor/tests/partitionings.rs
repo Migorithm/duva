@@ -154,7 +154,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     let (buf, _leader_for_diff_shard) =
         cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
 
-    let (cluster_handler, mut rx) = ClusterActorQueue::new(2);
+    let (cluster_handler, mut rx) = ClusterActorQueue::create(2);
     cluster_actor.cache_manager = cache_manager.clone();
 
     // WHEN
@@ -283,7 +283,7 @@ async fn test_send_migrate_and_wait_happypath() {
 #[tokio::test]
 async fn test_send_migrate_and_wait_callback_error() {
     // GIVEN
-    let (fake_handler, mut rx) = ClusterActorQueue::new(10);
+    let (fake_handler, mut rx) = ClusterActorQueue::create(10);
 
     let target_replid = ReplicationId::Key("error_response_test".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
