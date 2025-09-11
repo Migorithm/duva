@@ -1,9 +1,8 @@
 use crate::domains::QueryIO;
+use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use anyhow::{Context, Result};
 use bincode::error::DecodeError;
-use bytes::Bytes;
 use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
@@ -100,18 +99,14 @@ impl Segment {
                     lookups.push(LookupIndex::new(op.log_index, current_offset));
                 },
                 | Err(e) => {
-                    // **FIXED**: Differentiate between corruption and a partial write.
-                    if let bincode::error::DecodeError::Io { .. } = &e {
-                        if matches!(e, DecodeError::UnexpectedEnd { .. }) {
-                            warn!(
-                                "Partial entry found in {}. Log is valid up to offset {}.",
-                                path.display(),
-                                current_offset
-                            );
-                            break; // Graceful break for partial writes
-                        }
+                    if matches!(e, DecodeError::UnexpectedEnd { .. }) {
+                        warn!(
+                            "Partial entry found in {}. Valid up to offset {}.",
+                            path.display(),
+                            current_offset
+                        );
+                        break;
                     }
-                    // Any other error is treated as corruption.
                     return Err(anyhow::anyhow!(
                         "Corrupted segment file {}: {}",
                         path.display(),
@@ -392,8 +387,11 @@ impl TWriteAheadLog for FileOpLogs {
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::operation_logs::LogEntry;
+
     use super::*;
     use anyhow::Result;
+    use bytes::Bytes;
     use tempfile::TempDir;
 
     fn set_helper(index: u64, term: u64) -> WriteOperation {
