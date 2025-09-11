@@ -69,12 +69,6 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(self.last_log_index)
     }
 
-    pub(crate) fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
-        self.update_metadata(&ops);
-        self.target.follower_full_sync(ops)?;
-        Ok(())
-    }
-
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, end_inclusive)
     }

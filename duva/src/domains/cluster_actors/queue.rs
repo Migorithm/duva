@@ -10,7 +10,7 @@ use crate::domains::cluster_actors::ClusterCommand;
 pub(crate) struct ClusterActorQueue;
 
 impl ClusterActorQueue {
-    pub(crate) fn new(buffer: usize) -> (ClusterActorSender, ClusterActorReceiver) {
+    pub(crate) fn create(buffer: usize) -> (ClusterActorSender, ClusterActorReceiver) {
         let (normal_send, normal_recv) = tokio::sync::mpsc::channel(buffer);
         let (priority_send, priority_recv) = tokio::sync::mpsc::channel(100);
         (

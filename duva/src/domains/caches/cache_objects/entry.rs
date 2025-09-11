@@ -31,7 +31,7 @@ impl CacheEntry {
     }
 
     pub(crate) fn expiry(&self) -> Option<DateTime<Utc>> {
-        self.value.expiry.map(|ts| DateTime::from_timestamp_millis(ts)).flatten()
+        self.value.expiry.and_then(DateTime::from_timestamp_millis)
     }
 
     pub(crate) fn key(&self) -> &str {

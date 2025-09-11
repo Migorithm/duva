@@ -33,11 +33,6 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
-        self.writer = ops;
-        Ok(())
-    }
-
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
