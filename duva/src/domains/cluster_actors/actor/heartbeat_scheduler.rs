@@ -80,12 +80,17 @@ impl HeartBeatScheduler {
         tokio::spawn(async move {
             loop {
                 select! {
-                    Some(msg) = rx.recv() => {
+                    biased;
+                    message = rx.recv() => {
+                        let Some(msg) = message else {
+                            return
+                        };
                         match msg {
                             ElectionTimeOutCommand::Stop => return,
                             ElectionTimeOutCommand::Ping => {},
                         }
                     },
+
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(ELECTION_TIMEOUT)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
                         let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection).await;
