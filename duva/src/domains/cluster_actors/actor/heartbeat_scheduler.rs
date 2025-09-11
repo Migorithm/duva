@@ -261,7 +261,8 @@ mod tests {
 
         // Test election trigger after timeout
         let (tx2, mut rx2) = ClusterActorQueue::new(10);
-        let _ = HeartBeatScheduler::start_election_timer(tx2);
+        // ! Keep the sender alive! otherwise, the receiver will close immediately
+        let _sender = HeartBeatScheduler::start_election_timer(tx2);
 
         let election_triggered =
             timeout(Duration::from_millis(HEARTBEAT_INTERVAL * 6), async { rx2.recv().await })
