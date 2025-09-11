@@ -303,7 +303,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_bytes()?;
-                    let mut cache_value = CacheValue::new(TypedValue::String(value));
+                    let mut cache_value = CacheValue::new(TypedValue::String(value.into()));
                     if let Some(expiry) = expiry {
                         cache_value = cache_value.with_expiry(expiry);
                     }
@@ -392,6 +392,16 @@ impl<T> DerefMut for BytesDecoder<'_, T> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    // For convenience in tests
+    impl PartialEq<&str> for CacheValue {
+        fn eq(&self, other: &&str) -> bool {
+            match self {
+                | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == other.as_bytes(),
+                | _ => false,
+            }
+        }
+    }
 
     #[test]
     fn test_size_decoding() {

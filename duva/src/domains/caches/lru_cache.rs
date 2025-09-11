@@ -560,7 +560,7 @@ mod tests {
         // Insert and modify via entry
         {
             let value = cache.entry(1).or_insert(CacheValue::new("original"));
-            value.value = TypedValue::String(Bytes::from("modified"));
+            value.value = TypedValue::String(Bytes::from("modified").into());
         }
 
         // Verify modification persisted
@@ -580,7 +580,7 @@ mod tests {
         // Modify first key via entry (should move to head)
         {
             let value = cache.entry(1).or_insert(CacheValue::new("unused"));
-            value.value = TypedValue::String(Bytes::from("one_modified"));
+            value.value = TypedValue::String(Bytes::from("one_modified").into());
         }
 
         // Insert third key (should evict key 2, since 1 is now MRU)

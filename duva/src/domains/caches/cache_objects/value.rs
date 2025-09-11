@@ -1,16 +1,21 @@
 use bincode::{
-    BorrowDecode,
+    BorrowDecode, Decode,
+    de::Decoder,
+    enc::Encoder,
     error::{DecodeError, EncodeError},
 };
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 
-use crate::domains::caches::cache_objects::{THasExpiry, types::quicklist::QuickList};
+use crate::{
+    domains::caches::cache_objects::{THasExpiry, types::quicklist::QuickList},
+    from_to, make_smart_pointer,
+};
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bincode::Encode, bincode::Decode)]
 pub struct CacheValue {
     pub(crate) value: TypedValue,
-    pub(crate) expiry: Option<DateTime<Utc>>,
+    pub(crate) expiry: Option<i64>,
 }
 
 impl CacheValue {
@@ -18,7 +23,7 @@ impl CacheValue {
         Self { value: value.into(), expiry: None }
     }
     pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
-        Self { expiry: Some(expiry), ..self }
+        Self { expiry: Some(expiry.timestamp_millis()), ..self }
     }
 
     pub(crate) fn try_to_string(&self) -> anyhow::Result<String> {
@@ -40,12 +45,37 @@ impl CacheValue {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bincode::Encode, bincode::Decode)]
 pub enum TypedValue {
     #[default]
     Null,
-    String(Bytes),
+    String(BytesWrapper),
     List(QuickList),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub(crate) struct BytesWrapper(Bytes); // To minimize bincode implementation boilerplate as Bytes does not implement bincode traits
+make_smart_pointer!(BytesWrapper, Bytes);
+from_to!(Bytes, BytesWrapper);
+
+impl bincode::Encode for BytesWrapper {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        self.0.as_ref().encode(encoder)
+    }
+}
+impl<Ctx> Decode<Ctx> for BytesWrapper {
+    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let vec: Vec<u8> = Decode::decode(decoder)?;
+        Ok(BytesWrapper(Bytes::from(vec)))
+    }
+}
+impl<'de, Ctx> BorrowDecode<'de, Ctx> for BytesWrapper {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> Result<Self, DecodeError> {
+        let slice: &'de [u8] = BorrowDecode::borrow_decode(decoder)?;
+        Ok(BytesWrapper(Bytes::copy_from_slice(slice)))
+    }
 }
 
 pub const WRONG_TYPE_ERR_MSG: &str =
@@ -53,7 +83,7 @@ pub const WRONG_TYPE_ERR_MSG: &str =
 
 impl From<&str> for TypedValue {
     fn from(s: &str) -> Self {
-        TypedValue::String(Bytes::copy_from_slice(s.as_bytes()))
+        TypedValue::String(Bytes::copy_from_slice(s.as_bytes()).into())
     }
 }
 
@@ -67,107 +97,9 @@ impl TypedValue {
     }
 }
 
-impl PartialEq<&str> for TypedValue {
-    fn eq(&self, other: &&str) -> bool {
-        match self {
-            | TypedValue::String(b) => b.as_ref() == other.as_bytes(),
-            | _ => false,
-        }
-    }
-}
-
-impl PartialEq<&str> for CacheValue {
-    fn eq(&self, other: &&str) -> bool {
-        match self {
-            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == other.as_bytes(),
-            | _ => false,
-        }
-    }
-}
-
-impl PartialEq<&[u8]> for CacheValue {
-    fn eq(&self, other: &&[u8]) -> bool {
-        match self {
-            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == *other,
-            | _ => false,
-        }
-    }
-}
-
 impl THasExpiry for CacheValue {
     fn has_expiry(&self) -> bool {
         self.expiry.is_some()
-    }
-}
-
-impl bincode::Encode for CacheValue {
-    fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-        let kind = match &self.value {
-            | TypedValue::Null => 0u8,
-            | TypedValue::String(_) => 1u8,
-            | TypedValue::List(_) => 2u8,
-        };
-        bincode::Encode::encode(&kind, encoder)?;
-        match &self.value {
-            | TypedValue::Null => bincode::Encode::encode(&Vec::<u8>::new(), encoder)?,
-            | TypedValue::String(b) => bincode::Encode::encode(&b.to_vec(), encoder)?,
-            | TypedValue::List(list) => bincode::Encode::encode(&list, encoder)?,
-        }
-        let expiry_timestamp = self.expiry.map(|dt| dt.timestamp_millis());
-        bincode::Encode::encode(&expiry_timestamp, encoder)?;
-        Ok(())
-    }
-}
-
-impl<Ctx> bincode::Decode<Ctx> for CacheValue {
-    fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
-        let kind: u8 = bincode::Decode::decode(decoder)?;
-        let value = match kind {
-            | 0 => TypedValue::Null,
-            | 1 => {
-                let value_bytes: Vec<u8> = bincode::Decode::decode(decoder)?;
-                TypedValue::String(Bytes::from(value_bytes))
-            },
-            | 2 => {
-                let list: QuickList = bincode::Decode::decode(decoder)?;
-                TypedValue::List(list)
-            },
-            | _ => return Err(DecodeError::Other("Unknown ValueKind variant")),
-        };
-        let expiry_timestamp: Option<i64> = bincode::Decode::decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
-        let value = CacheValue::new(value);
-        Ok(match expiry {
-            | Some(expiry) => value.with_expiry(expiry),
-            | None => value,
-        })
-    }
-}
-
-impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheValue {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        let kind: u8 = BorrowDecode::borrow_decode(decoder)?;
-        let value = match kind {
-            | 0 => TypedValue::Null,
-            | 1 => {
-                let value_bytes: Vec<u8> = BorrowDecode::borrow_decode(decoder)?;
-                TypedValue::String(Bytes::from(value_bytes))
-            },
-            | 2 => {
-                let list: QuickList = BorrowDecode::borrow_decode(decoder)?;
-                TypedValue::List(list)
-            },
-            | _ => return Err(DecodeError::Other("Unknown ValueKind variant")),
-        };
-        let expiry_timestamp: Option<i64> = BorrowDecode::borrow_decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
-        let value = CacheValue::new(value);
-        Ok(match expiry {
-            | Some(expiry) => value.with_expiry(expiry),
-            | None => value,
-        })
     }
 }
 
@@ -183,7 +115,7 @@ mod tests {
         let (decoded, _): (CacheValue, usize) =
             decode_from_slice(&encoded, bincode::config::standard()).unwrap();
         assert_eq!(decoded, original);
-        assert_eq!(decoded.value, TypedValue::String(Bytes::copy_from_slice(b"hello")));
+        assert_eq!(decoded.value, TypedValue::String(Bytes::copy_from_slice(b"hello").into()));
     }
 
     #[test]

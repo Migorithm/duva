@@ -56,7 +56,7 @@ impl ClientController {
                             | Some(CacheEntry {
                                 value: CacheValue { value: TypedValue::String(s), .. },
                                 ..
-                            }) => QueryIO::BulkString(s),
+                            }) => QueryIO::BulkString(s.into()),
                             | _ => QueryIO::Null,
                         })
                         .collect(),

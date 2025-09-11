@@ -83,7 +83,7 @@ impl CacheActor {
 
         let mut current_str = val.try_to_string()?;
         current_str.push_str(value.as_str());
-        val.value = TypedValue::String(Bytes::from(current_str));
+        val.value = TypedValue::String(Bytes::from(current_str).into());
 
         Ok(val.len())
     }
@@ -96,7 +96,7 @@ impl CacheActor {
             .parse::<i64>()
             .context("ERR value is not an integer or out of range")?;
 
-        val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
+        val.value = TypedValue::String(Bytes::from((curr + delta).to_string()).into());
         Ok(curr + delta)
     }
 
@@ -226,7 +226,7 @@ impl CacheActor {
         match value {
             | TypedValue::List(list) => Ok(list
                 .lindex(index)
-                .map(|v| CacheValue::new(TypedValue::String(v)))
+                .map(|v| CacheValue::new(TypedValue::String(v.into())))
                 .unwrap_or_default()),
 
             | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),

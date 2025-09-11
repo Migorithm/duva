@@ -11,6 +11,7 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 
 use crate::types::Callback;
+use anyhow::Context;
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
@@ -378,7 +379,10 @@ impl CacheManager {
         };
 
         let now = Utc::now();
-        let ttl_in_sec = exp.signed_duration_since(now).num_seconds();
+        let ttl_in_sec = DateTime::from_timestamp_millis(exp)
+            .context("conversion from i64 to datetime failed")?
+            .signed_duration_since(now)
+            .num_seconds();
         let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
         Ok(ttl)
     }
@@ -525,11 +529,11 @@ mod tests {
 
         // AND: Entries should be retrievable with their expiry times
         let value1 = cache_manager.route_get("expire_key1").await.unwrap();
-        assert_eq!(value1.value, "expire_value1");
+        assert_eq!(value1.value.as_str().unwrap(), "expire_value1");
         assert!(value1.expiry.is_some());
 
         let value2 = cache_manager.route_get("expire_key2").await.unwrap();
-        assert_eq!(value2.value, "expire_value2");
+        assert_eq!(value2.value.as_str().unwrap(), "expire_value2");
         assert!(value2.expiry.is_some());
     }
 }
