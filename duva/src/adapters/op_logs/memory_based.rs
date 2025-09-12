@@ -41,7 +41,7 @@ impl TWriteAheadLog for MemoryOpLogs {
             .collect()
     }
 
-    fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
+    fn read_at(&mut self, prev_log_index: u64) -> Option<WriteOperation> {
         self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
     }
 

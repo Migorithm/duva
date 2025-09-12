@@ -23,7 +23,7 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     fn fsync(&mut self) -> Result<()>;
 
     /// Retrieves the log at a given index.
-    fn read_at(&self, at: u64) -> Option<WriteOperation>;
+    fn read_at(&mut self, at: u64) -> Option<WriteOperation>;
 
     /// If the log has been compacted (e.g., via snapshots), `log_start_index` will be greater than 1, meaning earlier entries have been processed.
     fn log_start_index(&self) -> u64;

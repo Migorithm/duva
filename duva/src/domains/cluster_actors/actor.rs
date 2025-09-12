@@ -344,7 +344,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
-            let entry = self.logger().read_at(last_log_index).unwrap();
+            let entry = self.replication.logger.read_at(last_log_index).unwrap();
             self.increase_con_idx();
             let res = self.commit_entry(entry.entry, last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
@@ -848,7 +848,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.increase_con_idx();
         self.client_sessions.set_response(voting.session_req.take());
 
-        let log_entry = self.logger().read_at(log_index).unwrap();
+        let log_entry = self.replication.logger.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
 
         voting.callback.send(ConsensusClientResponse::Result(res));

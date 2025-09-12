@@ -3,12 +3,12 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
 use crate::err;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bytes::Bytes;
 
 use regex::Regex;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Seek, Write};
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
@@ -28,6 +28,7 @@ struct Segment {
     start_index: u64,
     end_index: u64,
     size: usize,
+    file: File,
 
     // * In-memory cache for the index. Maps log_index to byte_offset in the data file.
     // ! For very large logs, this might need optimization
@@ -47,46 +48,35 @@ impl LookupIndex {
 }
 
 impl Segment {
-    fn new(path: PathBuf) -> Self {
-        let _file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .read(true)
-            .open(&path)
-            .context(format!("Failed to create initial segment '{}'", path.display()))
-            .unwrap();
-
-        Self { path, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() }
+    fn new(path: PathBuf) -> Result<Self> {
+        let file = OpenOptions::new().create(true).read(true).write(true).open(&path)?;
+        Ok(Self { path, file, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() })
     }
 
-    fn read_operations(&self) -> Result<Vec<WriteOperation>> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(&self.path)
-            .context(format!("Failed to open segment for reading: {}", self.path.display()))?;
-        let mut reader = BufReader::new(file);
+    fn read_operations(&mut self) -> Result<Vec<WriteOperation>> {
+        self.file.seek(SeekFrom::Start(0))?;
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
-
+        self.file.read_to_end(&mut buf)?;
         if buf.is_empty() {
-            return Ok(Vec::new()); // Return empty vec for empty files
+            return Ok(Vec::new());
         }
+        LogEntry::deserialize(Bytes::copy_from_slice(&buf[..]))
+    }
 
-        let bytes = Bytes::copy_from_slice(&buf[..]);
-        LogEntry::deserialize(bytes) // Assuming this returns Result<Vec<WriteOperation>>
+    // Add method to read operation at specific offset
+    fn read_at_offset(&mut self, offset: usize) -> Result<WriteOperation> {
+        self.file.seek(SeekFrom::Start(offset as u64))?;
+        let mut buf = Vec::new();
+        self.file.read_to_end(&mut buf)?;
+        let operations = LogEntry::deserialize(Bytes::copy_from_slice(&buf))?;
+        operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found"))
     }
 
     fn from_path(path: &PathBuf) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path)
-            .context(format!("Failed to open segment '{}'", path.display()))?;
-
-        let mut reader = BufReader::new(file);
+        let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
+        file.read_to_end(&mut buf)?;
 
-        // Parse the segment file to get operations and build index
         let bytes = Bytes::copy_from_slice(&buf[..]);
         let operations = LogEntry::deserialize(bytes)?;
 
@@ -111,12 +101,8 @@ impl Segment {
             end_index,
             size: buf.len(),
             lookups: index_data,
+            file,
         })
-    }
-
-    fn create_writer(&self) -> Result<BufWriter<File>> {
-        let file = OpenOptions::new().create(true).append(true).read(true).open(&self.path)?;
-        Ok(BufWriter::new(file))
     }
 
     // Add method to find byte offset for a log index
@@ -125,22 +111,6 @@ impl Segment {
             .iter()
             .find(|index| index.log_index == log_index)
             .map(|index| index.byte_offset)
-    }
-
-    // Add method to read operation at specific offset
-    fn read_at_offset(&self, offset: usize) -> Result<WriteOperation> {
-        let file = OpenOptions::new().read(true).open(&self.path)?;
-
-        let mut reader = BufReader::new(file);
-        reader.seek(std::io::SeekFrom::Start(offset as u64))?;
-
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
-
-        let bytes = Bytes::copy_from_slice(&buf);
-        let operations = LogEntry::deserialize(bytes)?;
-
-        operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found at offset"))
     }
 }
 
@@ -169,97 +139,59 @@ impl FileOpLogs {
         Ok(Self { path, active_segment, segments })
     }
 
-    fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
+    fn validate_folder(path: &Path) -> Result<(), anyhow::Error> {
         match std::fs::metadata(path) {
             | Ok(metadata) => {
                 if !metadata.is_dir() {
-                    return Err(anyhow::anyhow!(
-                        "Path '{}' exists but is not a directory",
-                        path.display()
-                    ));
+                    return Err(anyhow::anyhow!("Path is not a directory"));
                 }
             },
             | Err(e) if e.kind() == ErrorKind::NotFound => {
-                std::fs::create_dir_all(path)
-                    .context(format!("Failed to create directory '{}'", path.display()))?;
+                std::fs::create_dir_all(path)?;
             },
-            | Err(e) => {
-                return Err(e).context(format!("Failed to access path '{}'", path.display()));
-            },
+            | Err(e) => return Err(e.into()),
         }
-
         Ok(())
     }
 
-    fn detect_and_sort_existing_segments(path: &PathBuf) -> Result<Vec<PathBuf>, anyhow::Error> {
-        // Ensure the directory exists before trying to read it
-        if !std::fs::exists(path)? {
-            return Err(anyhow::anyhow!("Directory does not exist: {:?}", path));
+    fn detect_and_sort_existing_segments(path: &Path) -> Result<Vec<PathBuf>, anyhow::Error> {
+        if !path.exists() {
+            return Ok(Vec::new());
         }
-        // Compile regex once outside the loop for better performance
         let re = Regex::new(r"^segment_(\d+)\.oplog$")?;
-
-        // Collect and process entries in one pass
-        let mut segments = Vec::new();
-        let mut read_dir = std::fs::read_dir(path)?;
-
-        while let Some(Ok(entry)) = read_dir.next() {
-            let file_name = entry.file_name();
-            let file_name_str = file_name.to_string_lossy();
-
-            // Since we know the regex will match, we can simplify the capture extraction
-            if let Some(captures) = re.captures(&file_name_str)
+        let mut segments_with_indices = Vec::new();
+        for entry in std::fs::read_dir(path)? {
+            if let Ok(entry) = entry
+                && let Some(captures) = re.captures(entry.file_name().to_string_lossy().as_ref())
                 && let Ok(index) = captures[1].parse::<u64>()
             {
-                // By rule, we know this unwrap is safe
-                segments.push((index, entry.path()));
+                segments_with_indices.push((index, entry.path()));
             }
         }
-
-        // Sort segments by index
-        segments.sort_by_key(|(index, _)| *index);
-
-        // Extract just the paths
-        Ok(segments.into_iter().map(|(_, path)| path).collect())
+        segments_with_indices.sort_by_key(|(index, _)| *index);
+        Ok(segments_with_indices.into_iter().map(|(_, path)| path).collect())
     }
 
     fn take_last_segment_otherwise_init(
         path: &Path,
         segment_paths: Vec<PathBuf>,
     ) -> Result<Segment, anyhow::Error> {
-        let active_segment = if segment_paths.is_empty() {
-            // No segments exist — create initial segment
-            Segment::new(path.join("segment_0.oplog"))
+        if let Some(last_path) = segment_paths.last() {
+            Segment::from_path(last_path)
         } else {
-            Segment::from_path(segment_paths.last().unwrap())?
-        };
-        Ok(active_segment)
+            Segment::new(path.join("segment_0.oplog"))
+        }
     }
 
     fn rotate_segment(&mut self) -> Result<()> {
-        // Close current segment
-        if let Ok(mut writer) = self.active_segment.create_writer() {
-            writer.flush()?;
-            writer.get_mut().sync_all()?;
-        }
-
-        // Create new segment
+        self.fsync()?;
         let next_index = self.segments.len() + 1;
         let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
-        let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
-
-        let mut seg: Segment = Segment {
-            path: segment_path,
-            start_index: self.active_segment.end_index + 1,
-            end_index: self.active_segment.end_index,
-            size: 0,
-            lookups: Vec::new(),
-        };
-
-        std::mem::swap(&mut seg, &mut self.active_segment);
-
-        self.segments.push(seg);
-
+        let mut new_active_segment = Segment::new(segment_path)?;
+        new_active_segment.start_index = self.active_segment.end_index + 1;
+        new_active_segment.end_index = self.active_segment.end_index;
+        let old_active_segment = std::mem::replace(&mut self.active_segment, new_active_segment);
+        self.segments.push(old_active_segment);
         Ok(())
     }
 
@@ -300,26 +232,18 @@ impl FileOpLogs {
 impl TWriteAheadLog for FileOpLogs {
     /// Appends a single `WriteOperation` to the file.
     fn append(&mut self, op: WriteOperation) -> Result<()> {
-        // Check if we need to rotate
         if self.active_segment.size >= SEGMENT_SIZE {
             self.rotate_segment()?;
         }
-
         let log_index = op.log_index;
-
-        // Update index before writing
-        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
-
         let serialized = QueryIO::WriteOperation(op).serialize();
+        self.active_segment.file.seek(SeekFrom::Start(self.active_segment.size as u64))?;
+        self.active_segment.file.write_all(&serialized)?;
+        self.fsync()?; // Sync after write
 
-        let mut writer = self.active_segment.create_writer()?;
-        writer.write_all(&serialized)?;
-        writer.flush()?;
-        writer.get_mut().sync_all()?;
-
+        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
         self.active_segment.size += serialized.len();
         self.active_segment.end_index = log_index;
-
         Ok(())
     }
 
@@ -387,17 +311,11 @@ impl TWriteAheadLog for FileOpLogs {
         F: FnMut(WriteOperation) + Send,
     {
         // Replay all segments in order
-        for segment in &self.segments {
+        for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
             let operations = segment.read_operations()?;
             for op in operations {
                 f(op);
             }
-        }
-
-        // Replay active segment
-        let active_operations = self.active_segment.read_operations()?;
-        for op in active_operations {
-            f(op);
         }
 
         Ok(())
@@ -405,33 +323,21 @@ impl TWriteAheadLog for FileOpLogs {
 
     /// Forces any buffered data to be written to disk.
     fn fsync(&mut self) -> Result<()> {
-        // Open in append mode to get a file handle to the active segment
-        let mut file = OpenOptions::new().append(true).open(&self.active_segment.path)?;
-        file.flush()?;
-        file.sync_all()?;
-
+        self.active_segment.file.flush()?;
+        self.active_segment.file.sync_all()?;
         Ok(())
     }
 
-    fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
-        // First check sealed segments
-        for segment in &self.segments {
+    fn read_at(&mut self, log_index: u64) -> Option<WriteOperation> {
+        for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
+            // if overlab is found
             if segment.start_index <= log_index
                 && segment.end_index >= log_index
                 && let Some(offset) = segment.find_offset(log_index)
             {
-                return segment.read_at_offset(offset).ok();
+                return segment.read_at_offset(offset).ok().clone();
             }
         }
-
-        // Then check active segment
-        if self.active_segment.start_index <= log_index
-            && self.active_segment.end_index >= log_index
-            && let Some(offset) = self.active_segment.find_offset(log_index)
-        {
-            return self.active_segment.read_at_offset(offset).ok();
-        }
-
         None
     }
 
@@ -460,13 +366,6 @@ impl TWriteAheadLog for FileOpLogs {
     }
 }
 
-fn open_reader(path: &str) -> Result<BufReader<File>> {
-    let file = OpenOptions::new().read(true).open(Path::new(path)).map_err(|e| {
-        err!(e);
-        e
-    })?;
-    Ok(BufReader::new(file))
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -875,7 +774,7 @@ mod tests {
     fn test_read_at_empty_log() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let op_logs = FileOpLogs::new(path).unwrap();
+        let mut op_logs = FileOpLogs::new(path).unwrap();
 
         let op = op_logs.read_at(0);
         assert!(op.is_none());
@@ -1049,7 +948,7 @@ mod tests {
         }
 
         // Reopen the log
-        let op_logs = FileOpLogs::new(path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // Verify index data was recovered correctly
         assert_eq!(op_logs.active_segment.lookups.len(), 50);

@@ -77,7 +77,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.range(start_exclusive, self.last_log_index)
     }
 
-    pub(crate) fn read_at(&self, at: u64) -> Option<WriteOperation> {
+    pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
         self.target.read_at(at)
     }
 
