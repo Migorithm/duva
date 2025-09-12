@@ -4,6 +4,7 @@ use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use futures::SinkExt;
 use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Seek, Write};
@@ -89,21 +90,19 @@ impl Segment {
         let operations = LogEntry::deserialize(bytes)?;
 
         let mut index_data = Vec::with_capacity(operations.len());
-        let mut current_offset = 0;
 
-        let prefix_len = REPLICATE_PREFIX.len_utf8();
-        // Build index_data by calculating offsets for each operation
+        let (start_index, end_index) = match (operations.first(), operations.last()) {
+            | (Some(first), Some(last)) => (first.log_index, last.log_index),
+            | _ => (0, 0),
+        };
+
+        let mut current_offset = 0;
         for op in operations.into_iter() {
             index_data.push(LookupIndex::new(op.log_index, current_offset));
             let encoded_size =
                 bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
-            current_offset += prefix_len + encoded_size
+            current_offset += REPLICATE_PREFIX.len_utf8() + encoded_size
         }
-
-        let (start_index, end_index) = match (index_data.first(), index_data.last()) {
-            | (Some(first), Some(last)) => (first.log_index, last.log_index),
-            | _ => (0, 0),
-        };
 
         Ok(Segment {
             path: path.clone(),
@@ -157,19 +156,15 @@ impl FileOpLogs {
         let path = path.as_ref().to_path_buf();
 
         Self::validate_folder(&path)?;
-
-        // Detect and sort existing segment files
         let segment_paths = Self::detect_and_sort_existing_segments(&path)?;
 
-        let active_segment = Self::take_last_segment_otherwise_init(&path, segment_paths.clone())?;
-
-        // Load all segments except the last one (which is the active segment)
-        let mut segments = Vec::new();
+        let mut segments = Vec::with_capacity(segment_paths.len());
         for segment_path in segment_paths.iter().take(segment_paths.len().saturating_sub(1)) {
             let segment = Segment::from_path(segment_path)?;
             segments.push(segment);
         }
 
+        let active_segment = Self::take_last_segment_otherwise_init(&path, segment_paths.clone())?;
         Ok(Self { path, active_segment, segments })
     }
 
