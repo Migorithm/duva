@@ -97,7 +97,7 @@ impl Segment {
             index_data.push(LookupIndex::new(op.log_index, current_offset));
             let encoded_size =
                 bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
-            current_offset += encoded_size + prefix_len
+            current_offset += prefix_len + encoded_size
         }
 
         let (start_index, end_index) = match (index_data.first(), index_data.last()) {
@@ -233,10 +233,8 @@ impl FileOpLogs {
     ) -> Result<Segment, anyhow::Error> {
         let active_segment = if segment_paths.is_empty() {
             // No segments exist — create initial segment
-            let segment_path = path.join("segment_0.oplog");
-            Segment::new(segment_path)
+            Segment::new(path.join("segment_0.oplog"))
         } else {
-            // Segments exist — use the last one as active
             Segment::from_path(segment_paths.last().unwrap())?
         };
         Ok(active_segment)
@@ -254,7 +252,7 @@ impl FileOpLogs {
         let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
         let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
 
-        let mut seg = Segment {
+        let mut seg: Segment = Segment {
             path: segment_path,
             start_index: self.active_segment.end_index + 1,
             end_index: self.active_segment.end_index,
@@ -276,7 +274,7 @@ impl FileOpLogs {
         end_inclusive: u64,
     ) -> Result<Vec<WriteOperation>> {
         let mut collected_ops = Vec::new();
-        let mut buffer = Vec::new(); // Buffer to hold bytes for deserialization
+        let mut buffer = Vec::new();
 
         reader.read_to_end(&mut buffer)?;
 
@@ -285,7 +283,7 @@ impl FileOpLogs {
         }
 
         let bytes = Bytes::copy_from_slice(&buffer);
-        // Assuming deserialize can handle a buffer with multiple concatenated operations
+
         let operations_in_buffer = LogEntry::deserialize(bytes)?;
 
         for op in operations_in_buffer {
@@ -343,16 +341,11 @@ impl TWriteAheadLog for FileOpLogs {
         let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
 
         for segment in all_segments {
-            // Optimization: Check for potential overlap first
             if !(segment.end_index > start_exclusive && segment.start_index <= end_inclusive) {
                 continue;
             }
 
-            // Find the index in index_data for the first log entry >= start_exclusive + 1
             let start_log_index_in_segment = start_exclusive.saturating_add(1); // Avoid overflow
-
-            // Find the position in index_data where log_index is >= start_log_index_in_segment
-            // Use binary search on the sorted index_data for efficiency
             let starting_idx_in_index = segment
                 .lookups
                 .binary_search_by(|index| index.log_index.cmp(&start_log_index_in_segment))
@@ -365,21 +358,15 @@ impl TWriteAheadLog for FileOpLogs {
                 if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
                     let mut reader = BufReader::new(file);
                     if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok() {
-                        // Read operations sequentially from this point
                         if let Ok(ops) =
                             self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
                         {
                             result.extend(ops);
                         }
-                        // else: Handle error during reading ops from reader
                     }
-                    // else: Handle error seeking
                 }
                 // else: Handle error opening file
             } else if start_log_index_in_segment <= segment.start_index {
-                // If the desired start index is before or at the beginning of the segment,
-                // we should start reading from the beginning of the segment file (offset 0)
-                // if the segment also overlaps with the end_inclusive range.
                 if segment.start_index <= end_inclusive
                     && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
                 {
