@@ -2,9 +2,10 @@ use crate::domains::QueryIO;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
+use crate::err;
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use futures::SinkExt;
+
 use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Seek, Write};
@@ -336,32 +337,31 @@ impl TWriteAheadLog for FileOpLogs {
         let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
 
         for segment in all_segments {
+            // if no overlaps, continue
             if !(segment.end_index > start_exclusive && segment.start_index <= end_inclusive) {
                 continue;
             }
 
-            let start_log_index_in_segment = start_exclusive.saturating_add(1); // Avoid overflow
+            let first_included_index = start_exclusive.saturating_add(1); // Avoid overflow
             let starting_idx_in_index = segment
                 .lookups
-                .binary_search_by(|index| index.log_index.cmp(&start_log_index_in_segment))
+                .binary_search_by(|index| index.log_index.cmp(&first_included_index))
                 .unwrap_or_else(|pos| pos); // If not found, pos is where it would be inserted
 
             if starting_idx_in_index < segment.lookups.len() {
                 let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
 
-                // Open the file and seek to the calculated byte offset
                 if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
                     let mut reader = BufReader::new(file);
-                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok() {
-                        if let Ok(ops) =
+                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok()
+                        && let Ok(ops) =
                             self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                        {
-                            result.extend(ops);
-                        }
+                    {
+                        result.extend(ops);
                     }
                 }
                 // else: Handle error opening file
-            } else if start_log_index_in_segment <= segment.start_index {
+            } else if first_included_index <= segment.start_index {
                 if segment.start_index <= end_inclusive
                     && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
                 {
@@ -460,6 +460,13 @@ impl TWriteAheadLog for FileOpLogs {
     }
 }
 
+fn open_reader(path: &str) -> Result<BufReader<File>> {
+    let file = OpenOptions::new().read(true).open(Path::new(path)).map_err(|e| {
+        err!(e);
+        e
+    })?;
+    Ok(BufReader::new(file))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
