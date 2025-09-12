@@ -102,7 +102,7 @@ OK
 3) "a"
 ```
 
-## 📑 ReplicatedLogs
+## ReplicatedLogs
 Duva includes two pluggable replicated log implementations:
 
 ### In-Memory Log

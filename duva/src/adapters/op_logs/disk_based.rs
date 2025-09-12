@@ -1,6 +1,7 @@
 use crate::domains::QueryIO;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{LogEntry, WriteOperation};
+use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use regex::Regex;
@@ -87,21 +88,27 @@ impl Segment {
         let bytes = Bytes::copy_from_slice(&buf[..]);
         let operations = LogEntry::deserialize(bytes)?;
 
+        let mut index_data = Vec::with_capacity(operations.len());
         let mut current_offset = 0;
-        let mut index_data = Vec::new();
 
+        let prefix_len = REPLICATE_PREFIX.len_utf8();
         // Build index_data by calculating offsets for each operation
         for op in operations.into_iter() {
             index_data.push(LookupIndex::new(op.log_index, current_offset));
-            // Each operation is prefixed with REPLICATE_PREFIX (1 byte) and followed by serialized data
-            let serialized = QueryIO::WriteOperation(op).serialize();
-            current_offset += serialized.len();
+            let encoded_size =
+                bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
+            current_offset += encoded_size + prefix_len
         }
+
+        let (start_index, end_index) = match (index_data.first(), index_data.last()) {
+            | (Some(first), Some(last)) => (first.log_index, last.log_index),
+            | _ => (0, 0),
+        };
 
         Ok(Segment {
             path: path.clone(),
-            start_index: index_data.first().map(|op| op.log_index).unwrap_or(0),
-            end_index: index_data.last().map(|op| op.log_index).unwrap_or(0),
+            start_index,
+            end_index,
             size: buf.len(),
             lookups: index_data,
         })
