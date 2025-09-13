@@ -19,14 +19,8 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     where
         F: FnMut(WriteOperation) + Send;
 
-    /// Forces pending writes to be physically recorded on disk.
-    fn fsync(&mut self) -> Result<()>;
-
     /// Retrieves the log at a given index.
-    fn read_at(&self, at: u64) -> Option<WriteOperation>;
-
-    /// If the log has been compacted (e.g., via snapshots), `log_start_index` will be greater than 1, meaning earlier entries have been processed.
-    fn log_start_index(&self) -> u64;
+    fn read_at(&mut self, at: u64) -> Option<WriteOperation>;
 
     /// Returns true if there are no logs. Otherwise, returns false.
     fn is_empty(&self) -> bool;

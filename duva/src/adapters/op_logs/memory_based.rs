@@ -29,10 +29,6 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn fsync(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
@@ -41,12 +37,8 @@ impl TWriteAheadLog for MemoryOpLogs {
             .collect()
     }
 
-    fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
+    fn read_at(&mut self, prev_log_index: u64) -> Option<WriteOperation> {
         self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
-    }
-
-    fn log_start_index(&self) -> u64 {
-        self.writer.first().map(|op| op.log_index).unwrap_or(0)
     }
 
     fn is_empty(&self) -> bool {

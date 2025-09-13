@@ -19,7 +19,7 @@ const APPEND_ENTRY_RPC_PREFIX: char = '^';
 const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
 const TOPOLOGY_CHANGE_PREFIX: char = 't';
 const START_REBALANCE_PREFIX: char = 'T';
-const REPLICATE_PREFIX: char = '#';
+pub const WRITE_OP_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
@@ -131,7 +131,7 @@ impl QueryIO {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
             | QueryIO::WriteOperation(write_operation) => {
-                serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
+                serialize_with_bincode(WRITE_OP_PREFIX, &write_operation)
             },
             | QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
             | QueryIO::RequestVote(request_vote) => {
@@ -274,7 +274,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::ClusterHeartBeat(heartbeat), len))
         },
-        | REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
+        | WRITE_OP_PREFIX => parse_custom_type::<WriteOperation>(buffer),
         | ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         | REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
