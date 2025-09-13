@@ -2,13 +2,13 @@ use crate::domains::QueryIO;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
-use crate::err;
+
 use anyhow::Result;
 use bytes::Bytes;
 
 use regex::Regex;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
+use std::io::{BufReader, Seek, SeekFrom, Write};
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
