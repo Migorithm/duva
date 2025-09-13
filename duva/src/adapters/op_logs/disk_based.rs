@@ -335,7 +335,7 @@ impl TWriteAheadLog for FileOpLogs {
                 && segment.end_index >= log_index
                 && let Some(offset) = segment.find_offset(log_index)
             {
-                return segment.read_at_offset(offset).ok().clone();
+                return segment.read_at_offset(offset).ok();
             }
         }
         None
