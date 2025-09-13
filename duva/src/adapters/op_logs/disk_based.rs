@@ -1,11 +1,10 @@
 use crate::domains::QueryIO;
+use crate::domains::operation_logs::LogEntry;
+use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
-
 use anyhow::Result;
 use bytes::Bytes;
-
 use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Seek, SeekFrom, Write};
@@ -16,7 +15,6 @@ const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 
 /// A local write-ahead-log (WAL) file (op_logs) implementation using segmented logs.
 pub struct FileOpLogs {
-    /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
     active_segment: Segment,
     segments: Vec<Segment>,
@@ -125,7 +123,6 @@ impl FileOpLogs {
     /// Returns an error if the file/directory cannot be created or opened.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-
         Self::validate_folder(&path)?;
         let segment_paths = Self::detect_and_sort_existing_segments(&path)?;
 
@@ -263,8 +260,6 @@ impl TWriteAheadLog for FileOpLogs {
 
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let mut result = Vec::new();
-
-        // sealed + active segments for iteration
         let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
 
         for segment in all_segments {
@@ -305,10 +300,6 @@ impl TWriteAheadLog for FileOpLogs {
                 }
             }
         }
-
-        // Sort the results by log index to ensure correct order
-        result.sort_by_key(|op| op.log_index);
-
         result
     }
 
@@ -342,7 +333,7 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     fn is_empty(&self) -> bool {
-        self.segments.is_empty() && self.active_segment.size == 0
+        self.segments.is_empty() && self.active_segment.lookups.is_empty()
     }
 
     fn truncate_after(&mut self, log_index: u64) {
@@ -360,8 +351,11 @@ impl TWriteAheadLog for FileOpLogs {
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::operation_logs::LogEntry;
+
     use super::*;
     use anyhow::Result;
+    use bytes::Bytes;
     use tempfile::TempDir;
 
     fn set_helper(index: u64, term: u64) -> WriteOperation {
