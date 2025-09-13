@@ -7,6 +7,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use regex::Regex;
 use std::fs::{File, OpenOptions};
+use std::io::BufWriter;
 use std::io::{BufReader, Seek, SeekFrom, Write};
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
@@ -26,7 +27,7 @@ struct Segment {
     start_index: u64,
     end_index: u64,
     size: usize,
-    file: File,
+    writer: BufWriter<File>,
 
     // * In-memory cache for the index. Maps log_index to byte_offset in the data file.
     // ! For very large logs, this might need optimization
@@ -49,13 +50,25 @@ impl Segment {
     fn new(path: PathBuf) -> Result<Self> {
         let file =
             OpenOptions::new().create(true).read(true).write(true).append(true).open(&path)?;
-        Ok(Self { path, file, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() })
+
+        let initial_size = file.metadata()?.len() as usize;
+
+        let writer = BufWriter::new(file);
+        Ok(Self {
+            path,
+            writer,
+            start_index: 0,
+            end_index: 0,
+            size: initial_size,
+            lookups: Vec::new(),
+        })
     }
 
     fn read_operations(&mut self) -> Result<Vec<WriteOperation>> {
-        self.file.seek(SeekFrom::Start(0))?;
+        let mut file = File::open(&self.path)?; // Open a temporary read handle
+        file.seek(SeekFrom::Start(0))?;
         let mut buf = Vec::new();
-        self.file.read_to_end(&mut buf)?;
+        file.read_to_end(&mut buf)?;
         if buf.is_empty() {
             return Ok(Vec::new());
         }
@@ -63,10 +76,12 @@ impl Segment {
     }
 
     // Add method to read operation at specific offset
+    // TODO avoid read_to_end
     fn read_at_offset(&mut self, offset: usize) -> Result<WriteOperation> {
-        self.file.seek(SeekFrom::Start(offset as u64))?;
+        let mut file = File::open(&self.path)?; // Open a temporary read handle
+        file.seek(SeekFrom::Start(offset as u64))?;
         let mut buf = Vec::new();
-        self.file.read_to_end(&mut buf)?;
+        file.read_to_end(&mut buf)?;
         let operations = LogEntry::deserialize(Bytes::copy_from_slice(&buf))?;
         operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found"))
     }
@@ -75,6 +90,8 @@ impl Segment {
         let mut file = OpenOptions::new().read(true).write(true).append(true).open(path)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
+
+        let writer = BufWriter::new(file);
 
         let bytes = Bytes::copy_from_slice(&buf[..]);
         let operations = LogEntry::deserialize(bytes)?;
@@ -100,16 +117,16 @@ impl Segment {
             end_index,
             size: buf.len(),
             lookups: index_data,
-            file,
+            writer,
         })
     }
 
     // Add method to find byte offset for a log index
     fn find_offset(&self, log_index: u64) -> Option<usize> {
         self.lookups
-            .iter()
-            .find(|index| index.log_index == log_index)
-            .map(|index| index.byte_offset)
+            .binary_search_by_key(&log_index, |index| index.log_index)
+            .ok()
+            .map(|found_index| self.lookups[found_index].byte_offset)
     }
 }
 
@@ -131,8 +148,8 @@ impl FileOpLogs {
 
     /// Forces any buffered data to be written to disk.
     fn fsync(&mut self) -> Result<()> {
-        self.active_segment.file.flush()?;
-        self.active_segment.file.sync_all()?;
+        self.active_segment.writer.flush()?;
+        self.active_segment.writer.get_ref().sync_all()?;
         Ok(())
     }
 
@@ -236,7 +253,7 @@ impl TWriteAheadLog for FileOpLogs {
         let serialized = QueryIO::WriteOperation(op).serialize();
 
         // No need to seek, as file is append mode on
-        self.active_segment.file.write_all(&serialized)?;
+        self.active_segment.writer.write_all(&serialized)?;
         self.fsync()?; // Sync after write
 
         self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
@@ -285,7 +302,7 @@ impl TWriteAheadLog for FileOpLogs {
 
             // Write the entire chunk of operations to the file in one go
             if !current_chunk_bytes.is_empty() {
-                self.active_segment.file.write_all(&current_chunk_bytes)?;
+                self.active_segment.writer.write_all(&current_chunk_bytes)?;
 
                 // Update segment metadata
                 self.active_segment.size += current_chunk_bytes.len();
