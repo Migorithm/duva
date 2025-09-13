@@ -341,14 +341,6 @@ impl TWriteAheadLog for FileOpLogs {
         None
     }
 
-    fn log_start_index(&self) -> u64 {
-        if let Some(first_segment) = self.segments.first() {
-            first_segment.start_index
-        } else {
-            self.active_segment.start_index
-        }
-    }
-
     fn is_empty(&self) -> bool {
         self.segments.is_empty() && self.active_segment.size == 0
     }

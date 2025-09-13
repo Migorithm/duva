@@ -22,9 +22,6 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     /// Retrieves the log at a given index.
     fn read_at(&mut self, at: u64) -> Option<WriteOperation>;
 
-    /// If the log has been compacted (e.g., via snapshots), `log_start_index` will be greater than 1, meaning earlier entries have been processed.
-    fn log_start_index(&self) -> u64;
-
     /// Returns true if there are no logs. Otherwise, returns false.
     fn is_empty(&self) -> bool;
 

@@ -41,10 +41,6 @@ impl TWriteAheadLog for MemoryOpLogs {
         self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
     }
 
-    fn log_start_index(&self) -> u64 {
-        self.writer.first().map(|op| op.log_index).unwrap_or(0)
-    }
-
     fn is_empty(&self) -> bool {
         self.writer.is_empty()
     }
