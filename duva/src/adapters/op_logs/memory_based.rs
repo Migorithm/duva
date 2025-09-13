@@ -29,10 +29,6 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn fsync(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()

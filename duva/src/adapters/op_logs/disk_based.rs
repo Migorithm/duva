@@ -139,6 +139,13 @@ impl FileOpLogs {
         Ok(Self { path, active_segment, segments })
     }
 
+    /// Forces any buffered data to be written to disk.
+    fn fsync(&mut self) -> Result<()> {
+        self.active_segment.file.flush()?;
+        self.active_segment.file.sync_all()?;
+        Ok(())
+    }
+
     fn validate_folder(path: &Path) -> Result<(), anyhow::Error> {
         match std::fs::metadata(path) {
             | Ok(metadata) => {
@@ -318,13 +325,6 @@ impl TWriteAheadLog for FileOpLogs {
             }
         }
 
-        Ok(())
-    }
-
-    /// Forces any buffered data to be written to disk.
-    fn fsync(&mut self) -> Result<()> {
-        self.active_segment.file.flush()?;
-        self.active_segment.file.sync_all()?;
         Ok(())
     }
 

@@ -19,9 +19,6 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     where
         F: FnMut(WriteOperation) + Send;
 
-    /// Forces pending writes to be physically recorded on disk.
-    fn fsync(&mut self) -> Result<()>;
-
     /// Retrieves the log at a given index.
     fn read_at(&mut self, at: u64) -> Option<WriteOperation>;
 
