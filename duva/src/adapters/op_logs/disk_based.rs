@@ -251,10 +251,71 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
-        for op in ops {
-            self.append(op)?;
+    fn append_many(&mut self, mut ops: Vec<WriteOperation>) -> Result<()> {
+        if ops.is_empty() {
+            return Ok(());
         }
+
+        // Use a mutable slice to process the ops in chunks
+        let mut ops_slice = &mut ops[..];
+
+        while !ops_slice.is_empty() {
+            let space_available = SEGMENT_SIZE.saturating_sub(self.active_segment.size);
+            let mut current_chunk_bytes = Vec::new();
+            let mut new_lookups = Vec::new();
+            let mut ops_in_chunk = 0;
+            let mut last_log_index = self.active_segment.end_index;
+
+            // Determine how many operations from the remaining slice fit into the active segment
+            for op in ops_slice.iter() {
+                let serialized = QueryIO::WriteOperation(op.clone()).serialize(); // Clone is needed here
+                if current_chunk_bytes.len() + serialized.len() > space_available {
+                    break;
+                }
+
+                new_lookups.push(LookupIndex::new(
+                    op.log_index,
+                    self.active_segment.size + current_chunk_bytes.len(),
+                ));
+                current_chunk_bytes.extend_from_slice(&serialized);
+                last_log_index = op.log_index;
+                ops_in_chunk += 1;
+            }
+
+            // If we can't even fit the first operation, rotate the segment and retry
+            if ops_in_chunk == 0 && !ops_slice.is_empty() {
+                self.rotate_segment()?;
+                // `continue` will re-evaluate the loop with the new empty active_segment
+                continue;
+            }
+
+            // Write the entire chunk of operations to the file in one go
+            if !current_chunk_bytes.is_empty() {
+                // Seeking is not strictly necessary in append mode, but good for correctness
+                self.active_segment.file.seek(std::io::SeekFrom::End(0))?;
+                self.active_segment.file.write_all(&current_chunk_bytes)?;
+
+                // Update segment metadata
+                self.active_segment.size += current_chunk_bytes.len();
+                self.active_segment.lookups.append(&mut new_lookups);
+                self.active_segment.end_index = last_log_index;
+
+                // Sync to disk ONCE for the entire chunk
+                self.fsync()?;
+            }
+
+            // If we processed all operations, we're done
+            if ops_in_chunk == ops_slice.len() {
+                break;
+            }
+
+            // Move the slice forward and rotate the segment for the next chunk
+            ops_slice = &mut ops_slice[ops_in_chunk..];
+            if !ops_slice.is_empty() {
+                self.rotate_segment()?;
+            }
+        }
+
         Ok(())
     }
 
