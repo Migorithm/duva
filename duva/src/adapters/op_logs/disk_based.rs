@@ -2,13 +2,16 @@ use crate::domains::QueryIO;
 use crate::domains::operation_logs::LogEntry;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::query_io::{REPLICATE_PREFIX, SERDE_CONFIG};
+use crate::domains::query_io::{SERDE_CONFIG, WRITE_OP_PREFIX};
 use anyhow::Result;
+
 use bytes::Bytes;
+
 use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::BufWriter;
-use std::io::{BufReader, Seek, SeekFrom, Write};
+use std::io::Write;
+use std::io::{BufReader, Seek, SeekFrom};
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
@@ -76,52 +79,66 @@ impl Segment {
     }
 
     // Add method to read operation at specific offset
-    // TODO avoid read_to_end
     fn read_at_offset(&mut self, offset: usize) -> Result<WriteOperation> {
-        let mut file = File::open(&self.path)?; // Open a temporary read handle
-        file.seek(SeekFrom::Start(offset as u64))?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-        let operations = LogEntry::deserialize(Bytes::copy_from_slice(&buf))?;
-        operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found"))
+        // Open a temporary, read-only file handle.
+        let file = File::open(&self.path)?;
+        let mut reader = BufReader::new(file);
+
+        // Seek to the exact starting byte of the operation.
+        reader.seek(SeekFrom::Start(offset as u64))?;
+
+        // Decode only ONE operation from the stream.
+        // This is vastly more efficient than read_to_end.
+        let mut prefix_buf = [0u8; 1];
+        reader.read_exact(&mut prefix_buf)?;
+
+        // 2. Check if it's the `REPLICATE_PREFIX`.
+        if prefix_buf[0] as char != WRITE_OP_PREFIX {
+            return Err(anyhow::anyhow!(
+                "Expected WRITE_OP_PREFIX '{}', but found '{}'",
+                WRITE_OP_PREFIX,
+                prefix_buf[0] as char
+            ));
+        }
+        //Decode the `WriteOperation` directly from the stream.
+        let operation: WriteOperation = bincode::decode_from_std_read(&mut reader, SERDE_CONFIG)?;
+        Ok(operation)
     }
 
     fn from_path(path: &PathBuf) -> Result<Self> {
-        let mut file = OpenOptions::new().read(true).write(true).append(true).open(path)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-
+        // Open the file for writing and get its size.
+        let file = OpenOptions::new().read(true).append(true).open(path)?;
+        let file_size = file.metadata()?.len() as usize;
         let writer = BufWriter::new(file);
 
-        let bytes = Bytes::copy_from_slice(&buf[..]);
-        let operations = LogEntry::deserialize(bytes)?;
+        // Open a separate read-only handle to read the contents.
+        let mut reader = File::open(path)?;
+        let mut buf = Vec::with_capacity(file_size);
+        reader.read_to_end(&mut buf)?;
 
-        let mut index_data = Vec::with_capacity(operations.len());
+        // Use your custom deserializer that understands the on-disk format.
+        let operations = if buf.is_empty() {
+            Vec::new()
+        } else {
+            LogEntry::deserialize(Bytes::copy_from_slice(&buf))?
+        };
 
         let (start_index, end_index) = match (operations.first(), operations.last()) {
             | (Some(first), Some(last)) => (first.log_index, last.log_index),
             | _ => (0, 0),
         };
-
         let mut current_offset = 0;
+        let mut lookups = Vec::with_capacity(operations.len());
         for op in operations.into_iter() {
-            index_data.push(LookupIndex::new(op.log_index, current_offset));
+            lookups.push(LookupIndex::new(op.log_index, current_offset));
             let encoded_size =
                 bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
-            current_offset += REPLICATE_PREFIX.len_utf8() + encoded_size
+            current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size
         }
 
-        Ok(Segment {
-            path: path.clone(),
-            start_index,
-            end_index,
-            size: buf.len(),
-            lookups: index_data,
-            writer,
-        })
+        Ok(Segment { path: path.clone(), start_index, end_index, size: file_size, lookups, writer })
     }
 
-    // Add method to find byte offset for a log index
     fn find_offset(&self, log_index: u64) -> Option<usize> {
         self.lookups
             .binary_search_by_key(&log_index, |index| index.log_index)
