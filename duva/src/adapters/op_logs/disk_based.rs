@@ -47,7 +47,8 @@ impl LookupIndex {
 
 impl Segment {
     fn new(path: PathBuf) -> Result<Self> {
-        let file = OpenOptions::new().create(true).read(true).write(true).open(&path)?;
+        let file =
+            OpenOptions::new().create(true).read(true).write(true).append(true).open(&path)?;
         Ok(Self { path, file, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() })
     }
 
@@ -71,7 +72,7 @@ impl Segment {
     }
 
     fn from_path(path: &PathBuf) -> Result<Self> {
-        let mut file = OpenOptions::new().read(true).write(true).open(path)?;
+        let mut file = OpenOptions::new().read(true).write(true).append(true).open(path)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
 
@@ -113,14 +114,6 @@ impl Segment {
 }
 
 impl FileOpLogs {
-    /// Creates a new `FileOpLogs` by opening the specified `path`.
-    ///
-    /// If the path is a directory, it will use segmented logs.
-    /// If the path is a file, it will use a single file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file/directory cannot be created or opened.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         Self::validate_folder(&path)?;
@@ -241,7 +234,8 @@ impl TWriteAheadLog for FileOpLogs {
         }
         let log_index = op.log_index;
         let serialized = QueryIO::WriteOperation(op).serialize();
-        self.active_segment.file.seek(SeekFrom::Start(self.active_segment.size as u64))?;
+
+        // No need to seek, as file is append mode on
         self.active_segment.file.write_all(&serialized)?;
         self.fsync()?; // Sync after write
 
@@ -291,8 +285,6 @@ impl TWriteAheadLog for FileOpLogs {
 
             // Write the entire chunk of operations to the file in one go
             if !current_chunk_bytes.is_empty() {
-                // Seeking is not strictly necessary in append mode, but good for correctness
-                self.active_segment.file.seek(std::io::SeekFrom::End(0))?;
                 self.active_segment.file.write_all(&current_chunk_bytes)?;
 
                 // Update segment metadata
