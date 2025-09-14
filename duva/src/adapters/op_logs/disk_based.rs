@@ -391,16 +391,14 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Replays all existing operations in the op_logs, invoking a callback for each.
-    fn replay<F>(&mut self, mut f: F) -> Result<()>
+    fn replay<F>(&mut self, mut replay_handler: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
     {
         // Replay all segments in order
         for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
-            let operations = segment.read_operations()?;
-            for op in operations {
-                f(op);
-            }
+            let operations: Vec<WriteOperation> = segment.read_operations()?;
+            operations.into_iter().for_each(&mut replay_handler);
         }
 
         Ok(())
