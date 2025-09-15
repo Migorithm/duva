@@ -325,14 +325,6 @@ impl TWriteAheadLog for FileOpLogs {
                 self.active_segment.size += current_chunk_bytes.len();
                 self.active_segment.lookups.append(&mut new_lookups);
                 self.active_segment.end_index = last_log_index;
-
-                // Sync to disk ONCE for the entire chunk
-                self.fsync()?;
-            }
-
-            // If we processed all operations, we're done
-            if ops_in_chunk == ops_slice.len() {
-                break;
             }
 
             // Move the slice forward and rotate the segment for the next chunk
@@ -341,6 +333,8 @@ impl TWriteAheadLog for FileOpLogs {
                 self.rotate_segment()?;
             }
         }
+
+        self.fsync()?;
 
         Ok(())
     }
@@ -373,7 +367,6 @@ impl TWriteAheadLog for FileOpLogs {
                         result.extend(ops);
                     }
                 }
-                // else: Handle error opening file
             } else if first_included_index <= segment.start_index {
                 if segment.start_index <= end_inclusive
                     && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
