@@ -3,9 +3,6 @@ use anyhow::Result;
 
 /// Trait for a write-ahead log (WAL) abstraction.
 pub trait TWriteAheadLog: Send + Sync + 'static {
-    /// Appends a single `WriteOperation` to the log.
-    fn append(&mut self, op: WriteOperation) -> Result<()>;
-
     /// Append one or more `WriteOperation`s to the log.
     fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()>;
 

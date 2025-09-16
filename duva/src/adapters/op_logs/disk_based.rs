@@ -259,24 +259,6 @@ impl FileOpLogs {
 }
 
 impl TWriteAheadLog for FileOpLogs {
-    /// Appends a single `WriteOperation` to the file.
-    fn append(&mut self, op: WriteOperation) -> Result<()> {
-        if self.active_segment.size >= SEGMENT_SIZE {
-            self.rotate_segment()?;
-        }
-        let log_index = op.log_index;
-        let serialized = QueryIO::WriteOperation(op).serialize();
-
-        // No need to seek, as file is append mode on
-        self.active_segment.writer.write_all(&serialized)?;
-        self.fsync()?; // Sync after write
-
-        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
-        self.active_segment.size += serialized.len();
-        self.active_segment.end_index = log_index;
-        Ok(())
-    }
-
     fn append_many(&mut self, mut ops: Vec<WriteOperation>) -> Result<()> {
         if ops.is_empty() {
             return Ok(());
@@ -473,7 +455,7 @@ mod tests {
             WriteOperation { entry: request.clone(), log_index: 0, term: 0, session_req: None };
 
         // WHEN
-        op_logs.append(write_op).unwrap();
+        op_logs.append_many(vec![write_op]).unwrap();
         drop(op_logs);
 
         // THEN
@@ -495,9 +477,9 @@ mod tests {
 
         // WHEN
         let mut op_logs = FileOpLogs::new(&path)?;
-        op_logs.append(set_helper(0, 0))?;
-        op_logs.append(set_helper(1, 0))?;
-        op_logs.append(set_helper(2, 1))?;
+        op_logs.append_many(vec![set_helper(0, 0)])?;
+        op_logs.append_many(vec![set_helper(1, 0)])?;
+        op_logs.append_many(vec![set_helper(2, 1)])?;
 
         let mut op_logs = FileOpLogs::new(&path)?;
         let mut ops = Vec::new();
@@ -526,9 +508,9 @@ mod tests {
         // Append three ops.
         {
             let mut op_logs = FileOpLogs::new(&path)?;
-            op_logs.append(set_helper(0, 0))?;
-            op_logs.append(set_helper(1, 0))?;
-            op_logs.append(set_helper(2, 1))?;
+            op_logs.append_many(vec![set_helper(0, 0)])?;
+            op_logs.append_many(vec![set_helper(1, 0)])?;
+            op_logs.append_many(vec![set_helper(2, 1)])?;
         }
 
         // Corrupt file content by truncating to the first half.
@@ -592,8 +574,8 @@ mod tests {
         // Create initial segment with some operations
         {
             let mut op_logs = FileOpLogs::new(path)?;
-            op_logs.append(set_helper(10, 1))?;
-            op_logs.append(set_helper(11, 1))?;
+            op_logs.append_many(vec![set_helper(10, 1)])?;
+            op_logs.append_many(vec![set_helper(11, 1)])?;
         }
 
         // WHEN
@@ -631,7 +613,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(path)?;
         // Fill first segment
         for i in 0..100 {
-            op_logs.append(WriteOperation {
+            op_logs.append_many(vec![WriteOperation {
                 entry: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
@@ -640,17 +622,17 @@ mod tests {
                 log_index: i as u64,
                 term: 1,
                 session_req: None,
-            })?;
+            }])?;
         }
         // Force rotation
         op_logs.rotate_segment()?;
         // Add to new segment
-        op_logs.append(WriteOperation {
+        op_logs.append_many(vec![WriteOperation {
             entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
-        })?;
+        }])?;
 
         // WHEN
         let mut op_logs = FileOpLogs::new(path)?;
@@ -683,7 +665,7 @@ mod tests {
 
         // Create a segment and corrupt it
         let mut op_logs = FileOpLogs::new(path)?;
-        op_logs.append(set_helper(0, 1))?;
+        op_logs.append_many(vec![set_helper(0, 1)])?;
 
         // Corrupt the segment file
         let segment_path = path.join("segment_0.oplog");
@@ -924,9 +906,7 @@ mod tests {
         let ops = vec![set_helper(1, 1), set_helper(2, 1)];
 
         // Append operations
-        for op in ops.clone() {
-            op_logs.append(op)?;
-        }
+        op_logs.append_many(ops)?;
 
         // Verify index data is correctly maintained
         assert_eq!(op_logs.active_segment.lookups.len(), 2);
@@ -953,18 +933,21 @@ mod tests {
         let mut op_logs = FileOpLogs::new(path)?;
 
         // Fill first segment
-        for i in 0..100 {
-            op_logs.append(WriteOperation {
-                entry: LogEntry::Set {
-                    key: format!("key_{i}"),
-                    value: format!("value_{i}"),
-                    expires_at: None,
-                },
-                log_index: i as u64,
-                term: 1,
-                session_req: None,
-            })?;
-        }
+
+        op_logs.append_many(
+            (0..100)
+                .map(|i| WriteOperation {
+                    entry: LogEntry::Set {
+                        key: format!("key_{i}"),
+                        value: format!("value_{i}"),
+                        expires_at: None,
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                    session_req: None,
+                })
+                .collect(),
+        )?;
 
         // Force rotation
         op_logs.rotate_segment()?;
@@ -976,12 +959,12 @@ mod tests {
         assert!(sealed_segment.lookups[99].log_index == 99);
 
         // Add to new segment
-        op_logs.append(WriteOperation {
+        op_logs.append_many(vec![WriteOperation {
             entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
-        })?;
+        }])?;
 
         // Verify index data in active segment
         assert_eq!(op_logs.active_segment.lookups.len(), 1);
@@ -996,10 +979,11 @@ mod tests {
         let path = dir.path();
 
         // Create initial log with some operations
-        {
-            let mut op_logs = FileOpLogs::new(path)?;
-            for i in 0..50 {
-                op_logs.append(WriteOperation {
+
+        let mut op_logs = FileOpLogs::new(path)?;
+        op_logs.append_many(
+            (0..50)
+                .map(|i| WriteOperation {
                     entry: LogEntry::Set {
                         key: format!("key_{i}"),
                         value: format!("value_{i}"),
@@ -1008,9 +992,9 @@ mod tests {
                     log_index: i as u64,
                     term: 1,
                     session_req: None,
-                })?;
-            }
-        }
+                })
+                .collect(),
+        )?;
 
         // Reopen the log
         let mut op_logs = FileOpLogs::new(path)?;

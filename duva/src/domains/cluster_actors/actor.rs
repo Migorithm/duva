@@ -913,7 +913,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
-        let log_idx = self.replication.logger.follower_write_entries(entries).map_err(|e| {
+        let log_idx = self.replication.logger.write_many(entries).map_err(|e| {
             err!("{}", e);
             RejectionReason::FailToWrite
         })?;

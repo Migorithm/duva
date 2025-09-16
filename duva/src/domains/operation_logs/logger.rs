@@ -3,7 +3,6 @@ use std::sync::{Arc, atomic::AtomicU64};
 use crate::domains::cluster_actors::SessionRequest;
 
 use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
-use tracing::debug;
 
 #[derive(Debug)]
 pub(crate) struct ReplicatedLogs<T> {
@@ -12,6 +11,7 @@ pub(crate) struct ReplicatedLogs<T> {
     pub(crate) last_log_term: u64,
     pub(crate) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
 }
+
 impl<T> ReplicatedLogs<T> {
     pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
         Self { target, last_log_index, last_log_term, con_idx: Arc::new(last_log_index.into()) }
@@ -46,8 +46,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             session_req,
         };
 
-        self.target.append(op)?;
-        self.last_log_index += 1;
+        self.write_many(vec![op])?;
 
         // ! Last log term must be updated because
         // ! log consistency check is based on previous log term and index
@@ -56,16 +55,10 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     // FOLLOWER side operation
-    pub(crate) fn follower_write_entries(
-        &mut self,
-        entries: Vec<WriteOperation>,
-    ) -> anyhow::Result<u64> {
+    pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
         // Filter and append entries in a single operation
         self.update_metadata(&entries);
-
         self.target.append_many(entries)?;
-
-        debug!("Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
     }
 

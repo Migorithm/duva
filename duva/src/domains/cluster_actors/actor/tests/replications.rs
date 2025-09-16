@@ -10,7 +10,7 @@ fn logger_create_entries_from_lowest() {
         Helper::write(2, 0, "foo2", "bar"),
         Helper::write(3, 0, "foo3", "bar"),
     ];
-    logger.follower_write_entries(test_logs.clone()).unwrap();
+    logger.write_many(test_logs.clone()).unwrap();
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
@@ -58,7 +58,7 @@ async fn test_generate_follower_entries() {
     ];
 
     cluster_actor.replication.logger.con_idx.store(3, Ordering::Release);
-    cluster_actor.replication.logger.follower_write_entries(test_logs).unwrap();
+    cluster_actor.replication.logger.write_many(test_logs).unwrap();
 
     //WHEN
     // *add lagged followers with its commit index being 1
