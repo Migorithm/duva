@@ -11,12 +11,6 @@ pub(crate) struct Cli {
     host: String,
     #[arg(long, default_value = "info")]
     log_level: String,
-    #[arg(
-        long,
-        default_value = "true",
-        help = "Enable OpenTelemetry/Grafana integration (file logging always enabled)"
-    )]
-    enable_grafana: bool,
 }
 
 impl Cli {
@@ -26,9 +20,5 @@ impl Cli {
 
     pub(crate) fn log_level(&self) -> &str {
         &self.log_level
-    }
-
-    pub(crate) fn enable_grafana(&self) -> bool {
-        self.enable_grafana
     }
 }

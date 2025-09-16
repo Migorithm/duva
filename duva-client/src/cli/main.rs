@@ -23,15 +23,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize observability - file logging by default, Grafana optional
     let observability_config = ObservabilityConfig::new().with_log_level(cli.log_level());
-
-    let logger_provider =
-        match init_observability_with_config(observability_config, cli.enable_grafana()) {
-            | Ok(provider) => Some(provider),
-            | Err(e) => {
-                eprintln!("Failed to initialize observability: {}", e);
-                std::process::exit(1);
-            },
-        };
+    let logger_provider = init_observability_with_config(observability_config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize observability: {}", e))?;
 
     clear_and_make_ascii_art();
 
@@ -79,13 +72,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Ensure logs are flushed before exit
-    if let Some(provider) = logger_provider {
-        if let Err(e) = provider.shutdown() {
-            eprintln!("Failed to shutdown logger provider: {}", e);
-        }
-    }
-
+    logger_provider.shutdown().unwrap();
     Ok(())
 }
 

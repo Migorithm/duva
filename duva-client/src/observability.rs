@@ -52,7 +52,6 @@ fn init_logs() -> SdkLoggerProvider {
 }
 
 fn create_user_filter(log_level: &str) -> Result<EnvFilter, Box<dyn std::error::Error>> {
-    // Only show user-relevant logs (info, warn, error) and filter out noisy dependencies
     Ok(EnvFilter::new(log_level)
         .add_directive("hyper=off".parse()?)
         .add_directive("tonic=off".parse()?)
@@ -71,47 +70,17 @@ fn create_user_filter(log_level: &str) -> Result<EnvFilter, Box<dyn std::error::
 
 pub fn init_observability_with_config(
     config: ObservabilityConfig,
-    enable_grafana: bool,
 ) -> Result<SdkLoggerProvider, Box<dyn std::error::Error>> {
-    let logger_provider = if enable_grafana { Some(init_logs()) } else { None };
+    let logger_provider = init_logs();
+    // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
+    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
-    if enable_grafana {
-        // OTLP-only logging (no file, no console)
-        let logger_provider_ref = logger_provider.as_ref().unwrap();
-        let otel_layer = OpenTelemetryTracingBridge::new(logger_provider_ref);
+    let filter_otel = create_user_filter(&config.log_level)?;
 
-        let filter_otel = create_user_filter(&config.log_level)?;
+    // Add disabled fmt layer for proper tracing subscriber initialization
+    let fmt_layer = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("off"));
 
-        // Add disabled fmt layer for proper tracing subscriber initialization
-        let fmt_layer = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("off"));
+    tracing_subscriber::registry().with(otel_layer.with_filter(filter_otel)).with(fmt_layer).init();
 
-        tracing_subscriber::registry()
-            .with(otel_layer.with_filter(filter_otel))
-            .with(fmt_layer)
-            .init();
-    } else {
-        // Fallback to console logging
-        let filter = create_user_filter(&config.log_level)?;
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer().with_filter(filter))
-            .init();
-    }
-
-    tracing::info!(
-        instance_id = %Uuid::now_v7().to_string(),
-        log_level = %config.log_level,
-        otlp_enabled = enable_grafana,
-        "Duva client observability initialized"
-    );
-
-    Ok(logger_provider.unwrap_or_else(|| {
-        SdkLoggerProvider::builder()
-            .with_resource(Resource::builder_empty().with_service_name("duva-client").build())
-            .build()
-    }))
-}
-
-// Default: console logging
-pub fn init_observability() -> Result<(), Box<dyn std::error::Error>> {
-    init_observability_with_config(ObservabilityConfig::default(), false).map(|_| ())
+    Ok(logger_provider)
 }
