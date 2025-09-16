@@ -246,7 +246,7 @@ impl StartUpFacade {
 fn init_logs() -> SdkLoggerProvider {
     static RESOURCE: LazyLock<Resource> = LazyLock::new(|| {
         Resource::builder_empty()
-            .with_service_name("my-test")
+            .with_service_name("duva")
             .with_attribute(KeyValue::new("instance_id", uuid::Uuid::now_v7().to_string()))
             .build()
     });
@@ -255,6 +255,7 @@ fn init_logs() -> SdkLoggerProvider {
     let exporter = LogExporter::builder()
         .with_http()
         .with_timeout(Duration::from_secs(2))
+        .with_endpoint("http://localhost:4318/v1/logs")
         .build()
         .expect("Failed to create log exporter");
 
