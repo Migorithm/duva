@@ -9,10 +9,22 @@ pub(crate) struct Cli {
     port: u16,
     #[arg(short, long, default_value = "127.0.0.1")]
     host: String,
+    #[arg(long, default_value = "info")]
+    log_level: String,
+    #[arg(long, default_value = "true", help = "Enable OpenTelemetry/Grafana integration (file logging always enabled)")]
+    enable_grafana: bool,
 }
 
 impl Cli {
     pub(crate) fn address(&self) -> PeerIdentifier {
         PeerIdentifier::new(self.host.as_str(), self.port)
+    }
+
+    pub(crate) fn log_level(&self) -> &str {
+        &self.log_level
+    }
+
+    pub(crate) fn enable_grafana(&self) -> bool {
+        self.enable_grafana
     }
 }
