@@ -130,8 +130,7 @@ impl Segment {
         let mut lookups = Vec::with_capacity(operations.len());
         for op in operations.into_iter() {
             lookups.push(LookupIndex::new(op.log_index, current_offset));
-            let encoded_size =
-                bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
+            let encoded_size = bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len())?;
             current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size
         }
 
