@@ -1,7 +1,7 @@
-use crate::domains::QueryIO;
 use crate::domains::operation_logs::LogEntry;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
+use crate::domains::query_io::serialized_len_with_bincode;
 use crate::domains::query_io::{SERDE_CONFIG, WRITE_OP_PREFIX};
 use anyhow::Result;
 
@@ -91,7 +91,6 @@ impl Segment {
         let mut prefix_buf = [0u8; 1];
         reader.read_exact(&mut prefix_buf)?;
 
-        // 2. Check if it's the `REPLICATE_PREFIX`.
         if prefix_buf[0] as char != WRITE_OP_PREFIX {
             return Err(anyhow::anyhow!(
                 "Expected WRITE_OP_PREFIX '{}', but found '{}'",
@@ -259,83 +258,60 @@ impl FileOpLogs {
 }
 
 impl TWriteAheadLog for FileOpLogs {
-    /// Appends a single `WriteOperation` to the file.
-    fn append(&mut self, op: WriteOperation) -> Result<()> {
-        if self.active_segment.size >= SEGMENT_SIZE {
-            self.rotate_segment()?;
-        }
-        let log_index = op.log_index;
-        let serialized = QueryIO::WriteOperation(op).serialize();
-
-        // No need to seek, as file is append mode on
-        self.active_segment.writer.write_all(&serialized)?;
-        self.fsync()?; // Sync after write
-
-        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
-        self.active_segment.size += serialized.len();
-        self.active_segment.end_index = log_index;
-        Ok(())
-    }
-
-    fn append_many(&mut self, mut ops: Vec<WriteOperation>) -> Result<()> {
+    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         if ops.is_empty() {
             return Ok(());
         }
 
-        // Use a mutable slice to process the ops in chunks
-        let mut ops_slice = &mut ops[..];
+        let mut remaining_ops = &ops[..];
+        while !remaining_ops.is_empty() {
+            let available_space = SEGMENT_SIZE.saturating_sub(self.active_segment.size);
+            let mut chunk_size = 0;
+            let mut count = 0;
 
-        while !ops_slice.is_empty() {
-            let space_available = SEGMENT_SIZE.saturating_sub(self.active_segment.size);
-            let mut current_chunk_bytes = Vec::new();
-            let mut new_lookups = Vec::new();
-            let mut ops_in_chunk = 0;
-            let mut last_log_index = self.active_segment.end_index;
-
-            // Determine how many operations from the remaining slice fit into the active segment
-            for op in ops_slice.iter() {
-                let serialized = QueryIO::WriteOperation(op.clone()).serialize(); // Clone is needed here
-                if current_chunk_bytes.len() + serialized.len() > space_available {
+            // Find how many operations fit in current segment
+            for op in remaining_ops {
+                let op_size = serialized_len_with_bincode(WRITE_OP_PREFIX, op);
+                if chunk_size + op_size > available_space {
                     break;
                 }
-
-                new_lookups.push(LookupIndex::new(
-                    op.log_index,
-                    self.active_segment.size + current_chunk_bytes.len(),
-                ));
-                current_chunk_bytes.extend_from_slice(&serialized);
-                last_log_index = op.log_index;
-                ops_in_chunk += 1;
+                chunk_size += op_size;
+                count += 1;
             }
-
-            // If we can't even fit the first operation, rotate the segment and retry
-            if ops_in_chunk == 0 && !ops_slice.is_empty() {
+            // If nothing fits, rotate and retry
+            if count == 0 {
                 self.rotate_segment()?;
-                // `continue` will re-evaluate the loop with the new empty active_segment
                 continue;
             }
 
-            // Write the entire chunk of operations to the file in one go
-            if !current_chunk_bytes.is_empty() {
-                self.active_segment.writer.write_all(&current_chunk_bytes)?;
+            // Process batch directly
+            let mut buffer = Vec::new();
+            let mut lookups = Vec::with_capacity(count);
 
-                // Update segment metadata
-                self.active_segment.size += current_chunk_bytes.len();
-                self.active_segment.lookups.append(&mut new_lookups);
-                self.active_segment.end_index = last_log_index;
+            let chunk_to_process = &ops[..count];
+            for op in chunk_to_process {
+                lookups
+                    .push(LookupIndex::new(op.log_index, self.active_segment.size + buffer.len()));
+
+                buffer.push(WRITE_OP_PREFIX as u8);
+                let serialized = bincode::encode_to_vec(op, SERDE_CONFIG)?;
+                buffer.extend_from_slice(&serialized);
             }
+            self.active_segment.writer.write_all(&buffer)?;
+            self.active_segment.size += buffer.len();
+            self.active_segment.lookups.append(&mut lookups);
+            self.active_segment.end_index = chunk_to_process.last().unwrap().log_index;
 
-            // Move the slice forward and rotate the segment for the next chunk
-            ops_slice = &mut ops_slice[ops_in_chunk..];
-            if !ops_slice.is_empty() {
-                // internally, there is rotate logic where it syncs. - No data loss!
+            // just advance the slice. This is an O(1) operation!
+            remaining_ops = &remaining_ops[count..];
+
+            // Rotate if more ops remain
+            if !remaining_ops.is_empty() {
                 self.rotate_segment()?;
             }
         }
 
-        // Single sync at the end
         self.fsync()?;
-
         Ok(())
     }
 
@@ -473,7 +449,7 @@ mod tests {
             WriteOperation { entry: request.clone(), log_index: 0, term: 0, session_req: None };
 
         // WHEN
-        op_logs.append(write_op).unwrap();
+        op_logs.append_many(vec![write_op]).unwrap();
         drop(op_logs);
 
         // THEN
@@ -495,9 +471,9 @@ mod tests {
 
         // WHEN
         let mut op_logs = FileOpLogs::new(&path)?;
-        op_logs.append(set_helper(0, 0))?;
-        op_logs.append(set_helper(1, 0))?;
-        op_logs.append(set_helper(2, 1))?;
+        op_logs.append_many(vec![set_helper(0, 0)])?;
+        op_logs.append_many(vec![set_helper(1, 0)])?;
+        op_logs.append_many(vec![set_helper(2, 1)])?;
 
         let mut op_logs = FileOpLogs::new(&path)?;
         let mut ops = Vec::new();
@@ -526,9 +502,9 @@ mod tests {
         // Append three ops.
         {
             let mut op_logs = FileOpLogs::new(&path)?;
-            op_logs.append(set_helper(0, 0))?;
-            op_logs.append(set_helper(1, 0))?;
-            op_logs.append(set_helper(2, 1))?;
+            op_logs.append_many(vec![set_helper(0, 0)])?;
+            op_logs.append_many(vec![set_helper(1, 0)])?;
+            op_logs.append_many(vec![set_helper(2, 1)])?;
         }
 
         // Corrupt file content by truncating to the first half.
@@ -592,8 +568,8 @@ mod tests {
         // Create initial segment with some operations
         {
             let mut op_logs = FileOpLogs::new(path)?;
-            op_logs.append(set_helper(10, 1))?;
-            op_logs.append(set_helper(11, 1))?;
+            op_logs.append_many(vec![set_helper(10, 1)])?;
+            op_logs.append_many(vec![set_helper(11, 1)])?;
         }
 
         // WHEN
@@ -631,7 +607,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(path)?;
         // Fill first segment
         for i in 0..100 {
-            op_logs.append(WriteOperation {
+            op_logs.append_many(vec![WriteOperation {
                 entry: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
@@ -640,17 +616,17 @@ mod tests {
                 log_index: i as u64,
                 term: 1,
                 session_req: None,
-            })?;
+            }])?;
         }
         // Force rotation
         op_logs.rotate_segment()?;
         // Add to new segment
-        op_logs.append(WriteOperation {
+        op_logs.append_many(vec![WriteOperation {
             entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
-        })?;
+        }])?;
 
         // WHEN
         let mut op_logs = FileOpLogs::new(path)?;
@@ -683,7 +659,7 @@ mod tests {
 
         // Create a segment and corrupt it
         let mut op_logs = FileOpLogs::new(path)?;
-        op_logs.append(set_helper(0, 1))?;
+        op_logs.append_many(vec![set_helper(0, 1)])?;
 
         // Corrupt the segment file
         let segment_path = path.join("segment_0.oplog");
@@ -924,9 +900,7 @@ mod tests {
         let ops = vec![set_helper(1, 1), set_helper(2, 1)];
 
         // Append operations
-        for op in ops.clone() {
-            op_logs.append(op)?;
-        }
+        op_logs.append_many(ops)?;
 
         // Verify index data is correctly maintained
         assert_eq!(op_logs.active_segment.lookups.len(), 2);
@@ -953,18 +927,21 @@ mod tests {
         let mut op_logs = FileOpLogs::new(path)?;
 
         // Fill first segment
-        for i in 0..100 {
-            op_logs.append(WriteOperation {
-                entry: LogEntry::Set {
-                    key: format!("key_{i}"),
-                    value: format!("value_{i}"),
-                    expires_at: None,
-                },
-                log_index: i as u64,
-                term: 1,
-                session_req: None,
-            })?;
-        }
+
+        op_logs.append_many(
+            (0..100)
+                .map(|i| WriteOperation {
+                    entry: LogEntry::Set {
+                        key: format!("key_{i}"),
+                        value: format!("value_{i}"),
+                        expires_at: None,
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                    session_req: None,
+                })
+                .collect(),
+        )?;
 
         // Force rotation
         op_logs.rotate_segment()?;
@@ -976,12 +953,12 @@ mod tests {
         assert!(sealed_segment.lookups[99].log_index == 99);
 
         // Add to new segment
-        op_logs.append(WriteOperation {
+        op_logs.append_many(vec![WriteOperation {
             entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
-        })?;
+        }])?;
 
         // Verify index data in active segment
         assert_eq!(op_logs.active_segment.lookups.len(), 1);
@@ -996,10 +973,11 @@ mod tests {
         let path = dir.path();
 
         // Create initial log with some operations
-        {
-            let mut op_logs = FileOpLogs::new(path)?;
-            for i in 0..50 {
-                op_logs.append(WriteOperation {
+
+        let mut op_logs = FileOpLogs::new(path)?;
+        op_logs.append_many(
+            (0..50)
+                .map(|i| WriteOperation {
                     entry: LogEntry::Set {
                         key: format!("key_{i}"),
                         value: format!("value_{i}"),
@@ -1008,9 +986,9 @@ mod tests {
                     log_index: i as u64,
                     term: 1,
                     session_req: None,
-                })?;
-            }
-        }
+                })
+                .collect(),
+        )?;
 
         // Reopen the log
         let mut op_logs = FileOpLogs::new(path)?;

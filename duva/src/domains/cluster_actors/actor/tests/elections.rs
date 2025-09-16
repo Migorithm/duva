@@ -102,7 +102,7 @@ async fn test_vote_election_deny_vote_older_log() {
     follower_actor
         .replication
         .logger
-        .follower_write_entries(vec![WriteOperation {
+        .write_many(vec![WriteOperation {
             log_index: initial_term + 2,
             term: initial_term,
             entry: LogEntry::Set { key: "k".into(), value: "v".into(), expires_at: None },

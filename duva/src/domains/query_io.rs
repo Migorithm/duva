@@ -7,6 +7,8 @@ use crate::domains::peers::command::{
 };
 use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result, anyhow};
+
+use bincode::enc::write::SizeWriter;
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
 
@@ -203,6 +205,13 @@ impl QueryIO {
             | _ => Err(anyhow!("Only Arrays can be merged")),
         }
     }
+}
+
+pub(crate) fn serialized_len_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> usize {
+    let prefix_len = prefix.len_utf8();
+    let mut size_writer = SizeWriter::default();
+    bincode::encode_into_writer(arg, &mut size_writer, SERDE_CONFIG).unwrap();
+    prefix_len + size_writer.bytes_written
 }
 
 impl From<String> for QueryIO {
@@ -409,6 +418,7 @@ fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
 
     buffer.freeze()
 }
+
 impl From<WriteOperation> for QueryIO {
     fn from(value: WriteOperation) -> Self {
         QueryIO::WriteOperation(value)
