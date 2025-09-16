@@ -148,7 +148,15 @@ impl<T> ClientController<T> {
     }
 
     pub fn print_res(&self, kind: ClientAction, query_io: QueryIO) {
-        println!("{}", self.render_return(kind, query_io));
+        let action_debug = format!("{:?}", kind);
+        let result = self.render_return(kind, query_io.clone());
+        println!("{}", result);
+
+        // Log the command execution for observability
+        tracing::info!(
+            action = %action_debug,
+            "Client command executed"
+        );
     }
 }
 

@@ -78,7 +78,14 @@ impl Broker {
                         match self.node_connections.get_mut(&repl_id) {
                             | Some(connection) => connection.update_request_id(&query_io),
                             | None => {
-                                println!("Connection not found after write operation")
+                                println!("Connection not found after write operation");
+
+                                // Log missing connection for debugging
+                                tracing::warn!(
+                                    replication_id = %repl_id,
+                                    action = %format!("{:?}", context.client_action),
+                                    "Connection not found after write operation"
+                                );
                             },
                         }
                     }

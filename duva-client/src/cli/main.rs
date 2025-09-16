@@ -35,6 +35,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut controller = ClientController::new(editor::create(), &cli.address()).await?;
 
+    tracing::info!("Duva client started successfully");
+
     loop {
         let readline = controller.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
 
@@ -43,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
         if args[0].eq_ignore_ascii_case("exit") {
+            tracing::info!("Client exiting");
             break;
         }
 
@@ -50,18 +53,37 @@ async fn main() -> anyhow::Result<()> {
         // and the rest are arguments
         let (cmd, args) = separate_command_and_args(args);
 
+        tracing::debug!(command = %cmd, args = ?args, "Processing command");
+
         match extract_action(cmd, &args) {
             | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
                 let _ = controller.broker_tx.send(BrokerMessage::from_input(action, tx)).await;
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
+                tracing::debug!(command = %cmd, "Command completed successfully");
             },
             | Err(e) => {
                 println!("{e}");
+
+                // Log command parsing/execution errors
+                tracing::warn!(
+                    command = %cmd,
+                    args = ?args,
+                    error = %e,
+                    "Command failed to parse or execute"
+                );
             },
         }
     }
+
+    // Ensure logs are flushed before exit
+    if let Some(provider) = logger_provider {
+        if let Err(e) = provider.shutdown() {
+            eprintln!("Failed to shutdown logger provider: {}", e);
+        }
+    }
+
     Ok(())
 }
 
