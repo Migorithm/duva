@@ -51,8 +51,7 @@ impl LookupIndex {
 
 impl Segment {
     fn new(path: PathBuf) -> Result<Self> {
-        let file =
-            OpenOptions::new().create(true).read(true).write(true).append(true).open(&path)?;
+        let file = OpenOptions::new().create(true).read(true).append(true).open(&path)?;
 
         let initial_size = file.metadata()?.len() as usize;
 
@@ -330,10 +329,12 @@ impl TWriteAheadLog for FileOpLogs {
             // Move the slice forward and rotate the segment for the next chunk
             ops_slice = &mut ops_slice[ops_in_chunk..];
             if !ops_slice.is_empty() {
+                // internally, there is rotate logic where it syncs. - No data loss!
                 self.rotate_segment()?;
             }
         }
 
+        // Single sync at the end
         self.fsync()?;
 
         Ok(())
@@ -367,9 +368,10 @@ impl TWriteAheadLog for FileOpLogs {
                         result.extend(ops);
                     }
                 }
-            } else if first_included_index <= segment.start_index {
-                if segment.start_index <= end_inclusive
-                    && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
+            } else if first_included_index <= segment.start_index
+                && segment.start_index <= end_inclusive
+                && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
+            {
                 {
                     let mut reader = BufReader::new(file); // Starts at offset 0
                     if let Ok(ops) =
