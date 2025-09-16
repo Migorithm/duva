@@ -51,8 +51,7 @@ impl LookupIndex {
 
 impl Segment {
     fn new(path: PathBuf) -> Result<Self> {
-        let file =
-            OpenOptions::new().create(true).read(true).write(true).append(true).open(&path)?;
+        let file = OpenOptions::new().create(true).read(true).append(true).open(&path)?;
 
         let initial_size = file.metadata()?.len() as usize;
 
@@ -131,8 +130,7 @@ impl Segment {
         let mut lookups = Vec::with_capacity(operations.len());
         for op in operations.into_iter() {
             lookups.push(LookupIndex::new(op.log_index, current_offset));
-            let encoded_size =
-                bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len()).unwrap_or(0); // Handle encoding error gracefully
+            let encoded_size = bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len())?;
             current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size
         }
 
@@ -325,22 +323,18 @@ impl TWriteAheadLog for FileOpLogs {
                 self.active_segment.size += current_chunk_bytes.len();
                 self.active_segment.lookups.append(&mut new_lookups);
                 self.active_segment.end_index = last_log_index;
-
-                // Sync to disk ONCE for the entire chunk
-                self.fsync()?;
-            }
-
-            // If we processed all operations, we're done
-            if ops_in_chunk == ops_slice.len() {
-                break;
             }
 
             // Move the slice forward and rotate the segment for the next chunk
             ops_slice = &mut ops_slice[ops_in_chunk..];
             if !ops_slice.is_empty() {
+                // internally, there is rotate logic where it syncs. - No data loss!
                 self.rotate_segment()?;
             }
         }
+
+        // Single sync at the end
+        self.fsync()?;
 
         Ok(())
     }
@@ -373,10 +367,10 @@ impl TWriteAheadLog for FileOpLogs {
                         result.extend(ops);
                     }
                 }
-                // else: Handle error opening file
-            } else if first_included_index <= segment.start_index {
-                if segment.start_index <= end_inclusive
-                    && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
+            } else if first_included_index <= segment.start_index
+                && segment.start_index <= end_inclusive
+                && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
+            {
                 {
                     let mut reader = BufReader::new(file); // Starts at offset 0
                     if let Ok(ops) =
@@ -391,16 +385,14 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Replays all existing operations in the op_logs, invoking a callback for each.
-    fn replay<F>(&mut self, mut f: F) -> Result<()>
+    fn replay<F>(&mut self, mut replay_handler: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
     {
         // Replay all segments in order
         for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
-            let operations = segment.read_operations()?;
-            for op in operations {
-                f(op);
-            }
+            let operations: Vec<WriteOperation> = segment.read_operations()?;
+            operations.into_iter().for_each(&mut replay_handler);
         }
 
         Ok(())
