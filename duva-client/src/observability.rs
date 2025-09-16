@@ -1,12 +1,12 @@
-use std::sync::LazyLock;
-use std::time::Duration;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use uuid::Uuid;
 use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
+use std::sync::LazyLock;
+use std::time::Duration;
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
 pub struct ObservabilityConfig {
     pub log_level: String,
@@ -14,9 +14,7 @@ pub struct ObservabilityConfig {
 
 impl Default for ObservabilityConfig {
     fn default() -> Self {
-        Self {
-            log_level: "info".to_string(),
-        }
+        Self { log_level: "info".to_string() }
     }
 }
 
@@ -71,12 +69,11 @@ fn create_user_filter(log_level: &str) -> Result<EnvFilter, Box<dyn std::error::
         .add_directive("cli=info".parse()?))
 }
 
-pub fn init_observability_with_config(config: ObservabilityConfig, enable_grafana: bool) -> Result<SdkLoggerProvider, Box<dyn std::error::Error>> {
-    let logger_provider = if enable_grafana {
-        Some(init_logs())
-    } else {
-        None
-    };
+pub fn init_observability_with_config(
+    config: ObservabilityConfig,
+    enable_grafana: bool,
+) -> Result<SdkLoggerProvider, Box<dyn std::error::Error>> {
+    let logger_provider = if enable_grafana { Some(init_logs()) } else { None };
 
     if enable_grafana {
         // OTLP-only logging (no file, no console)
@@ -86,8 +83,7 @@ pub fn init_observability_with_config(config: ObservabilityConfig, enable_grafan
         let filter_otel = create_user_filter(&config.log_level)?;
 
         // Add disabled fmt layer for proper tracing subscriber initialization
-        let fmt_layer = tracing_subscriber::fmt::layer()
-            .with_filter(EnvFilter::new("off"));
+        let fmt_layer = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("off"));
 
         tracing_subscriber::registry()
             .with(otel_layer.with_filter(filter_otel))
@@ -101,13 +97,16 @@ pub fn init_observability_with_config(config: ObservabilityConfig, enable_grafan
             .init();
     }
 
+    tracing::info!(
+        instance_id = %Uuid::now_v7().to_string(),
+        log_level = %config.log_level,
+        otlp_enabled = enable_grafana,
+        "Duva client observability initialized"
+    );
+
     Ok(logger_provider.unwrap_or_else(|| {
         SdkLoggerProvider::builder()
-            .with_resource(
-                Resource::builder_empty()
-                    .with_service_name("duva-client")
-                    .build()
-            )
+            .with_resource(Resource::builder_empty().with_service_name("duva-client").build())
             .build()
     }))
 }

@@ -9,8 +9,10 @@ use duva::{
     presentation::clients::request::extract_action,
 };
 use duva_client::{
-    broker::BrokerMessage, command::separate_command_and_args, controller::ClientController,
-    observability::{init_observability_with_config, ObservabilityConfig},
+    broker::BrokerMessage,
+    command::separate_command_and_args,
+    controller::ClientController,
+    observability::{ObservabilityConfig, init_observability_with_config},
 };
 
 const PROMPT: &str = "duva-cli> ";
@@ -20,16 +22,16 @@ async fn main() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
 
     // Initialize observability - file logging by default, Grafana optional
-    let observability_config = ObservabilityConfig::new()
-        .with_log_level(cli.log_level());
+    let observability_config = ObservabilityConfig::new().with_log_level(cli.log_level());
 
-    let logger_provider = match init_observability_with_config(observability_config, cli.enable_grafana()) {
-        Ok(provider) => Some(provider),
-        Err(e) => {
-            eprintln!("Failed to initialize observability: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let logger_provider =
+        match init_observability_with_config(observability_config, cli.enable_grafana()) {
+            | Ok(provider) => Some(provider),
+            | Err(e) => {
+                eprintln!("Failed to initialize observability: {}", e);
+                std::process::exit(1);
+            },
+        };
 
     clear_and_make_ascii_art();
 
