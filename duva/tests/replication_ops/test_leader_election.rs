@@ -73,11 +73,8 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);
 
     // !first leader is killed -> election happens
-    let first_leader_port = leader_p.port;
-    drop(leader_p);
-    let mut tmp_h = Client::new(follower_p1.port);
-    tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", first_leader_port));
 
+    drop(leader_p);
     panic_if_election_not_done(follower_p1.port, follower_p2.port);
 
     let mut processes = vec![];
@@ -92,9 +89,6 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         let follower_env3 =
             ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
         let new_process = spawn_server_process(&follower_env3)?;
-
-        let mut tmp_h = Client::new(follower_env3.port);
-        tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", f.port));
 
         // WHEN
         // ! second leader is killed -> election happens
@@ -113,6 +107,7 @@ fn panic_if_election_not_done(port1: u16, port2: u16) {
     let mut first_election_cnt = 0;
     let mut flag = false;
     let mut h1 = Client::new(port1);
+    h1.read_timeout = Duration::from_secs(4);
 
     let start = std::time::Instant::now();
     while first_election_cnt < 50 {

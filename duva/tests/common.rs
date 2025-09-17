@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::process::{Child, ChildStdout, Command};
+use std::sync::mpsc::Receiver;
 use std::thread::sleep;
 use tempfile::TempDir;
 
@@ -250,117 +251,148 @@ pub fn array(arr: Vec<&str>) -> Bytes {
 
 pub struct Client {
     pub child: Child,
-    reader: Option<BufReader<ChildStdout>>,
+    reader_rx: Receiver<String>,
+    pub read_timeout: Duration,
 }
-
 impl Client {
+    /// start the CLI process and spawn a reader thread
     pub fn new(port: u16) -> Client {
-        {
-            static ONCE: std::sync::Once = std::sync::Once::new();
-            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-            let lock = LOCK.lock().unwrap();
-            ONCE.call_once(|| {
-                let mut command = Command::new("cargo");
-                command.args(["build", "-p", "duva-client"]);
-                let mut process =
-                    command.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
-                process.wait().unwrap();
-            });
-        }
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = LOCK.lock().unwrap();
+        ONCE.call_once(|| {
+            let mut command = Command::new("cargo");
+            command.args(["build", "-p", "duva-client"]);
+            let mut process = command.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+            process.wait().unwrap();
+        });
+
         let current = std::env::current_dir().unwrap();
         let path = current.parent().unwrap().join("target").join("debug").join("cli");
         let mut command = Command::new(path);
         command.args(["--port", &port.to_string()]);
-
         command.env("DUVA_ENV", "test");
 
+        // spawn child with piped stdin & stdout
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to start CLI");
+
+        // take the stdout for the reader thread
+        let stdout = child.stdout.take().expect("child stdout not captured");
+
+        // create channel and spawn a thread to continuously read lines and send them
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        spawn_stdout_reader_thread(stdout, tx);
+
         Client {
-            child: command
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("Failed to start CLI"),
-            reader: None,
+            child,
+            reader_rx: rx,
+            read_timeout: Duration::from_secs(3), // 1–3s is a sensible range. Increase it for slow CI.
         }
     }
 
+    /// Just write bytes with newline to the child's stdin.
     pub fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
-        let stdin = self.child.stdin.as_mut().unwrap();
+        let stdin =
+            self.child.stdin.as_mut().ok_or_else(|| anyhow::anyhow!("child stdin closed"))?;
         stdin.write_all(command)?;
         stdin.write_all(b"\r\n")?;
         stdin.flush()?;
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<String, ()> {
-        // Initialize reader if it doesn't exist
-        if self.reader.is_none() {
-            self.reader = Some(BufReader::new(self.child.stdout.take().unwrap()));
+    /// Get one line response (with a bounded timeout).
+    /// Returns empty string on timeout/error.
+    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>) -> String {
+        // try to send with a few retries
+        let mut retries = 3;
+        while retries > 0 {
+            if self.send(command.as_ref()).is_ok() {
+                // wait for a single response line (bounded)
+                match self.reader_rx.recv_timeout(self.read_timeout) {
+                    | Ok(s) => return s,
+                    | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        // retry send/read a few times
+                    },
+                    | Err(_) => {
+                        // channel disconnected, child probably exited
+                        return String::new();
+                    },
+                }
+            }
+            retries -= 1;
+            if retries > 0 {
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
-
-        let reader = self.reader.as_mut().unwrap();
-        let mut line = String::new();
-        reader.read_line(&mut line).map_err(|_| ())?;
-        Ok(line.trim().to_string())
+        // last attempt: try once and then return whatever we get (maybe empty)
+        let _ = self.send(command.as_ref());
+        self.reader_rx.recv_timeout(self.read_timeout).unwrap_or_default()
     }
 
+    /// Collect up to `cnt` response lines (each line will block up to read_timeout)
+    /// Returns collected lines (could be fewer than cnt on timeout/disconnect).
     pub fn send_and_get_vec(&mut self, command: impl AsRef<[u8]>, mut cnt: u32) -> Vec<String> {
         let mut res = vec![];
 
         // Try to send the command with retries
         let mut retries = 3;
         while retries > 0 {
-            if let Ok(()) = self.send(command.as_ref()) {
+            if self.send(command.as_ref()).is_ok() {
                 break;
             }
             retries -= 1;
             if retries > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(50));
             }
         }
 
-        // If send failed, return empty result
         if retries == 0 {
             return res;
         }
 
         while cnt > 0 {
             cnt -= 1;
-            if let Ok(line) = self.read() {
-                res.push(line);
-            } else {
-                // If read fails, break to avoid infinite loop
-                break;
+            match self.reader_rx.recv_timeout(self.read_timeout) {
+                | Ok(line) => res.push(line),
+                | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break, // stop collecting on timeout
+                | Err(_) => break,                                          // disconnected
             }
         }
         res
     }
-    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>) -> String {
-        let mut retries = 3;
-        while retries > 0 {
-            if let Ok(()) = self.send(command.as_ref()) {
-                loop {
-                    if let Ok(line) = self.read() {
-                        return line;
-                    }
-                }
-            }
-            retries -= 1;
-            if retries > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-        }
-        // If all retries failed, try one more time and return whatever we get
-        self.send(command.as_ref()).unwrap_or_default();
-        self.read().unwrap_or_default()
-    }
 
+    /// Force-kill the child
     pub fn terminate(&mut self) -> std::io::Result<()> {
-        self.child.kill()?;
-        let _ = self.child.wait()?;
-
+        // best-effort kill (don't block forever)
+        let _ = self.child.kill();
+        let _ = self.child.wait();
         Ok(())
     }
+}
+
+/// spawn a thread that reads lines from child's stdout and pushes them into tx.
+/// The thread will exit when EOF or when an I/O error occurs.
+fn spawn_stdout_reader_thread(stdout: ChildStdout, tx: std::sync::mpsc::Sender<String>) {
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            // read_line will block until a newline is read or EOF
+            match reader.read_line(&mut line) {
+                | Ok(0) => break, // EOF
+                | Ok(_) => {
+                    // trim newline and send; ignore send error (receiver gone)
+                    let _ = tx.send(line.trim_end_matches(&['\r', '\n'][..]).to_string());
+                },
+                | Err(_) => break,
+            }
+        }
+    });
 }
 
 impl Drop for Client {
