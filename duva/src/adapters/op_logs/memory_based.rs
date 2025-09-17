@@ -9,7 +9,7 @@ pub struct MemoryOpLogs {
 }
 
 impl TWriteAheadLog for MemoryOpLogs {
-    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    fn write_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer.extend(ops);
         Ok(())
     }

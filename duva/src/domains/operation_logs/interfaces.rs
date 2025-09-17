@@ -4,7 +4,7 @@ use anyhow::Result;
 /// Trait for a write-ahead log (WAL) abstraction.
 pub trait TWriteAheadLog: Send + Sync + 'static {
     /// Append one or more `WriteOperation`s to the log.
-    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()>;
+    fn write_many(&mut self, ops: Vec<WriteOperation>) -> Result<()>;
 
     /// Retrieve logs that fall between the current 'commit' index and target 'log' index.
     /// This is NOT async as it is expected to be infallible and an in-memory operation.

@@ -58,7 +58,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
         // Filter and append entries in a single operation
         self.update_metadata(&entries);
-        self.target.append_many(entries)?;
+        self.target.write_many(entries)?;
         Ok(self.last_log_index)
     }
 
