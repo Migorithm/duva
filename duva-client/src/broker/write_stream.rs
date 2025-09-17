@@ -21,6 +21,13 @@ impl ServerStreamWriter {
                     | MsgToServer::Command(cmd) => {
                         if let Err(e) = self.write_all(&cmd).await {
                             println!("{e}");
+
+                            // Log write stream error
+                            tracing::error!(
+                                error = %e,
+                                command_length = cmd.len(),
+                                "Failed to write command to server"
+                            );
                         };
                     },
                     | MsgToServer::Stop => break,

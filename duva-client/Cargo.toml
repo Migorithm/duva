@@ -16,8 +16,21 @@ crossterm = "0.29.0"
 figlet-rs = "0.1.5"
 futures = "0.3.31"
 
+# Observability dependencies
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2.3"
+uuid = { version = "1.16.0", features = ["v7"] }
+
+# OpenTelemetry integration for Grafana compatibility
+opentelemetry = { version = "0.30", features = ["trace", "logs"] }
+opentelemetry_sdk = { version = "0.30", features = ["trace", "logs"] }
+opentelemetry-otlp = { version = "0.30", features = ["trace", "logs"] }
+opentelemetry-appender-tracing = { version = "0.30", default-features = false }
+
 
 [[bin]]
 name = "cli"
 path = "src/cli/main.rs"
 # cargo run -p duva-client -- --port 6000
+

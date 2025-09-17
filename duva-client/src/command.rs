@@ -62,8 +62,15 @@ impl InputContext {
     }
 
     pub(crate) fn callback(self, query_io: QueryIO) {
-        self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
+        let action_debug = format!("{:?}", self.client_action);
+        self.callback.send((self.client_action, query_io.clone())).unwrap_or_else(|_| {
             println!("Failed to send response to input callback");
+
+            // Log callback failure for debugging
+            tracing::error!(
+                action = %action_debug,
+                "Failed to send response to input callback"
+            );
         });
     }
 

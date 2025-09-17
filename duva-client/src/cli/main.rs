@@ -9,17 +9,28 @@ use duva::{
     presentation::clients::request::extract_action,
 };
 use duva_client::{
-    broker::BrokerMessage, command::separate_command_and_args, controller::ClientController,
+    broker::BrokerMessage,
+    command::separate_command_and_args,
+    controller::ClientController,
+    observability::{ObservabilityConfig, init_observability_with_config},
 };
 
 const PROMPT: &str = "duva-cli> ";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let cli = cli::Cli::parse();
+
+    // Initialize observability - file logging by default, Grafana optional
+    let observability_config = ObservabilityConfig { log_level: cli.log_level().to_string() };
+    let logger_provider = init_observability_with_config(observability_config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize observability: {}", e))?;
+
     clear_and_make_ascii_art();
 
-    let cli = cli::Cli::parse();
     let mut controller = ClientController::new(editor::create(), &cli.address()).await?;
+
+    tracing::info!("Duva client started successfully");
 
     loop {
         let readline = controller.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
@@ -29,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
         if args[0].eq_ignore_ascii_case("exit") {
+            tracing::info!("Client exiting");
             break;
         }
 
@@ -36,18 +48,31 @@ async fn main() -> anyhow::Result<()> {
         // and the rest are arguments
         let (cmd, args) = separate_command_and_args(args);
 
+        tracing::debug!(command = %cmd, args = ?args, "Processing command");
+
         match extract_action(cmd, &args) {
             | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
                 let _ = controller.broker_tx.send(BrokerMessage::from_input(action, tx)).await;
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
+                tracing::debug!(command = %cmd, "Command completed successfully");
             },
             | Err(e) => {
                 println!("{e}");
+
+                // Log command parsing/execution errors
+                tracing::warn!(
+                    command = %cmd,
+                    args = ?args,
+                    error = %e,
+                    "Command failed to parse or execute"
+                );
             },
         }
     }
+
+    logger_provider.shutdown().unwrap();
     Ok(())
 }
 
