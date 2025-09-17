@@ -18,7 +18,7 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     drop(p2);
 
     // WHEN running repl without p1 bind address
-    let env2 = env2.clone();
+
     p2 = spawn_server_process(&env2)?;
 
     //THEN

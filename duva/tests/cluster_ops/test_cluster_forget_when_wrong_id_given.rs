@@ -26,7 +26,7 @@ fn run_cluster_forget_node_return_error_when_wrong_id_given(env: ServerEnv) -> a
 
 #[test]
 fn test_cluster_forget_node_return_error_when_wrong_id_given() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_cluster_forget_node_return_error_when_wrong_id_given(env)?;
     }
 

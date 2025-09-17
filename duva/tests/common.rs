@@ -46,9 +46,6 @@ impl Default for ServerEnv {
 
 impl ServerEnv {
     // Create a new ServerEnv with a unique port
-    pub fn clone(self) -> Self {
-        ServerEnv { port: get_available_port(), ..self }
-    }
 
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;

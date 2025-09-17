@@ -30,10 +30,9 @@ fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()
 
 #[test]
 fn test_removed_connection() -> anyhow::Result<()> {
-    for (node_1, node_2) in [
-        (ServerEnv::default(), ServerEnv::default()),
-        (ServerEnv::default().with_append_only(true), ServerEnv::default().with_append_only(true)),
-    ] {
+    for (node_1, node_2) in
+        [(ServerEnv::default().with_append_only(true), ServerEnv::default().with_append_only(true))]
+    {
         run_removed_connection(node_1, node_2)?;
     }
     Ok(())

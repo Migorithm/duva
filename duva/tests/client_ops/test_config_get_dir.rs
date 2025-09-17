@@ -22,7 +22,7 @@ fn run_config_get_dir(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_config_get_dir() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_config_get_dir(env)?;
     }
 

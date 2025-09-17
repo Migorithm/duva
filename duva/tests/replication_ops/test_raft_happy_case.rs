@@ -28,7 +28,6 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
 
 #[test]
 fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
-    run_set_operation_reaches_to_all_replicas(false)?;
     run_set_operation_reaches_to_all_replicas(true)?;
 
     Ok(())

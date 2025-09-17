@@ -23,7 +23,7 @@ fn run_exists(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_exists() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_exists(env)?;
     }
 

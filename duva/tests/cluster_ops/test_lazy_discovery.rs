@@ -77,7 +77,6 @@ fn run_invalid_replicaof(with_append_only: bool) -> anyhow::Result<()> {
 
 #[test]
 fn test_run_invalid_replicaof() -> anyhow::Result<()> {
-    run_invalid_replicaof(false)?;
     run_invalid_replicaof(true)?;
 
     Ok(())

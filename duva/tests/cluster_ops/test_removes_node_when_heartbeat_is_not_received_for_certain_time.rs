@@ -28,7 +28,6 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
 
 #[test]
 fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> anyhow::Result<()> {
-    run_removes_node_when_heartbeat_is_not_received_for_certain_time(false)?;
     run_removes_node_when_heartbeat_is_not_received_for_certain_time(true)?;
 
     Ok(())

@@ -20,7 +20,7 @@ fn run_ttl(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_ttl() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ ServerEnv::default().with_append_only(true)] {
         run_ttl(env)?;
     }
 

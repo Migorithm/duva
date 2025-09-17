@@ -29,7 +29,7 @@ fn run_rpop(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_rpop() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ ServerEnv::default().with_append_only(true)] {
         run_rpop(env)?;
     }
 

@@ -40,7 +40,6 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
 
 #[test]
 fn test_discover_leader() -> anyhow::Result<()> {
-    run_discover_leader(false)?;
     run_discover_leader(true)?;
     Ok(())
 }

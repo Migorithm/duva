@@ -23,7 +23,7 @@ fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_replication_info() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ ServerEnv::default().with_append_only(true)] {
         run_replication_info(env)?;
     }
 

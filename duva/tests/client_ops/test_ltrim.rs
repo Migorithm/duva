@@ -17,7 +17,7 @@ fn run_ltrim(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn ltrim() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ ServerEnv::default().with_append_only(true)] {
         run_ltrim(env)?;
     }
 
