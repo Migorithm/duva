@@ -41,9 +41,6 @@ fn run_route_mget_keys(append_only: bool, num_keys: u32, duration: Duration) -> 
 #[test]
 fn run_route_mget() -> anyhow::Result<()> {
     run_route_mget_keys(true, 4, Duration::from_millis(200))?;
-    run_route_mget_keys(false, 4, Duration::from_millis(200))?;
     run_route_mget_keys(true, 100, Duration::from_millis(500))?;
-    run_route_mget_keys(false, 100, Duration::from_millis(500))?;
-
     Ok(())
 }

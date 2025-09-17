@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 
 fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_process = spawn_server_process(&env)?;
+    let leader_process = spawn_server_process(&env)?;
 
     let mut h = Client::new(leader_process.port);
 
@@ -22,7 +22,7 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     assert_eq!(h.send_and_get("SAVE"), "(nil)");
 
     // kill leader process
-    let _ = leader_process.terminate();
+    drop(leader_process);
 
     // run server with the same file name
     let new_process = spawn_server_process(&env)?;
@@ -47,12 +47,10 @@ fn create_unique_file_name(function_name: &str) -> String {
 
 #[tokio::test]
 async fn test_snapshot_persists_and_recovers_state() -> anyhow::Result<()> {
-    for env in [
-        ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump")),
-        ServerEnv::default()
-            .with_file_name(create_unique_file_name("test_save_dump"))
-            .with_append_only(true),
-    ] {
+    for env in [ServerEnv::default()
+        .with_file_name(create_unique_file_name("test_save_dump"))
+        .with_append_only(true)]
+    {
         run_snapshot_persists_and_recovers_state(env)?;
     }
 

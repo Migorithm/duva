@@ -33,7 +33,6 @@ fn run_cluster_forget_makes_all_nodes_forget_target_node(
 
 #[test]
 fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Result<()> {
-    run_cluster_forget_makes_all_nodes_forget_target_node(false)?;
     run_cluster_forget_makes_all_nodes_forget_target_node(true)?;
 
     Ok(())

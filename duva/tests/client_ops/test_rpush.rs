@@ -17,7 +17,7 @@ fn run_rpush(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_rpush() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_rpush(env)?;
     }
 

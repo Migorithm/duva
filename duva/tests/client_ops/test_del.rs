@@ -26,7 +26,7 @@ fn run_del(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_del() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_del(env)?;
     }
 

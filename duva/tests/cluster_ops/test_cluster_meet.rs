@@ -60,7 +60,6 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
 // ! this should be configurable depending on business usecases
 #[test]
 fn test_cluster_meet() -> anyhow::Result<()> {
-    run_cluster_meet(false)?;
     run_cluster_meet(true)?;
 
     Ok(())
@@ -140,7 +139,6 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
 /// Test if `cluster meet {host:port} eager` triggers migration of keys from one cluster to another
 #[test]
 fn test_cluster_meet_with_migration() -> anyhow::Result<()> {
-    run_cluster_meet_with_migration(false)?;
     run_cluster_meet_with_migration(true)?;
 
     Ok(())

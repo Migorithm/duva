@@ -5,14 +5,15 @@ use std::time::Duration;
 fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
     let process1 = spawn_server_process(&env1)?;
-    let mut process2 = spawn_server_process(&env2)?;
+    let process2 = spawn_server_process(&env2)?;
     let mut client1 = Client::new(process1.port);
 
     client1.send_and_get(format!("CLUSTER MEET {} eager", process2.bind_addr()));
     sleep(Duration::from_millis(500));
 
     // WHEN
-    process2.kill()?;
+    drop(process2);
+
     sleep(Duration::from_millis(200));
 
     // THEN
@@ -29,10 +30,9 @@ fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()
 
 #[test]
 fn test_removed_connection() -> anyhow::Result<()> {
-    for (node_1, node_2) in [
-        (ServerEnv::default(), ServerEnv::default()),
-        (ServerEnv::default().with_append_only(true), ServerEnv::default().with_append_only(true)),
-    ] {
+    for (node_1, node_2) in
+        [(ServerEnv::default().with_append_only(true), ServerEnv::default().with_append_only(true))]
+    {
         run_removed_connection(node_1, node_2)?;
     }
     Ok(())

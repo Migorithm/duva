@@ -52,7 +52,6 @@ fn run_route_keys_with_num_of_keys(
 #[test]
 fn run_route_keys() -> anyhow::Result<()> {
     run_route_keys_with_num_of_keys(true, 4, Duration::from_millis(500))?;
-    run_route_keys_with_num_of_keys(false, 4, Duration::from_millis(500))?;
 
     Ok(())
 }

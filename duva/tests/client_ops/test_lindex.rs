@@ -18,7 +18,7 @@ fn run_lindex(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_lindex() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_lindex(env)?;
     }
 

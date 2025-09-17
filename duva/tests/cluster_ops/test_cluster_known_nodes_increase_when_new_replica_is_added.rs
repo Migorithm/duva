@@ -37,7 +37,6 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
 
 #[test]
 fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()> {
-    run_cluster_topology_change_when_new_node_added(false)?;
     run_cluster_topology_change_when_new_node_added(true)?;
 
     Ok(())

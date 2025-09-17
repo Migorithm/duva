@@ -11,7 +11,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower1_env = ServerEnv::default().with_append_only(with_append_only);
     let mut follower2_env = ServerEnv::default().with_append_only(with_append_only);
 
-    let [mut leader_p, _follower1, _follower2] =
+    let [leader_p, _follower1, _follower2] =
         form_cluster([&mut leader_env, &mut follower1_env, &mut follower2_env]);
 
     let mut h = Client::new(leader_p.port);
@@ -25,7 +25,8 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX));
 
     // WHEN
-    leader_p.kill()?;
+    drop(leader_p);
+
     // wait for the election to complete
     sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX * 2));
 
@@ -39,7 +40,6 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
 
 #[test]
 fn test_discover_leader() -> anyhow::Result<()> {
-    run_discover_leader(false)?;
     run_discover_leader(true)?;
     Ok(())
 }

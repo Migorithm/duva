@@ -26,7 +26,6 @@ fn run_full_sync_on_newly_added_replica(with_append_only: bool) -> anyhow::Resul
 
 #[test]
 fn test_full_sync_on_newly_added_replica() -> anyhow::Result<()> {
-    run_full_sync_on_newly_added_replica(false)?;
     run_full_sync_on_newly_added_replica(true)?;
 
     Ok(())

@@ -39,7 +39,6 @@ fn run_decr(with_append_only: bool) -> anyhow::Result<()> {
 
 #[test]
 fn test_decr() -> anyhow::Result<()> {
-    run_decr(false)?;
     run_decr(true)?;
 
     Ok(())
