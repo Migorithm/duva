@@ -8,11 +8,11 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let [mut leader_p, follower_p1, follower_p2] =
+    let [leader_p, follower_p1, follower_p2] =
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);
 
     // WHEN
-    leader_p.kill()?;
+    drop(leader_p);
 
     // THEN
     panic_if_election_not_done(follower_p1.port, follower_p2.port);
@@ -29,11 +29,12 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let [mut leader_p, follower_p1, follower_p2] =
+    let [leader_p, follower_p1, follower_p2] =
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);
 
     // WHEN
-    leader_p.kill()?;
+    drop(leader_p);
+
     sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX + 300));
 
     // THEN
@@ -68,18 +69,19 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let [mut leader_p, follower_p1, follower_p2] =
+    let [leader_p, follower_p1, follower_p2] =
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);
 
     // !first leader is killed -> election happens
-    leader_p.kill()?;
+    let first_leader_port = leader_p.port;
+    drop(leader_p);
     let mut tmp_h = Client::new(follower_p1.port);
-    tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", leader_p.port));
+    tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", first_leader_port));
 
     panic_if_election_not_done(follower_p1.port, follower_p2.port);
 
     let mut processes = vec![];
-    for mut f in [follower_p1, follower_p2] {
+    for f in [follower_p1, follower_p2] {
         let mut handler = Client::new(f.port);
         let res = handler.send_and_get_vec("info replication", 4);
         if !res.contains(&"role:leader".to_string()) {
@@ -96,7 +98,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
 
         // WHEN
         // ! second leader is killed -> election happens
-        f.kill()?;
+        drop(f);
 
         processes.push(new_process);
     }

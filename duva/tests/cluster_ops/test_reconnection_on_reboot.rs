@@ -15,7 +15,7 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     cli_to_p1.send_and_get("SET z value3");
     drop(cli_to_p1);
 
-    p2.kill()?;
+    drop(p2);
 
     // WHEN running repl without p1 bind address
     let env2 = env2.clone();

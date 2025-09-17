@@ -4,7 +4,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
 
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let mut p1 = spawn_server_process(&env1)?;
+    let p1 = spawn_server_process(&env1)?;
 
     let mut p1_h = Client::new(p1.port);
 
@@ -29,7 +29,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     assert!(role_response.contains(&format!("127.0.0.1:{}:{}", env2.port, "leader")));
 
     // * Following is required to test replicaof successuflly update topology changes
-    p1.terminate()?;
+    drop(p1);
 
     let new_env_with_same_topology = ServerEnv::default()
         .with_port(env1.port)

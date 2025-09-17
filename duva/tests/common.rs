@@ -11,7 +11,7 @@ use std::process::{Child, ChildStdout, Command};
 use std::thread::sleep;
 use tempfile::TempDir;
 
-use tokio::time::Duration;
+use std::time::Duration;
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -82,11 +82,8 @@ impl ServerEnv {
 pub fn get_available_port() -> u16 {
     let ok_range = 0..55000;
     loop {
-        let port = TcpListener::bind("127.0.0.1:0")
-            .expect("Failed to bind to a random port")
-            .local_addr()
-            .unwrap()
-            .port();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
 
         if ok_range.contains(&port) {
             return port;
@@ -113,7 +110,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
     let process = run_server_process(env);
 
     // Wait for server to be fully ready (increased timeout and better checks)
-    let mut cnt = 100;
+    let mut cnt = 20;
     while cnt > 0 {
         cnt -= 1;
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -131,14 +128,10 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
                 continue;
             }
 
-            if role_res.is_empty() || (role_res.contains("leader") && role_res.contains("follower"))
-            {
-                continue;
+            if role_res.contains("leader") || role_res.contains("follower") {
+                // it's ready
+                break;
             }
-
-            // Additional small delay to ensure server is fully initialized
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            break;
         }
     }
 
@@ -172,7 +165,7 @@ impl TestProcessChild {
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
-    pub fn terminate(&mut self) -> std::io::Result<()> {
+    fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
         let timeout = Duration::from_secs(1);
