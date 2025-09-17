@@ -11,18 +11,7 @@ use uuid::Uuid;
 pub struct ObservabilityConfig {
     pub log_level: String,
 }
-
-impl Default for ObservabilityConfig {
-    fn default() -> Self {
-        Self { log_level: "info".to_string() }
-    }
-}
-
 impl ObservabilityConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
         self.log_level = level.into();
         self

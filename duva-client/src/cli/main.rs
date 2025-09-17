@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
 
     // Initialize observability - file logging by default, Grafana optional
-    let observability_config = ObservabilityConfig::new().with_log_level(cli.log_level());
+    let observability_config = ObservabilityConfig { log_level: cli.log_level().to_string() };
     let logger_provider = init_observability_with_config(observability_config)
         .map_err(|e| anyhow::anyhow!("Failed to initialize observability: {}", e))?;
 
