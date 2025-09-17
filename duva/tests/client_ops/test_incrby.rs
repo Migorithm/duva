@@ -38,7 +38,7 @@ fn run_incrby(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_incrby() -> anyhow::Result<()> {
-    for env in [ ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_incrby(env)?;
     }
     Ok(())

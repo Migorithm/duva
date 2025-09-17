@@ -22,7 +22,7 @@ fn run_llen(env: ServerEnv) -> anyhow::Result<()> {
 
 #[test]
 fn test_llen() -> anyhow::Result<()> {
-    for env in [ ServerEnv::default().with_append_only(true)] {
+    for env in [ServerEnv::default().with_append_only(true)] {
         run_llen(env)?;
     }
 
