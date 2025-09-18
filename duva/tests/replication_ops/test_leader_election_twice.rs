@@ -18,7 +18,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     // !first leader is killed -> election happens
 
     drop(leader_p);
-    panic_if_election_not_done(follower_p1.port, follower_p2.port);
+    panic_if_election_not_done("first", follower_p1.port, follower_p2.port);
 
     let mut processes = vec![];
     for f in [follower_p1, follower_p2] {
@@ -41,7 +41,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     }
     assert_eq!(processes.len(), 2);
 
-    panic_if_election_not_done(processes[0].port, processes[1].port);
+    panic_if_election_not_done("second", processes[0].port, processes[1].port);
 
     Ok(())
 }

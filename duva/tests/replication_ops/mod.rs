@@ -8,7 +8,7 @@ mod test_raft_happy_case;
 mod test_set_twice_after_election;
 mod test_sync;
 
-fn panic_if_election_not_done(port1: u16, port2: u16) {
+fn panic_if_election_not_done(order: &str, port1: u16, port2: u16) {
     let mut first_election_cnt = 0;
     let mut flag = false;
     let mut h1 = Client::new(port1);
@@ -43,5 +43,5 @@ fn panic_if_election_not_done(port1: u16, port2: u16) {
             port2
         );
     }
-    assert!(flag, "first election fail");
+    assert!(flag, "{order} election fail");
 }
