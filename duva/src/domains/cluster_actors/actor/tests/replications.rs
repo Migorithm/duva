@@ -374,8 +374,8 @@ async fn follower_truncates_log_on_term_mismatch() {
     let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Expect truncation and rejection
-    assert_eq!(cluster_actor.replication.logger.target.writer.len(), 1);
-    assert!(result.is_err(), "Should reject due to term mismatch");
+    assert_eq!(cluster_actor.replication.logger.target.writer.len(), 2);
+    assert!(result.is_ok(), "Should pass as follower will just truncate and write");
 }
 
 #[tokio::test]

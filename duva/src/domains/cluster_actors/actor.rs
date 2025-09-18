@@ -363,6 +363,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn send_rpc(&mut self) {
+        if !self.replication.is_leader() {
+            return;
+        }
+
         if self.replicas().count() == 0 {
             return;
         }
@@ -409,6 +413,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         from: &PeerIdentifier,
         repl_res: ReplicationAck,
     ) {
+        if !self.replication.is_leader() {
+            return;
+        }
         let Some(peer) = self.members.get_mut(from) else {
             return;
         };
@@ -426,6 +433,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
     pub(crate) async fn append_entries_rpc(&mut self, heartbeat: HeartBeat) {
+        if self.replication.is_leader() {
+            return;
+        }
         if self.check_term_outdated(&heartbeat).await {
             err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.term);
             return;
@@ -875,7 +885,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate(&mut self, mut heartbeat: HeartBeat) {
-        if self.replication.is_leader() {
+        if heartbeat.leader_commit_idx.is_none() {
+            err!("It must have leader commit index!");
             return;
         }
 
@@ -951,8 +962,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // ! Term mismatch -> triggers log truncation
             err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
             self.replication.logger.truncate_after(prev_log_index);
-
-            return Err(RejectionReason::LogInconsistency);
         }
 
         Ok(())
@@ -960,6 +969,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
+        if self.replication.is_leader() {
+            return;
+        }
+
         self.become_candidate();
         let request_vote = RequestVote::new(self.replication.info(), &self.replication.logger);
 

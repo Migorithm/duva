@@ -28,7 +28,7 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut h1 = Client::new(follower_p1.port);
     let mut h2 = Client::new(follower_p2.port);
 
-    panic_if_election_not_done(follower_p1.port, follower_p2.port);
+    panic_if_election_not_done("first", follower_p1.port, follower_p2.port, 3);
 
     let res = h1.send_and_get_vec("role", 3);
 
