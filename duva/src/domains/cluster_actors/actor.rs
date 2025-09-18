@@ -1064,10 +1064,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
         }
-        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Release);
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
     fn become_candidate(&mut self) {
-        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Release);
+        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
         self.replication.term += 1;
         self.replication.election_state = ElectionState::Candidate {
             voting: Some(ElectionVoting::new(self.replicas().count() as u8)),
