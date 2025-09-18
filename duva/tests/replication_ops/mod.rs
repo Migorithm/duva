@@ -8,15 +8,14 @@ mod test_raft_happy_case;
 mod test_set_twice_after_election;
 mod test_sync;
 
-fn panic_if_election_not_done(order: &str, port1: u16, port2: u16) {
+fn panic_if_election_not_done(order: &str, port1: u16, port2: u16, num_possible_nodes: u32) {
     let mut first_election_cnt = 0;
     let mut flag = false;
     let mut h1 = Client::new(port1);
-    h1.read_timeout = Duration::from_secs(4);
 
     let start = std::time::Instant::now();
     while first_election_cnt < 50 {
-        let res = h1.send_and_get_vec("role", 2);
+        let res = h1.send_and_get_vec("role", num_possible_nodes);
         println!(
             "[{}ms] Poll {}: port1={} port2={} res={:?}",
             start.elapsed().as_millis(),

@@ -16,7 +16,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     drop(leader_p);
 
     // THEN
-    panic_if_election_not_done("first", follower_p1.port, follower_p2.port);
+    panic_if_election_not_done("first", follower_p1.port, follower_p2.port, 3);
 
     Ok(())
 }
