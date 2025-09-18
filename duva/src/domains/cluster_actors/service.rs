@@ -34,6 +34,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(self)
     }
 
+    // ! Beware scheduler is a separate task that asychrnously sends message, therefore leadership change in between may not be observed.
     async fn process_scheduler_message(&mut self, msg: SchedulerMessage) {
         use SchedulerMessage::*;
         match msg {

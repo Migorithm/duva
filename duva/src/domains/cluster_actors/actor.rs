@@ -363,6 +363,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn send_rpc(&mut self) {
+        if !self.replication.is_leader() {
+            return;
+        }
+
         if self.replicas().count() == 0 {
             return;
         }
@@ -955,8 +959,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // ! Term mismatch -> triggers log truncation
             err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
             self.replication.logger.truncate_after(prev_log_index);
-
-            return Err(RejectionReason::LogInconsistency);
         }
 
         Ok(())
@@ -964,6 +966,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
+        if self.replication.is_leader() {
+            return;
+        }
+
         self.become_candidate();
         let request_vote = RequestVote::new(self.replication.info(), &self.replication.logger);
 
