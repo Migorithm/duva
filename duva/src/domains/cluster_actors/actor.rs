@@ -878,6 +878,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.replication.is_leader() {
             return;
         }
+        if heartbeat.leader_commit_idx.is_none() {
+            err!("It must have leader commit index!");
+            return;
+        }
 
         // * write logs
         if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
@@ -1051,10 +1055,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
         }
-        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Release);
     }
     fn become_candidate(&mut self) {
-        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
+        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Release);
         self.replication.term += 1;
         self.replication.election_state = ElectionState::Candidate {
             voting: Some(ElectionVoting::new(self.replicas().count() as u8)),
