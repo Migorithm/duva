@@ -142,6 +142,40 @@ impl Segment {
             .ok()
             .map(|found_index| self.lookups[found_index].byte_offset)
     }
+
+    fn truncate(&mut self, log_index: u64) -> Result<()> {
+        // Finds the position of the last entry to keep, which is the entry with the given log_index or the one just before it.
+        let Some(last_entry_pos) =
+            self.lookups.iter().rposition(|lookup| lookup.log_index <= log_index)
+        else {
+            // No entry with log_index <= specified one, so truncate the entire segment.
+            self.lookups.clear();
+            self.end_index = self.start_index;
+            self.size = 0;
+            self.writer.get_ref().set_len(0)?;
+            self.writer.seek(SeekFrom::Start(0))?;
+            return Ok(());
+        };
+
+        // Determine the new size of the file. It's the offset of the entry *after* the one we're keeping.
+        let new_size = if let Some(next_lookup) = self.lookups.get(last_entry_pos + 1) {
+            next_lookup.byte_offset
+        } else {
+            // We are keeping all entries up to the end of the segment.
+            self.size
+        };
+
+        // Truncate lookups vector to keep only the entries up to last_entry_pos.
+        self.lookups.truncate(last_entry_pos + 1);
+
+        self.end_index = self.lookups.last().map_or(self.start_index, |l| l.log_index);
+        self.size = new_size;
+
+        self.writer.get_ref().set_len(new_size as u64)?;
+        self.writer.seek(SeekFrom::Start(new_size as u64))?;
+
+        Ok(())
+    }
 }
 
 impl FileOpLogs {
@@ -392,14 +426,50 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     fn truncate_after(&mut self, log_index: u64) {
-        // Remove segments after the truncation point
-        self.segments.retain(|segment| segment.end_index <= log_index);
+        // * Discard any sealed segments that are entirely after the truncation point.
+        self.segments.retain(|segment| {
+            if segment.start_index > log_index {
+                let _ = std::fs::remove_file(&segment.path);
+                false
+            } else {
+                true
+            }
+        });
 
-        // If active segment needs truncation
+        // * Check if the last sealed segment needs to be truncated and promoted.
+        if let Some(last_segment) = self.segments.last() {
+            if last_segment.end_index > log_index {
+                let mut new_active = self.segments.pop().unwrap();
+                if new_active.truncate(log_index).is_ok() {
+                    // This truncated segment becomes the new active one.
+                    // The old active segment is now obsolete.
+                    let _ = std::fs::remove_file(&self.active_segment.path);
+                    self.active_segment = new_active;
+                }
+                // After promoting a sealed segment, the job is done.
+                return;
+            }
+        }
 
-        if self.active_segment.start_index <= log_index && self.active_segment.end_index > log_index
-        {
-            // TODO: Implement truncation of active segment
+        if self.active_segment.end_index <= log_index {
+            return;
+        }
+        // * If no sealed segment was promoted, the active segment might need truncation.
+        if self.active_segment.start_index > log_index {
+            // The active segment is entirely after the truncation point.
+            // It should be replaced with a new, empty segment.
+            let _ = std::fs::remove_file(&self.active_segment.path);
+            let new_segment_idx = self.segments.len();
+            let new_path = self.path.join(format!("segment_{}.oplog", new_segment_idx));
+            let mut new_active = Segment::new(new_path).expect("Failed to create new segment");
+            // The start_index of the new segment should be consistent.
+            // If the previous segment (now the last in self.segments) exists,
+            // its end_index + 1 should be the start of the new active segment.
+            new_active.start_index = self.segments.last().map_or(0, |s| s.end_index + 1);
+            self.active_segment = new_active;
+        } else {
+            // The truncation point is within the active segment.
+            let _ = self.active_segment.truncate(log_index);
         }
     }
 }
@@ -1005,6 +1075,35 @@ mod tests {
             assert!(op.is_some());
             assert_eq!(op.unwrap().log_index, i as u64);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_truncate_after() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(path)?;
+
+        let ops = create_ops(0, 20, 1); // ops 0-19
+        op_logs.write_many(ops)?;
+        op_logs.rotate_segment()?;
+        let ops2 = create_ops(20, 20, 1); // ops 20-39
+        op_logs.write_many(ops2)?;
+
+        // Truncate in the middle of the active segment
+        op_logs.truncate_after(25);
+        assert_eq!(op_logs.read_at(25).unwrap().log_index, 25);
+        assert!(op_logs.read_at(26).is_none());
+        assert_eq!(op_logs.active_segment.end_index, 25);
+
+        // Truncate in the sealed segment
+        op_logs.truncate_after(10);
+        assert_eq!(op_logs.read_at(10).unwrap().log_index, 10);
+        assert!(op_logs.read_at(11).is_none());
+        assert!(op_logs.read_at(20).is_none());
+        assert_eq!(op_logs.active_segment.end_index, 10);
+        assert_eq!(op_logs.segments.len(), 0);
 
         Ok(())
     }
