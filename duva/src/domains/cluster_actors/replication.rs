@@ -107,12 +107,11 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         candidate_last_log_term: u64,
     ) -> bool {
         if candidate_last_log_term > self.logger.last_log_term {
-            true
-        } else if candidate_last_log_term == self.logger.last_log_term {
-            candidate_last_log_index >= self.logger.last_log_index
-        } else {
-            false
+            return true;
         }
+
+        candidate_last_log_term == self.logger.last_log_term
+            && candidate_last_log_index >= self.logger.last_log_index
     }
 }
 
