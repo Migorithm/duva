@@ -412,8 +412,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             {
                 self.replication.vote_for(Some(request_vote.candidate_id.clone()));
                 grant_vote = true;
+                REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
             }
-            REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
         }
 
         info!(
