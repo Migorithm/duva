@@ -385,20 +385,42 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
-        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
 
-        let grant_vote = self.logger().last_log_index <= request_vote.last_log_index
-            && self.replication.become_follower_if_term_higher_and_votable(
-                &request_vote.candidate_id,
-                request_vote.term,
+        let mut grant_vote = false;
+
+        // 1. If candidate's term is less than current term, reject
+        if request_vote.term < self.replication.term {
+            info!(
+                "Rejecting vote for {} (term {}). My term is higher ({}).",
+                request_vote.candidate_id, request_vote.term, self.replication.term
             );
+        }
+        // 2. If candidate's term is greater than or equal to current term
+        else {
+            // If candidate's term is higher, update own term and step down
+            if request_vote.term > self.replication.term {
+                self.replication.term = request_vote.term;
+                self.replication.vote_for(None); // Clear votedFor
+                self.step_down().await; // Ensure follower mode
+            }
+
+            // 3. Check if log is up-to-date and if not already voted in this term or voted for this candidate
+            if self
+                .replication
+                .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
+                && self.replication.election_state.is_votable(&request_vote.candidate_id)
+            {
+                self.replication.vote_for(Some(request_vote.candidate_id.clone()));
+                grant_vote = true;
+            }
+            REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
+        }
 
         info!(
             "Voting for {} with term {} and granted: {grant_vote}",
             request_vote.candidate_id, request_vote.term
         );
 
-        // ! vote may have been made for requester, maybe not. Therefore, we have to set the term for self
         let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
@@ -1041,7 +1063,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
         self.replication.vote_for(None);
-        self.heartbeat_scheduler.turn_follower_mode().await;
+        self.heartbeat_scheduler.turn_follower_mode();
     }
 
     async fn become_leader(&mut self) {

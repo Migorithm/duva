@@ -131,7 +131,7 @@ async fn test_vote_election_deny_vote_older_log() {
 
     assert_expected_queryio(
         &candidate_fake_buf,
-        ElectionVote { term: initial_term, vote_granted: false },
+        ElectionVote { term: initial_term + 1, vote_granted: false },
     )
     .await;
 }

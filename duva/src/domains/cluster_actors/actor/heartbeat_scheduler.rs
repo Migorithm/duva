@@ -124,7 +124,7 @@ impl HeartBeatScheduler {
         self.controller = controller;
     }
 
-    pub(crate) async fn turn_follower_mode(&mut self) {
+    pub(crate) fn turn_follower_mode(&mut self) {
         let controller = match self.controller.take() {
             | Some(SchedulerMode::Leader(sender)) => {
                 sender.send(());
