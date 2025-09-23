@@ -129,7 +129,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 | AckReplication(repl_res) => self.ack_replication(&from, repl_res).await,
                 | AppendEntriesRPC(heartbeat) => self.append_entries_rpc(heartbeat).await,
                 | ElectionVoteReply(request_vote_reply) => {
-                    self.receive_election_vote(request_vote_reply).await
+                    self.receive_election_vote(&from, request_vote_reply).await
                 },
                 | StartRebalance => self.start_rebalance().await,
                 | ReceiveBatch(migrate_batch) => self.receive_batch(migrate_batch, &from).await,

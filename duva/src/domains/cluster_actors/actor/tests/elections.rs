@@ -20,9 +20,10 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
     // THEN: Actor's state should be Candidate
     assert_eq!(actor.replication.role, ReplicationRole::Follower);
     assert_eq!(actor.replication.term, initial_term + 1);
+
     assert!(matches!(
         actor.replication.election_state,
-        ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 1, replica_count: 2 }) }
+        ElectionState::Candidate { voting: Some(ElectionVoting { replica_count: 2, voters: _ }) }
     ));
 
     // THEN: RequestVote messages should be sent to peers
@@ -54,7 +55,7 @@ async fn test_run_for_election_no_replicas() {
 
     assert!(matches!(
         actor.replication.election_state,
-        ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 1, replica_count: 0 }) }
+        ElectionState::Candidate { voting: Some(ElectionVoting { replica_count: 0, voters: _ }) }
     ));
 }
 
@@ -171,17 +172,17 @@ async fn test_receive_election_vote_candidate_wins_election() {
     // Manually set up as candidate that has run for election
     candidate_actor.replication.term = candidate_term;
 
-    let voting = ElectionVoting::new(2);
+    let voting = ElectionVoting::new(2, candidate_actor.replication.self_identifier());
 
     candidate_actor.replication.election_state = ElectionState::Candidate { voting: Some(voting) };
 
     // Add a mock replica to send initial heartbeat to
-    let (replica1_fake_buf, _) = candidate_actor.test_add_peer(8051, None, false);
+    let (replica1_fake_buf, voter_id) = candidate_actor.test_add_peer(8051, None, false);
 
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 
     // WHEN: Candidate receives the winning vote
-    candidate_actor.receive_election_vote(election_vote).await;
+    candidate_actor.receive_election_vote(&voter_id, election_vote).await;
 
     // THEN: Candidate should become Leader
     assert!(candidate_actor.replication.is_leader());
@@ -226,17 +227,20 @@ async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
     let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     candidate_actor.replication.term = candidate_term;
 
-    candidate_actor.replication.election_state =
-        ElectionState::Candidate { voting: Some(ElectionVoting::new(5)) };
+    candidate_actor.replication.election_state = ElectionState::Candidate {
+        voting: Some(ElectionVoting::new(5, candidate_actor.replication.self_identifier())),
+    };
 
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 
-    candidate_actor.receive_election_vote(election_vote).await;
+    candidate_actor
+        .receive_election_vote(&PeerIdentifier("127.0.0.1:30303".into()), election_vote)
+        .await;
 
     assert_eq!(candidate_actor.replication.role, ReplicationRole::Follower); // Stays follower
 
     if let ElectionState::Candidate { voting } = candidate_actor.replication.election_state {
-        assert_eq!(voting.unwrap().cnt, 2);
+        assert_eq!(voting.unwrap().voters.len(), 2);
     } else {
         panic!("Expected candidate state");
     }
