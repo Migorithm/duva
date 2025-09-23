@@ -439,8 +439,8 @@ impl TWriteAheadLog for FileOpLogs {
         // * Check if the last sealed segment needs to be truncated and promoted.
         if let Some(last_segment) = self.segments.last()
             && last_segment.end_index > log_index
+            && let Some(mut new_active) = self.segments.pop()
         {
-            let mut new_active = self.segments.pop().unwrap();
             if new_active.truncate(log_index).is_ok() {
                 // This truncated segment becomes the new active one.
                 // The old active segment is now obsolete.
