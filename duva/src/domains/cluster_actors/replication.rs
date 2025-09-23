@@ -92,6 +92,11 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         }
     }
 
+    pub(super) fn revert_voting(&mut self, term: u64) {
+        self.vote_for(None);
+        self.term = term;
+    }
+
     pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.role = ReplicationRole::Follower;

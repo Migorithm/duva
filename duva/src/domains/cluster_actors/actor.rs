@@ -386,17 +386,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
+        let current_term = self.replication.term;
         let mut grant_vote = false;
 
-        // 1. If candidate's term is less than current term, reject
-        if request_vote.term < self.replication.term {
-            info!(
-                "Rejecting vote for {} (term {}). My term is higher ({}).",
-                request_vote.candidate_id, request_vote.term, self.replication.term
-            );
-        }
-        // 2. If candidate's term is greater than or equal to current term
-        else {
+        if request_vote.term >= self.replication.term {
             // If candidate's term is higher, update own term and step down
             if request_vote.term > self.replication.term {
                 self.replication.term = request_vote.term;
@@ -404,7 +397,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.step_down().await; // Ensure follower mode
             }
 
-            // 3. Check if log is up-to-date and if not already voted in this term or voted for this candidate
+            // Check if log is up-to-date and if not already voted in this term or voted for this candidate
             if self
                 .replication
                 .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
@@ -414,18 +407,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 grant_vote = true;
                 REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
             }
+        } else {
+            // If candidate's term is less than current term, reject
+            warn!(
+                "Rejecting vote for {} (term {}). My term is higher ({}).",
+                request_vote.candidate_id, request_vote.term, self.replication.term
+            );
         }
+
+        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
+        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
+            // if not found, revert the change
+            self.replication.revert_voting(current_term);
+            return;
+        };
 
         info!(
             "Voting for {} with term {} and granted: {grant_vote}",
             request_vote.candidate_id, request_vote.term
         );
-
-        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
-        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
-            return;
-        };
-
         let _ = peer.send(vote).await;
     }
 
