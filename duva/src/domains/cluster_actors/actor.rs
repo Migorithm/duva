@@ -385,6 +385,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
+        self.heartbeat_scheduler.reset_election_timeout();
 
         let current_term = self.replication.term;
         let mut grant_vote = false;
@@ -405,6 +406,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             {
                 self.replication.vote_for(Some(request_vote.candidate_id.clone()));
                 grant_vote = true;
+
                 REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
             }
         } else {
@@ -472,6 +474,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
     pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
+        // If we receive a vote from a future term, we should step down.
+        if election_vote.term > self.replication.term {
+            warn!("Received a vote from a future term {}, stepping down.", election_vote.term);
+            self.replication.term = election_vote.term;
+            self.step_down().await;
+            return;
+        } else if election_vote.term < self.replication.term {
+            // A candidate should only process votes from its current term.
+            warn!(
+                "Received a stale vote with term {}, but current term is {}. Ignoring.",
+                election_vote.term, self.replication.term
+            );
+            return;
+        }
+
         if !election_vote.vote_granted {
             return;
         }
