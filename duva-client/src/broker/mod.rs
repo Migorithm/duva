@@ -150,7 +150,7 @@ impl Broker {
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in followers {
-            let _ = self.add_node_connection(&follower.peer_id).await;
+            let _ = self.add_node_connection(follower.peer_id).await;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
@@ -170,27 +170,28 @@ impl Broker {
             .filter(|n| n.peer_id != *removed_peer_id && n.repl_id == *replid)
     }
 
-    async fn remove_outdated_connections(&mut self) {
-        self.node_connections
-            .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
-            .await;
-    }
-
     async fn add_leader_conns_if_not_found(&mut self) {
-        for node in self.topology.node_infos.clone() {
-            if ReplicationRole::Leader == node.repl_role.clone()
-                && !self.node_connections.contains_key(&node.repl_id)
-            {
-                let _ = self.add_node_connection(&node.peer_id).await;
-            }
+        let nodes_to_add: Vec<_> = self
+            .topology
+            .node_infos
+            .iter()
+            .filter(|n| {
+                n.repl_role == ReplicationRole::Leader
+                    && !self.node_connections.contains_key(&n.repl_id)
+            })
+            .map(|n| n.peer_id.clone())
+            .collect();
+
+        for peer_id in nodes_to_add {
+            let _ = self.add_node_connection(peer_id).await;
         }
     }
 
-    async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
+    async fn add_node_connection(&mut self, peer_id: PeerIdentifier) -> anyhow::Result<()> {
         let auth_req =
             ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
         let Ok((server_stream_reader, server_stream_writer, auth_response)) =
-            Self::authenticate(peer_id, Some(auth_req)).await
+            Self::authenticate(&peer_id, Some(auth_req)).await
         else {
             return Err(anyhow::anyhow!("Authentication failed!"));
         };
@@ -206,7 +207,7 @@ impl Broker {
                     .run(self.tx.clone(), auth_response.replication_id),
                 writer: server_stream_writer.run(),
                 request_id: auth_response.request_id,
-                peer_identifier: peer_id.clone(),
+                peer_identifier: peer_id,
             },
         );
         Ok(())
@@ -288,7 +289,10 @@ impl Broker {
         if self.topology.hash_ring.last_modified < topology.hash_ring.last_modified {
             self.topology = topology;
             self.add_leader_conns_if_not_found().await;
-            self.remove_outdated_connections().await;
+
+            self.node_connections
+                .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
+                .await;
         }
     }
 }
