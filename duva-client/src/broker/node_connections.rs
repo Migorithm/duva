@@ -1,7 +1,5 @@
 use super::write_stream::MsgToServer;
-use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::ReplicationId;
-use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::make_smart_pointer;
 use duva::prelude::PeerIdentifier;
@@ -90,26 +88,6 @@ pub(crate) struct NodeConnection {
 }
 
 impl NodeConnection {
-    // ! CONSIDER IDEMPOTENCY RULE
-    // !
-    // ! If request is updating action yet receive error, we need to increase the request id
-    // ! otherwise, server will not be able to process the next command
-    pub(crate) fn update_request_id(&mut self, query_io: &QueryIO) {
-        match query_io {
-            // * Current rule: s:value-idx:index_num
-            | QueryIO::SimpleString(v) => {
-                let s = String::from_utf8_lossy(v);
-                self.request_id = IndexedValueCodec::decode_index(s)
-                    .filter(|&id| id > self.request_id)
-                    .unwrap_or(self.request_id);
-            },
-
-            //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-            | QueryIO::Err(_) => self.request_id += 1,
-            | _ => {},
-        }
-    }
-
     async fn kill(self) {
         let _ = self.kill_switch.send(());
         let _ = self.writer.send(MsgToServer::Stop).await;

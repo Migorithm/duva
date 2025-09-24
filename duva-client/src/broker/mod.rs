@@ -3,6 +3,7 @@ mod read_stream;
 mod write_stream;
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, InputContext, RoutingRule};
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::operation_logs::operation::LogEntry;
@@ -10,7 +11,6 @@ use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
-
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
@@ -73,16 +73,9 @@ impl Broker {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
+
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
-                        if let Some(connection) = self.node_connections.get_mut(&repl_id) {
-                            connection.update_request_id(&query_io);
-                        } else {
-                            tracing::warn!(
-                                replication_id = %repl_id,
-                                action = %format!("{:?}", context.client_action),
-                                "Connection not found after write operation"
-                            );
-                        };
+                        self.update_reqid(repl_id, &query_io);
                     }
 
                     queue.finalize_or_requeue(query_io, context);
@@ -280,6 +273,32 @@ impl Broker {
                 .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
                 .await;
         }
+    }
+
+    pub(crate) fn update_reqid(&mut self, replid: ReplicationId, res: &QueryIO) {
+        if let Some(connection) = self.node_connections.get_mut(&replid) {
+            // ! CONSIDER IDEMPOTENCY RULE
+            // !
+            // ! If request is updating action yet receive error, we need to increase the request id
+            // ! otherwise, server will not be able to process the next command
+            match res {
+                // * Current rule: s:value-idx:index_num
+                | QueryIO::SimpleString(v) => {
+                    let s = String::from_utf8_lossy(v);
+                    connection.request_id = IndexedValueCodec::decode_index(s)
+                        .filter(|&id| id > connection.request_id)
+                        .unwrap_or(connection.request_id);
+                },
+                //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
+                | QueryIO::Err(_) => connection.request_id += 1,
+                | _ => {},
+            }
+        } else {
+            tracing::warn!(
+                replication_id = %replid,
+                "Connection not found after write operation"
+            );
+        };
     }
 }
 
