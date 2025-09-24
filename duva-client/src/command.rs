@@ -48,10 +48,6 @@ impl InputContext {
         Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
 
-    pub(crate) fn set_expected_result_cnt(&mut self, cnt: usize) {
-        self.expected_result_cnt = cnt
-    }
-
     pub(crate) fn callback(self, query_io: QueryIO) {
         let action_debug = format!("{:?}", self.client_action);
         self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {

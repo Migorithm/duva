@@ -104,10 +104,18 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
-                    if let Some(context) =
-                        self.dispatch_command_to_server(command.routing_rule, command.context).await
+                    let (routing_rule, mut context) = (command.routing_rule, command.context);
+
+                    if let Ok(result_count) = self
+                        .dispatch_command_to_server(routing_rule, context.client_action.clone())
+                        .await
                     {
+                        context.expected_result_cnt = result_count;
                         queue.push(context);
+                    } else {
+                        context.callback(QueryIO::Err(
+                            "Failed to route command. Try again after ttl time".into(),
+                        ));
                     };
                 },
             }
@@ -214,30 +222,24 @@ impl Broker {
     async fn dispatch_command_to_server(
         &self,
         routing_rule: RoutingRule,
-        mut context: InputContext,
-    ) -> Option<InputContext> {
-        let action = context.client_action.clone();
-
-        let res = match routing_rule {
-            | RoutingRule::Any => self.random_route(action).await,
+        action: ClientAction,
+    ) -> anyhow::Result<usize> {
+        let result_cnt = match routing_rule {
+            | RoutingRule::Any => self.random_route(action).await?,
             | RoutingRule::Selective(entries) => {
                 match self.topology.hash_ring.key_ownership(entries.iter().map(|e| e.key.as_str()))
                 {
-                    | Ok(node_mappings) => self.route_command_by_keys(action, node_mappings).await,
-                    | Err(_not_found) => self.random_route(action).await,
+                    | Ok(node_mappings) => {
+                        self.route_command_by_keys(action, node_mappings).await?
+                    },
+                    | Err(_not_found) => self.random_route(action).await?,
                 }
             },
-            | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
-            | RoutingRule::Info => self.route_info(action).await,
+            | RoutingRule::BroadCast => self.node_connections.send_all(action).await?,
+            | RoutingRule::Info => self.route_info(action).await?,
         };
 
-        let Ok(num_of_results) = res else {
-            context
-                .callback(QueryIO::Err("Failed to route command. Try again after ttl time".into()));
-            return None;
-        };
-        context.set_expected_result_cnt(num_of_results);
-        Some(context)
+        Ok(result_cnt)
     }
 
     // The folowing operation is for both:
@@ -295,10 +297,8 @@ impl BrokerMessage {
         action: ClientAction,
         callback: oneshot::Sender<(ClientAction, QueryIO)>,
     ) -> Self {
+        let routing_rule = (&action).into();
         let input_ctx = InputContext::new(action, callback);
-        BrokerMessage::ToServer(CommandToServer {
-            routing_rule: (&input_ctx.client_action).into(),
-            context: input_ctx,
-        })
+        BrokerMessage::ToServer(CommandToServer { routing_rule, context: input_ctx })
     }
 }
