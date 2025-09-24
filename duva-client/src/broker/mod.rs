@@ -23,6 +23,7 @@ use futures::future::try_join_all;
 
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
+use tracing::error;
 use write_stream::ServerStreamWriter;
 
 pub struct Broker {
@@ -73,20 +74,15 @@ impl Broker {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
-
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
                         self.update_reqid(repl_id, &query_io);
                     }
-
                     queue.finalize_or_requeue(query_io, context);
                 },
 
-                | BrokerMessage::FromServerError(repl_id, e) => match e {
-                    | IoError::ConnectionAborted
-                    | IoError::ConnectionReset
-                    | IoError::ConnectionRefused
-                    | IoError::NotConnected
-                    | IoError::BrokenPipe => {
+                | BrokerMessage::FromServerError(repl_id, e) => {
+                    error!("Replication {repl_id} returns error {e}!");
+                    if e.should_break() {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             ELECTION_TIMEOUT_MAX,
                         ))
@@ -94,9 +90,9 @@ impl Broker {
                         let removed_peer_id =
                             self.node_connections.remove_connection(&repl_id).await.unwrap();
                         self.discover_new_repl_leader(repl_id, removed_peer_id).await.unwrap();
-                    },
-                    | _ => {},
+                    }
                 },
+
                 | BrokerMessage::ToServer(mut context) => {
                     if let Ok(result_count) =
                         self.dispatch_command_to_server(context.client_action.clone()).await
