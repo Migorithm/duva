@@ -19,11 +19,21 @@ impl CommandQueue {
     pub fn pop(&mut self) -> Option<InputContext> {
         self.queue.pop_front()
     }
+
+    pub(crate) fn finalize_or_requeue(&mut self, query_io: QueryIO, mut context: InputContext) {
+        context.results.push(query_io);
+
+        if !(context.results.len() == context.expected_result_cnt) {
+            self.push(context);
+            return;
+        }
+
+        let result =
+            context.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
+        context.callback(result);
+    }
 }
 
-pub struct CommandToServer {
-    pub context: InputContext,
-}
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
@@ -92,18 +102,6 @@ impl InputContext {
                 Ok(res[0].clone())
             },
         }
-    }
-
-    pub(crate) fn finalize_or_requeue(mut self, queue: &mut CommandQueue, query_io: QueryIO) {
-        self.results.push(query_io);
-
-        if !(self.results.len() == self.expected_result_cnt) {
-            queue.push(self);
-            return;
-        }
-
-        let result = self.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
-        self.callback(result);
     }
 }
 

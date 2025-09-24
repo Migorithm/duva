@@ -2,7 +2,7 @@ mod node_connections;
 mod read_stream;
 mod write_stream;
 use crate::broker::node_connections::NodeConnections;
-use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
+use crate::command::{CommandQueue, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::operation_logs::operation::LogEntry;
@@ -10,7 +10,7 @@ use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
-use duva::prelude::tokio::sync::oneshot;
+
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
@@ -84,7 +84,8 @@ impl Broker {
                             );
                         };
                     }
-                    context.finalize_or_requeue(&mut queue, query_io);
+
+                    queue.finalize_or_requeue(query_io, context);
                 },
 
                 | BrokerMessage::FromServerError(repl_id, e) => match e {
@@ -103,9 +104,7 @@ impl Broker {
                     },
                     | _ => {},
                 },
-                | BrokerMessage::ToServer(command) => {
-                    let mut context = command.context;
-
+                | BrokerMessage::ToServer(mut context) => {
                     if let Ok(result_count) =
                         self.dispatch_command_to_server(context.client_action.clone()).await
                     {
@@ -287,14 +286,5 @@ impl Broker {
 pub enum BrokerMessage {
     FromServer(ReplicationId, QueryIO),
     FromServerError(ReplicationId, IoError),
-    ToServer(CommandToServer),
-}
-impl BrokerMessage {
-    pub fn from_input(
-        action: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    ) -> Self {
-        let context = InputContext::new(action, callback);
-        BrokerMessage::ToServer(CommandToServer { context })
-    }
+    ToServer(InputContext),
 }

@@ -10,7 +10,7 @@ use duva::{
 };
 use duva_client::{
     broker::BrokerMessage,
-    command::separate_command_and_args,
+    command::{InputContext, separate_command_and_args},
     controller::ClientController,
     observability::{ObservabilityConfig, init_observability_with_config},
 };
@@ -53,7 +53,11 @@ async fn main() -> anyhow::Result<()> {
         match extract_action(cmd, &args) {
             | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
-                let _ = controller.broker_tx.send(BrokerMessage::from_input(action, tx)).await;
+                let _ = controller
+                    .broker_tx
+                    .send(BrokerMessage::ToServer(InputContext::new(action, tx)))
+                    .await;
+
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
                 tracing::debug!(command = %cmd, "Command completed successfully");
