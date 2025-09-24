@@ -104,11 +104,10 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
-                    let (routing_rule, mut context) = (command.routing_rule, command.context);
+                    let mut context = command.context;
 
-                    if let Ok(result_count) = self
-                        .dispatch_command_to_server(routing_rule, context.client_action.clone())
-                        .await
+                    if let Ok(result_count) =
+                        self.dispatch_command_to_server(context.client_action.clone()).await
                     {
                         context.expected_result_cnt = result_count;
                         queue.push(context);
@@ -219,11 +218,9 @@ impl Broker {
         Ok(1)
     }
 
-    async fn dispatch_command_to_server(
-        &self,
-        routing_rule: RoutingRule,
-        action: ClientAction,
-    ) -> anyhow::Result<usize> {
+    async fn dispatch_command_to_server(&self, action: ClientAction) -> anyhow::Result<usize> {
+        let routing_rule = (&action).into();
+
         let result_cnt = match routing_rule {
             | RoutingRule::Any => self.random_route(action).await?,
             | RoutingRule::Selective(entries) => {
@@ -297,8 +294,7 @@ impl BrokerMessage {
         action: ClientAction,
         callback: oneshot::Sender<(ClientAction, QueryIO)>,
     ) -> Self {
-        let routing_rule = (&action).into();
-        let input_ctx = InputContext::new(action, callback);
-        BrokerMessage::ToServer(CommandToServer { routing_rule, context: input_ctx })
+        let context = InputContext::new(action, callback);
+        BrokerMessage::ToServer(CommandToServer { context })
     }
 }

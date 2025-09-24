@@ -23,7 +23,6 @@ impl CommandQueue {
 
 pub struct CommandToServer {
     pub context: InputContext,
-    pub routing_rule: RoutingRule,
 }
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
