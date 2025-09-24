@@ -12,7 +12,7 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{ELECTION_TIMEOUT_MAX, NodeReplInfo, Topology, anyhow};
+use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use duva::{
@@ -182,6 +182,7 @@ impl Broker {
     async fn add_node_connection(&mut self, peer_id: PeerIdentifier) -> anyhow::Result<()> {
         let auth_req =
             ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
+
         let Ok((server_stream_reader, server_stream_writer, auth_response)) =
             Self::authenticate(&peer_id, Some(auth_req)).await
         else {

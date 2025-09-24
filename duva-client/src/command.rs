@@ -1,5 +1,5 @@
 use duva::domains::operation_logs::operation::LogEntry;
-use duva::prelude::anyhow;
+use duva::prelude::anyhow::{self, Context};
 use duva::presentation::clients::request::NonMutatingAction;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
@@ -63,7 +63,7 @@ impl InputContext {
 
     pub(crate) fn callback(self, query_io: QueryIO) {
         let action_debug = format!("{:?}", self.client_action);
-        self.callback.send((self.client_action, query_io.clone())).unwrap_or_else(|_| {
+        self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
             println!("Failed to send response to input callback");
 
             // Log callback failure for debugging
@@ -74,39 +74,38 @@ impl InputContext {
         });
     }
 
-    pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
+    pub(crate) fn get_result(&mut self) -> anyhow::Result<QueryIO> {
         use NonMutatingAction::*;
+        let res = std::mem::take(&mut self.results);
 
         match self.client_action {
             | ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
-                let init = QueryIO::Array(Vec::new());
-                let result = self.results.iter().fold(init, |acc, item| {
-                    acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()))
-                });
-                Ok(result)
+                let mut init = QueryIO::Array(Vec::with_capacity(res.len()));
+                for item in res {
+                    init = init.merge(item)?;
+                }
+                Ok(init)
             },
             | ClientAction::NonMutating(Exists { keys: _ })
             | ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
-                for result in &self.results {
+                for result in res {
                     let QueryIO::SimpleString(byte) = result else {
                         return Err(anyhow::anyhow!("Expected SimpleString result"));
                     };
-                    let Ok(num) = String::from_utf8(byte.to_vec()) else {
-                        return Err(anyhow::anyhow!("Failed to convert byte to string"));
-                    };
-                    let Ok(num) = num.parse::<u64>() else {
-                        return Err(anyhow::anyhow!("Failed to parse string to u64"));
-                    };
+                    let num = String::from_utf8(byte.to_vec())
+                        .context("Failed to convert byte to string")?;
+                    let num = num.parse::<u64>().context("Failed to parse string to u64")?;
+
                     count += num;
                 }
                 Ok(QueryIO::SimpleString(count.to_string().into()))
             },
             | _ => {
-                if self.results.len() != 1 {
+                if res.len() != 1 {
                     return Err(anyhow::anyhow!("Expected exactly one result"));
                 }
-                Ok(self.results[0].clone())
+                Ok(res[0].clone())
             },
         }
     }
