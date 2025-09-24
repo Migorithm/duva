@@ -47,15 +47,9 @@ impl InputContext {
     ) -> Self {
         Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
-    pub(crate) fn append_result(&mut self, result: QueryIO) {
-        self.results.push(result);
-    }
 
     pub(crate) fn set_expected_result_cnt(&mut self, cnt: usize) {
         self.expected_result_cnt = cnt
-    }
-    pub(crate) fn is_done(&self) -> bool {
-        self.results.len() == self.expected_result_cnt
     }
 
     pub(crate) fn callback(self, query_io: QueryIO) {
@@ -106,9 +100,9 @@ impl InputContext {
     }
 
     pub(crate) fn finalize_or_requeue(mut self, queue: &mut CommandQueue, query_io: QueryIO) {
-        self.append_result(query_io);
+        self.results.push(query_io);
 
-        if !self.is_done() {
+        if !(self.results.len() == self.expected_result_cnt) {
             queue.push(self);
             return;
         }

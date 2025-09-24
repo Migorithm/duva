@@ -73,21 +73,16 @@ impl Broker {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
-
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
-                        match self.node_connections.get_mut(&repl_id) {
-                            | Some(connection) => connection.update_request_id(&query_io),
-                            | None => {
-                                println!("Connection not found after write operation");
-
-                                // Log missing connection for debugging
-                                tracing::warn!(
-                                    replication_id = %repl_id,
-                                    action = %format!("{:?}", context.client_action),
-                                    "Connection not found after write operation"
-                                );
-                            },
-                        }
+                        if let Some(connection) = self.node_connections.get_mut(&repl_id) {
+                            connection.update_request_id(&query_io);
+                        } else {
+                            tracing::warn!(
+                                replication_id = %repl_id,
+                                action = %format!("{:?}", context.client_action),
+                                "Connection not found after write operation"
+                            );
+                        };
                     }
                     context.finalize_or_requeue(&mut queue, query_io);
                 },
