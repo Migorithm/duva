@@ -55,17 +55,12 @@ impl InputContext {
         self.expected_result_cnt = cnt
     }
     pub(crate) fn is_done(&self) -> bool {
-        if self.results.len() == self.expected_result_cnt {
-            return true;
-        }
-        false
+        self.results.len() == self.expected_result_cnt
     }
 
     pub(crate) fn callback(self, query_io: QueryIO) {
         let action_debug = format!("{:?}", self.client_action);
         self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
-            println!("Failed to send response to input callback");
-
             // Log callback failure for debugging
             tracing::error!(
                 action = %action_debug,
