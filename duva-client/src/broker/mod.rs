@@ -47,7 +47,7 @@ impl Broker {
             seed_replid.clone(),
             NodeConnection {
                 writer: w.run(),
-                kill_switch: r.run(broker_tx.clone(), seed_replid.clone()),
+                kill_switch: r.run(broker_tx.clone(), seed_replid),
                 request_id: auth_response.request_id,
                 peer_identifier: server_addr.clone(),
             },
