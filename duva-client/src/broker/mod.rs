@@ -102,7 +102,9 @@ impl Broker {
                             ELECTION_TIMEOUT_MAX,
                         ))
                         .await;
-                        self.discover_new_repl_leader(repl_id).await.unwrap();
+                        let removed_peer_id =
+                            self.node_connections.remove_connection(&repl_id).await.unwrap();
+                        self.discover_new_repl_leader(repl_id, removed_peer_id).await.unwrap();
                     },
                     | _ => {},
                 },
@@ -136,38 +138,28 @@ impl Broker {
     async fn discover_new_repl_leader(
         &mut self,
         replication_id: ReplicationId,
+        previous_leader: PeerIdentifier,
     ) -> anyhow::Result<()> {
-        let removed_peer_id =
-            self.node_connections.remove_connection(&replication_id.clone()).await?;
-
         // ! ISSUE: replica set is queried and node connection is made
         // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability
         // ! We should make, therefore, some compromize that's based on some timing assumption - within this time, if connection is not established, we will abort the connection.
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
-
-        let followers =
-            self.get_follower_set(&replication_id, &removed_peer_id).cloned().collect::<Vec<_>>();
+        let remaining_replicas: Vec<_> = self
+            .topology
+            .node_infos
+            .iter()
+            .filter(|n| n.peer_id != previous_leader && n.repl_id == replication_id)
+            .map(|n| n.peer_id.clone())
+            .collect();
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
-        for follower in followers {
-            let _ = self.add_node_connection(follower.peer_id).await;
+        for follower in remaining_replicas {
+            let _ = self.add_node_connection(follower).await;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
         // ! system gives random result.
-
         Ok(())
-    }
-
-    fn get_follower_set(
-        &self,
-        replid: &ReplicationId,
-        removed_peer_id: &PeerIdentifier,
-    ) -> impl Iterator<Item = &NodeReplInfo> {
-        self.topology
-            .node_infos
-            .iter()
-            .filter(|n| n.peer_id != *removed_peer_id && n.repl_id == *replid)
     }
 
     async fn add_leader_conns_if_not_found(&mut self) {

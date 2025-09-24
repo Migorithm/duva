@@ -38,7 +38,6 @@ impl NodeConnections {
         let Some(connection) = self.conns.remove(leader_id) else {
             anyhow::bail!("Must be able to find connection {}", file!());
         };
-
         let peer_identifier = connection.peer_identifier.clone();
         connection.kill().await;
         Ok(peer_identifier)
