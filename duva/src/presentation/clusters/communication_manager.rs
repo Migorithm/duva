@@ -16,6 +16,11 @@ pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterActorSender);
 make_smart_pointer!(ClusterCommunicationManager, ClusterActorSender);
 
 impl ClusterCommunicationManager {
+    pub(crate) async fn wait_for_acceptance(&self) {
+        let (tx, rx) = Callback::create();
+        let _ = self.send(ClientMessage::CanEnter(tx)).await;
+        rx.wait().await;
+    }
     pub(crate) async fn route_get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetPeers(tx)).await?;

@@ -234,7 +234,7 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     for _ in 0..num_requests {
         let (callback, _rx) = Callback::create();
         cluster_actor
-            .migrations_in_progress
+            .pending_reqs
             .as_mut()
             .unwrap()
             .add_req(Helper::consensus_request(callback, None));

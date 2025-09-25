@@ -64,6 +64,8 @@ pub enum ClientMessage {
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
     GetTopology(Callback<Topology>),
     ClusterReshard(Callback<Result<(), anyhow::Error>>),
+
+    CanEnter(Callback<()>),
 }
 
 impl From<ClientMessage> for ClusterCommand {

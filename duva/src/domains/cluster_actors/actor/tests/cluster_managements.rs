@@ -151,7 +151,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
     cluster_actor.block_write_reqs();
 
     // WHEN
-    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_on_migration_done();
     let _ = task.await;
 
     // THEN

@@ -216,6 +216,7 @@ mod peer_messages {
     pub(crate) struct PendingRequests {
         requests: VecDeque<ConsensusRequest>,
         batches: HashMap<BatchId, QueuedKeysToMigrate>,
+        pub(crate) callbacks: Vec<Callback<()>>,
     }
     impl PendingRequests {
         pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
@@ -227,8 +228,8 @@ mod peer_messages {
         pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
             self.batches.remove(id)
         }
-        pub(crate) fn to_requests(self) -> VecDeque<ConsensusRequest> {
-            self.requests
+        pub(crate) fn to_requests(&mut self) -> VecDeque<ConsensusRequest> {
+            std::mem::take(&mut self.requests)
         }
 
         #[cfg(test)]
