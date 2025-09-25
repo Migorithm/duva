@@ -740,7 +740,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // ! BLOCK subsequent requests until rebalance is done
     fn block_write_reqs(&mut self) {
         if self.migrations_in_progress.is_none() {
-            self.migrations_in_progress = Some(Default::default());
+            self.migrations_in_progress = Some(PendingRequests::default());
         }
     }
 
