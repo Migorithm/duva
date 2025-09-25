@@ -29,8 +29,8 @@ use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
-use crate::domains::peers::command::InProgressMigration;
 use crate::domains::peers::command::PendingMigrationTask;
+use crate::domains::peers::command::PendingRequests;
 use crate::domains::peers::command::QueuedKeysToMigrate;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
@@ -78,7 +78,7 @@ pub struct ClusterActor<T> {
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) client_sessions: ClientSessions,
     pub(crate) hash_ring: HashRing,
-    migrations_in_progress: Option<InProgressMigration>,
+    migrations_in_progress: Option<PendingRequests>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -1404,7 +1404,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if let Some(pending_mig) = self.migrations_in_progress.take() {
                 info!("All migrations complete, processing pending requests.");
 
-                let mut pending_reqs = pending_mig.pending_requests();
+                let mut pending_reqs = pending_mig.to_requests();
                 if pending_reqs.is_empty() {
                     return;
                 }
