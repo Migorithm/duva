@@ -4,7 +4,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
 
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let p1 = spawn_server_process(&env1)?;
+    let p1: crate::common::TestProcessChild = spawn_server_process(&env1)?;
 
     let mut p1_h = Client::new(p1.port);
 
@@ -26,7 +26,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // THEN
     let role_response = p1_h.send_and_get_vec("role", 2);
     assert!(role_response.contains(&format!("127.0.0.1:{}:{}", p1.port, "follower")));
-    assert!(role_response.contains(&format!("127.0.0.1:{}:{}", env2.port, "leader")));
+    assert!(role_response.contains(&format!("127.0.0.1:{}:{}", p2.port, "leader")));
 
     // * Following is required to test replicaof successuflly update topology changes
     drop(p1);

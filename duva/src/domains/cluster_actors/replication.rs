@@ -1,5 +1,4 @@
-use super::consensus::election::ElectionState;
-
+use crate::domains::cluster_actors::consensus::election::ElectionVotes;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -21,7 +20,7 @@ pub(crate) struct ReplicationState<T> {
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) banlist: HashSet<BannedPeer>,
-    pub(crate) election_state: ElectionState,
+    pub(crate) election_votes: ElectionVotes,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) last_applied: u64,
 }
@@ -35,7 +34,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         logger: ReplicatedLogs<T>,
     ) -> Self {
         Self {
-            election_state: ElectionState::new(&role),
+            election_votes: ElectionVotes::default(),
             role,
             replid,
             self_host: self_host.to_string(),
@@ -45,6 +44,10 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
             last_applied: 0,
             logger,
         }
+    }
+
+    pub(crate) fn reset_election_votes(&mut self) {
+        self.election_votes = ElectionVotes::default();
     }
 
     pub(crate) fn info(&self) -> ReplicationInfo {
@@ -92,18 +95,21 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         }
     }
 
-    pub(super) fn revert_voting(&mut self, term: u64) {
-        self.vote_for(None);
+    pub(super) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
+        self.election_votes.votes.remove(&candidate_id);
         self.term = term;
     }
 
-    pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
-        self.election_state = ElectionState::Follower { voted_for: leader_id };
-        self.role = ReplicationRole::Follower;
+    pub(super) fn vote_for(&mut self, candidate_id: PeerIdentifier) {
+        self.election_votes.votes.insert(candidate_id);
     }
 
     pub(crate) fn is_leader(&self) -> bool {
         self.role == ReplicationRole::Leader
+    }
+
+    pub(crate) fn is_candidate(&self) -> bool {
+        self.election_votes.votes.contains(&self.self_identifier())
     }
 
     pub(super) fn is_log_up_to_date(

@@ -2,7 +2,6 @@ use super::ClusterCommand;
 use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
-use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
@@ -15,7 +14,7 @@ use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::LogConsensusVoting;
-use crate::domains::cluster_actors::consensus::election::ElectionVoting;
+use crate::domains::cluster_actors::consensus::election::ElectionVotes;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -393,7 +392,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // If candidate's term is higher, update own term and step down
             if request_vote.term > self.replication.term {
                 self.replication.term = request_vote.term;
-                self.replication.vote_for(None); // Clear votedFor
                 self.step_down().await; // Ensure follower mode
             }
 
@@ -401,9 +399,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if self
                 .replication
                 .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
-                && self.replication.election_state.is_votable(&request_vote.candidate_id)
+                && self.replication.election_votes.is_votable(&request_vote.candidate_id)
             {
-                self.replication.vote_for(Some(request_vote.candidate_id.clone()));
+                self.replication.vote_for(request_vote.candidate_id.clone());
                 grant_vote = true;
             }
         } else {
@@ -415,10 +413,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.heartbeat_scheduler.reset_election_timeout();
+
         let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             // if not found, revert the change
-            self.replication.revert_voting(current_term);
+            self.replication.revert_voting(current_term, &request_vote.candidate_id);
             return;
         };
 
@@ -498,20 +497,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we are not a candidate, ignore the vote.
-        let ElectionState::Candidate { voting: Some(voting) } =
-            &mut self.replication.election_state
-        else {
+        if !self.replication.is_candidate() {
             return;
-        };
+        }
 
         // Record the vote
-        if !voting.record_vote(from.clone()) {
+        if !self.replication.election_votes.record_vote(from.clone()) {
             warn!("Received a duplicate vote from {}", from);
             return; // Already voted
         }
 
         // Check for majority
-        if voting.has_majority() {
+        if self.replication.election_votes.has_majority() {
             info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
             self.become_leader().await;
 
@@ -1049,7 +1046,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn reset_election_timeout(&mut self, new_term: u64) {
         self.heartbeat_scheduler.reset_election_timeout();
-        self.replication.election_state = ElectionState::Follower { voted_for: None };
+
         self.replication.role = ReplicationRole::Follower;
         if new_term > self.replication.term {
             self.replication.term = new_term;
@@ -1104,13 +1101,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
-        self.replication.vote_for(None);
+        self.replication.reset_election_votes();
         self.heartbeat_scheduler.turn_follower_mode();
+        self.replication.role = ReplicationRole::Follower;
+
+        self.unblock_pending_requests();
     }
 
     async fn become_leader(&mut self) {
         self.replication.role = ReplicationRole::Leader;
-        self.replication.election_state = ElectionState::Leader;
+        self.replication.election_votes.votes.clear();
         self.heartbeat_scheduler.turn_leader_mode().await;
         self.hash_ring.update_repl_leader(
             self.replication.replid.clone(),
@@ -1131,16 +1131,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.unblock_pending_requests();
     }
+
     fn become_candidate(&mut self) {
         self.block_write_reqs();
-
         self.replication.term += 1;
-        self.replication.election_state = ElectionState::Candidate {
-            voting: Some(ElectionVoting::new(
-                self.replicas().count() as u8,
-                self.replication.self_identifier(),
-            )),
-        };
+        self.replication.election_votes =
+            ElectionVotes::new(self.replicas().count() as u8, self.replication.self_identifier());
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: Option<RejectionReason>) {
