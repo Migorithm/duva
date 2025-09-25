@@ -195,11 +195,11 @@ impl QueryIO {
             },
             | (QueryIO::Null, a) | (a, QueryIO::Null) => Ok(a),
             | (QueryIO::Array(mut a), b) => {
-                a.push(b.clone());
+                a.push(b);
                 Ok(QueryIO::Array(a))
             },
             | (a, QueryIO::Array(mut b)) => {
-                b.push(a.clone());
+                b.push(a);
                 Ok(QueryIO::Array(b))
             },
             | _ => Err(anyhow!("Only Arrays can be merged")),

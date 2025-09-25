@@ -2,7 +2,8 @@ mod node_connections;
 mod read_stream;
 mod write_stream;
 use crate::broker::node_connections::NodeConnections;
-use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
+use crate::command::{CommandQueue, InputContext, RoutingRule};
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::operation_logs::operation::LogEntry;
@@ -10,9 +11,8 @@ use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
-use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{ELECTION_TIMEOUT_MAX, NodeReplInfo, Topology, anyhow};
+use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use duva::{
@@ -23,6 +23,7 @@ use futures::future::try_join_all;
 
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
+use tracing::error;
 use write_stream::ServerStreamWriter;
 
 pub struct Broker {
@@ -46,7 +47,7 @@ impl Broker {
             seed_replid.clone(),
             NodeConnection {
                 writer: w.run(),
-                kill_switch: r.run(broker_tx.clone(), seed_replid.clone()),
+                kill_switch: r.run(broker_tx.clone(), seed_replid),
                 request_id: auth_response.request_id,
                 peer_identifier: server_addr.clone(),
             },
@@ -73,44 +74,35 @@ impl Broker {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
-
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
-                        match self.node_connections.get_mut(&repl_id) {
-                            | Some(connection) => connection.update_request_id(&query_io),
-                            | None => {
-                                println!("Connection not found after write operation");
-
-                                // Log missing connection for debugging
-                                tracing::warn!(
-                                    replication_id = %repl_id,
-                                    action = %format!("{:?}", context.client_action),
-                                    "Connection not found after write operation"
-                                );
-                            },
-                        }
+                        self.update_reqid(repl_id, &query_io);
                     }
-                    context.finalize_or_requeue(&mut queue, query_io);
+                    queue.finalize_or_requeue(query_io, context);
                 },
 
-                | BrokerMessage::FromServerError(repl_id, e) => match e {
-                    | IoError::ConnectionAborted
-                    | IoError::ConnectionReset
-                    | IoError::ConnectionRefused
-                    | IoError::NotConnected
-                    | IoError::BrokenPipe => {
+                | BrokerMessage::FromServerError(repl_id, e) => {
+                    error!("Replication {repl_id} returns error {e}!");
+                    if e.should_break() {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             ELECTION_TIMEOUT_MAX,
                         ))
                         .await;
-                        self.discover_new_repl_leader(repl_id).await.unwrap();
-                    },
-                    | _ => {},
+                        let removed_peer_id =
+                            self.node_connections.remove_connection(&repl_id).await.unwrap();
+                        self.discover_new_repl_leader(repl_id, removed_peer_id).await.unwrap();
+                    }
                 },
-                | BrokerMessage::ToServer(command) => {
-                    if let Some(context) =
-                        self.dispatch_command_to_server(command.routing_rule, command.context).await
+
+                | BrokerMessage::ToServer(mut context) => {
+                    if let Ok(result_count) =
+                        self.dispatch_command_to_server(context.client_action.clone()).await
                     {
+                        context.expected_result_cnt = result_count;
                         queue.push(context);
+                    } else {
+                        context.callback(QueryIO::Err(
+                            "Failed to route command. Try again after ttl time".into(),
+                        ));
                     };
                 },
             }
@@ -136,61 +128,53 @@ impl Broker {
     async fn discover_new_repl_leader(
         &mut self,
         replication_id: ReplicationId,
+        previous_leader: PeerIdentifier,
     ) -> anyhow::Result<()> {
-        let removed_peer_id =
-            self.node_connections.remove_connection(&replication_id.clone()).await?;
-
         // ! ISSUE: replica set is queried and node connection is made
         // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability
         // ! We should make, therefore, some compromize that's based on some timing assumption - within this time, if connection is not established, we will abort the connection.
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
-
-        let followers =
-            self.get_follower_set(&replication_id, &removed_peer_id).cloned().collect::<Vec<_>>();
+        let remaining_replicas: Vec<_> = self
+            .topology
+            .node_infos
+            .iter()
+            .filter(|n| n.peer_id != previous_leader && n.repl_id == replication_id)
+            .map(|n| n.peer_id.clone())
+            .collect();
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
-        for follower in followers {
-            let _ = self.add_node_connection(&follower.peer_id).await;
+        for follower in remaining_replicas {
+            let _ = self.add_node_connection(follower).await;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
         // ! system gives random result.
-
         Ok(())
     }
 
-    fn get_follower_set(
-        &self,
-        replid: &ReplicationId,
-        removed_peer_id: &PeerIdentifier,
-    ) -> impl Iterator<Item = &NodeReplInfo> {
-        self.topology
+    async fn add_leader_conns_if_not_found(&mut self) {
+        let nodes_to_add: Vec<_> = self
+            .topology
             .node_infos
             .iter()
-            .filter(|n| n.peer_id != *removed_peer_id && n.repl_id == *replid)
-    }
+            .filter(|n| {
+                n.repl_role == ReplicationRole::Leader
+                    && !self.node_connections.contains_key(&n.repl_id)
+            })
+            .map(|n| n.peer_id.clone())
+            .collect();
 
-    async fn remove_outdated_connections(&mut self) {
-        self.node_connections
-            .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
-            .await;
-    }
-
-    async fn add_leader_conns_if_not_found(&mut self) {
-        for node in self.topology.node_infos.clone() {
-            if ReplicationRole::Leader == node.repl_role.clone()
-                && !self.node_connections.contains_key(&node.repl_id)
-            {
-                let _ = self.add_node_connection(&node.peer_id).await;
-            }
+        for peer_id in nodes_to_add {
+            let _ = self.add_node_connection(peer_id).await;
         }
     }
 
-    async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
+    async fn add_node_connection(&mut self, peer_id: PeerIdentifier) -> anyhow::Result<()> {
         let auth_req =
             ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
+
         let Ok((server_stream_reader, server_stream_writer, auth_response)) =
-            Self::authenticate(peer_id, Some(auth_req)).await
+            Self::authenticate(&peer_id, Some(auth_req)).await
         else {
             return Err(anyhow::anyhow!("Authentication failed!"));
         };
@@ -206,7 +190,7 @@ impl Broker {
                     .run(self.tx.clone(), auth_response.replication_id),
                 writer: server_stream_writer.run(),
                 request_id: auth_response.request_id,
-                peer_identifier: peer_id.clone(),
+                peer_identifier: peer_id,
             },
         );
         Ok(())
@@ -222,33 +206,25 @@ impl Broker {
         Ok(1)
     }
 
-    async fn dispatch_command_to_server(
-        &self,
-        routing_rule: RoutingRule,
-        mut context: InputContext,
-    ) -> Option<InputContext> {
-        let action = context.client_action.clone();
+    async fn dispatch_command_to_server(&self, action: ClientAction) -> anyhow::Result<usize> {
+        let routing_rule = (&action).into();
 
-        let res = match routing_rule {
-            | RoutingRule::Any => self.random_route(action).await,
+        let result_cnt = match routing_rule {
+            | RoutingRule::Any => self.random_route(action).await?,
             | RoutingRule::Selective(entries) => {
                 match self.topology.hash_ring.key_ownership(entries.iter().map(|e| e.key.as_str()))
                 {
-                    | Ok(node_mappings) => self.route_command_by_keys(action, node_mappings).await,
-                    | Err(_not_found) => self.random_route(action).await,
+                    | Ok(node_mappings) => {
+                        self.route_command_by_keys(action, node_mappings).await?
+                    },
+                    | Err(_not_found) => self.random_route(action).await?,
                 }
             },
-            | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
-            | RoutingRule::Info => self.route_info(action).await,
+            | RoutingRule::BroadCast => self.node_connections.send_all(action).await?,
+            | RoutingRule::Info => self.route_info(action).await?,
         };
 
-        let Ok(num_of_results) = res else {
-            context
-                .callback(QueryIO::Err("Failed to route command. Try again after ttl time".into()));
-            return None;
-        };
-        context.set_expected_result_cnt(num_of_results);
-        Some(context)
+        Ok(result_cnt)
     }
 
     // The folowing operation is for both:
@@ -288,25 +264,42 @@ impl Broker {
         if self.topology.hash_ring.last_modified < topology.hash_ring.last_modified {
             self.topology = topology;
             self.add_leader_conns_if_not_found().await;
-            self.remove_outdated_connections().await;
+
+            self.node_connections
+                .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
+                .await;
         }
+    }
+
+    pub(crate) fn update_reqid(&mut self, replid: ReplicationId, res: &QueryIO) {
+        if let Some(connection) = self.node_connections.get_mut(&replid) {
+            // ! CONSIDER IDEMPOTENCY RULE
+            // !
+            // ! If request is updating action yet receive error, we need to increase the request id
+            // ! otherwise, server will not be able to process the next command
+            match res {
+                // * Current rule: s:value-idx:index_num
+                | QueryIO::SimpleString(v) => {
+                    let s = String::from_utf8_lossy(v);
+                    connection.request_id = IndexedValueCodec::decode_index(s)
+                        .filter(|&id| id > connection.request_id)
+                        .unwrap_or(connection.request_id);
+                },
+                //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
+                | QueryIO::Err(_) => connection.request_id += 1,
+                | _ => {},
+            }
+        } else {
+            tracing::warn!(
+                replication_id = %replid,
+                "Connection not found after write operation"
+            );
+        };
     }
 }
 
 pub enum BrokerMessage {
     FromServer(ReplicationId, QueryIO),
     FromServerError(ReplicationId, IoError),
-    ToServer(CommandToServer),
-}
-impl BrokerMessage {
-    pub fn from_input(
-        action: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    ) -> Self {
-        let input_ctx = InputContext::new(action, callback);
-        BrokerMessage::ToServer(CommandToServer {
-            routing_rule: (&input_ctx.client_action).into(),
-            context: input_ctx,
-        })
-    }
+    ToServer(InputContext),
 }

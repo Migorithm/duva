@@ -65,7 +65,7 @@ impl HandShakeRequest {
 
     pub(crate) fn extract_capa(&self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
         self.match_query(HandShakeRequestEnum::ReplConf)?;
-        if self.args.is_empty() || self.args.len() % 2 != 0 {
+        if self.args.is_empty() || !self.args.len().is_multiple_of(2) {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         }
 

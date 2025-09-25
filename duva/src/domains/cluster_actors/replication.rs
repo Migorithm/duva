@@ -1,5 +1,6 @@
 use super::consensus::election::ElectionState;
 
+use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
@@ -25,7 +26,7 @@ pub(crate) struct ReplicationState<T> {
     pub(crate) last_applied: u64,
 }
 
-impl<T> ReplicationState<T> {
+impl<T: TWriteAheadLog> ReplicationState<T> {
     pub(crate) fn new(
         replid: ReplicationId,
         role: ReplicationRole,
@@ -91,29 +92,9 @@ impl<T> ReplicationState<T> {
         }
     }
 
-    pub(super) fn become_follower_if_term_higher_and_votable(
-        &mut self,
-        candidate_id: &PeerIdentifier,
-        election_term: u64,
-    ) -> bool {
-        // If the candidate's term is less than mine -> reject
-        if election_term < self.term {
-            return false;
-        }
-
-        // When a node sees a higher term, it must forget any vote it cast in a prior term, because:
-        if election_term > self.term {
-            self.term = election_term;
-            self.vote_for(None);
-        }
-
-        if !self.election_state.is_votable(candidate_id) {
-            return false;
-        }
-
-        self.vote_for(Some(candidate_id.clone()));
-
-        true
+    pub(super) fn revert_voting(&mut self, term: u64) {
+        self.vote_for(None);
+        self.term = term;
     }
 
     pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
@@ -123,6 +104,19 @@ impl<T> ReplicationState<T> {
 
     pub(crate) fn is_leader(&self) -> bool {
         self.role == ReplicationRole::Leader
+    }
+
+    pub(super) fn is_log_up_to_date(
+        &self,
+        candidate_last_log_index: u64,
+        candidate_last_log_term: u64,
+    ) -> bool {
+        if candidate_last_log_term > self.logger.last_log_term {
+            return true;
+        }
+
+        candidate_last_log_term == self.logger.last_log_term
+            && candidate_last_log_index >= self.logger.last_log_index
     }
 }
 

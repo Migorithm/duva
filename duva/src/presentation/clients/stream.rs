@@ -28,7 +28,7 @@ impl ClientStreamReader {
             // * extract queries
             let query_ios = self.r.read_values().await;
             if let Err(err) = query_ios {
-                error!("{}", err);
+                info!("{}", err);
                 if err.should_break() {
                     return;
                 }

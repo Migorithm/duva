@@ -437,18 +437,18 @@ impl TWriteAheadLog for FileOpLogs {
         });
 
         // * Check if the last sealed segment needs to be truncated and promoted.
-        if let Some(last_segment) = self.segments.last() {
-            if last_segment.end_index > log_index {
-                let mut new_active = self.segments.pop().unwrap();
-                if new_active.truncate(log_index).is_ok() {
-                    // This truncated segment becomes the new active one.
-                    // The old active segment is now obsolete.
-                    let _ = std::fs::remove_file(&self.active_segment.path);
-                    self.active_segment = new_active;
-                }
-                // After promoting a sealed segment, the job is done.
-                return;
+        if let Some(last_segment) = self.segments.last()
+            && last_segment.end_index > log_index
+            && let Some(mut new_active) = self.segments.pop()
+        {
+            if new_active.truncate(log_index).is_ok() {
+                // This truncated segment becomes the new active one.
+                // The old active segment is now obsolete.
+                let _ = std::fs::remove_file(&self.active_segment.path);
+                self.active_segment = new_active;
             }
+            // After promoting a sealed segment, the job is done.
+            return;
         }
 
         if self.active_segment.end_index <= log_index {

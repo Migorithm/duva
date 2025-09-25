@@ -28,7 +28,6 @@ use std::sync::LazyLock;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -143,7 +142,9 @@ impl StartUpFacade {
         self.discover_cluster().await?;
         let _ = self.start_accepting_client_streams().await;
 
+        info!("Server shut down...");
         logger_provider.shutdown().unwrap();
+
         Ok(())
     }
 
@@ -174,7 +175,6 @@ impl StartUpFacade {
         loop {
             match peer_listener.accept().await {
                 | Ok((peer_stream, socket_addr)) => {
-                    debug!("Accepted peer connection: {}", socket_addr);
                     let (read, write) = peer_stream.into_split();
                     let host_ip = socket_addr.ip().to_string();
                     if cluster_communication_manager

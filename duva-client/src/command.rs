@@ -1,5 +1,5 @@
 use duva::domains::operation_logs::operation::LogEntry;
-use duva::prelude::anyhow;
+use duva::prelude::anyhow::{self, Context};
 use duva::presentation::clients::request::NonMutatingAction;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
@@ -19,12 +19,21 @@ impl CommandQueue {
     pub fn pop(&mut self) -> Option<InputContext> {
         self.queue.pop_front()
     }
+
+    pub(crate) fn finalize_or_requeue(&mut self, query_io: QueryIO, mut context: InputContext) {
+        context.results.push(query_io);
+
+        if !(context.results.len() == context.expected_result_cnt) {
+            self.push(context);
+            return;
+        }
+
+        let result =
+            context.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
+        context.callback(result);
+    }
 }
 
-pub struct CommandToServer {
-    pub context: InputContext,
-    pub routing_rule: RoutingRule,
-}
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
@@ -47,25 +56,10 @@ impl InputContext {
     ) -> Self {
         Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
-    pub(crate) fn append_result(&mut self, result: QueryIO) {
-        self.results.push(result);
-    }
-
-    pub(crate) fn set_expected_result_cnt(&mut self, cnt: usize) {
-        self.expected_result_cnt = cnt
-    }
-    pub(crate) fn is_done(&self) -> bool {
-        if self.results.len() == self.expected_result_cnt {
-            return true;
-        }
-        false
-    }
 
     pub(crate) fn callback(self, query_io: QueryIO) {
         let action_debug = format!("{:?}", self.client_action);
-        self.callback.send((self.client_action, query_io.clone())).unwrap_or_else(|_| {
-            println!("Failed to send response to input callback");
-
+        self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
             // Log callback failure for debugging
             tracing::error!(
                 action = %action_debug,
@@ -74,53 +68,40 @@ impl InputContext {
         });
     }
 
-    pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
+    pub(crate) fn get_result(&mut self) -> anyhow::Result<QueryIO> {
         use NonMutatingAction::*;
+        let res = std::mem::take(&mut self.results);
 
         match self.client_action {
             | ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
-                let init = QueryIO::Array(Vec::new());
-                let result = self.results.iter().fold(init, |acc, item| {
-                    acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()))
-                });
-                Ok(result)
+                let mut init = QueryIO::Array(Vec::with_capacity(res.len()));
+                for item in res {
+                    init = init.merge(item)?;
+                }
+                Ok(init)
             },
             | ClientAction::NonMutating(Exists { keys: _ })
             | ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
-                for result in &self.results {
+                for result in res {
                     let QueryIO::SimpleString(byte) = result else {
                         return Err(anyhow::anyhow!("Expected SimpleString result"));
                     };
-                    let Ok(num) = String::from_utf8(byte.to_vec()) else {
-                        return Err(anyhow::anyhow!("Failed to convert byte to string"));
-                    };
-                    let Ok(num) = num.parse::<u64>() else {
-                        return Err(anyhow::anyhow!("Failed to parse string to u64"));
-                    };
+                    let num = String::from_utf8(byte.to_vec())
+                        .context("Failed to convert byte to string")?;
+                    let num = num.parse::<u64>().context("Failed to parse string to u64")?;
+
                     count += num;
                 }
                 Ok(QueryIO::SimpleString(count.to_string().into()))
             },
             | _ => {
-                if self.results.len() != 1 {
+                if res.len() != 1 {
                     return Err(anyhow::anyhow!("Expected exactly one result"));
                 }
-                Ok(self.results[0].clone())
+                Ok(res[0].clone())
             },
         }
-    }
-
-    pub(crate) fn finalize_or_requeue(mut self, queue: &mut CommandQueue, query_io: QueryIO) {
-        self.append_result(query_io);
-
-        if !self.is_done() {
-            queue.push(self);
-            return;
-        }
-
-        let result = self.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
-        self.callback(result);
     }
 }
 

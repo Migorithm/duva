@@ -1,6 +1,5 @@
+use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
-
-use tracing::warn;
 
 use crate::domains::{
     cluster_actors::replication::ReplicationRole, peers::identifier::PeerIdentifier,
@@ -32,60 +31,48 @@ impl ElectionState {
             | _ => false,
         }
     }
-
-    pub(crate) fn can_transition_to_leader(&mut self) -> bool {
-        let ElectionState::Candidate { voting } = self else { return false };
-        // Try to take ownership of the current voting state
-        let Some(current_voting) = voting.take() else {
-            return false;
-        };
-        // Process the vote with granted (true/false)
-        *voting = current_voting.voting_if_unfinished();
-        voting.is_none()
-    }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElectionVoting {
-    pub(crate) cnt: u8,
     pub(crate) replica_count: u8,
+    pub(crate) voters: HashSet<PeerIdentifier>,
 }
 
 impl ElectionVoting {
-    pub(crate) fn new(replica_count: u8) -> Self {
-        // ! one for selv vote
-        Self { cnt: 1, replica_count }
+    pub(crate) fn new(replica_count: u8, self_id: PeerIdentifier) -> Self {
+        let mut voters = HashSet::new();
+        voters.insert(self_id);
+        Self { replica_count, voters }
     }
-    fn get_required_votes(&self) -> u8 {
-        (self.replica_count + 1).div_ceil(2)
+
+    fn get_required_votes(&self) -> usize {
+        ((self.replica_count + 1).div_ceil(2)) as usize
     }
-    pub(crate) fn voting_if_unfinished(mut self) -> Option<Self> {
-        self.cnt += 1;
 
-        let required_count = self.get_required_votes();
+    pub(crate) fn record_vote(&mut self, voter_id: PeerIdentifier) -> bool {
+        self.voters.insert(voter_id)
+    }
 
-        if self.cnt >= required_count {
-            return None;
-        }
-        warn!("Voting not finished yet, curent count{}, required count{required_count}", self.cnt);
-        Some(self)
+    pub(crate) fn has_majority(&self) -> bool {
+        self.voters.len() >= self.get_required_votes()
     }
 }
 
 #[test]
 fn test_get_required_votes() {
-    let ev = ElectionVoting { cnt: 0, replica_count: 0 };
+    let ev = ElectionVoting::new(0, PeerIdentifier("peer1".into()));
     assert_eq!(ev.get_required_votes(), 1);
 
-    let ev = ElectionVoting { cnt: 0, replica_count: 1 };
+    let ev = ElectionVoting::new(1, PeerIdentifier("peer1".into()));
     assert_eq!(ev.get_required_votes(), 1);
 
-    let ev = ElectionVoting { cnt: 0, replica_count: 2 };
+    let ev = ElectionVoting::new(2, PeerIdentifier("peer1".into()));
     assert_eq!(ev.get_required_votes(), 2);
 
-    let ev = ElectionVoting { cnt: 0, replica_count: 3 };
+    let ev = ElectionVoting::new(3, PeerIdentifier("peer1".into()));
     assert_eq!(ev.get_required_votes(), 2);
 
-    let ev = ElectionVoting { cnt: 0, replica_count: 4 };
+    let ev = ElectionVoting::new(4, PeerIdentifier("peer1".into()));
     assert_eq!(ev.get_required_votes(), 3);
 }

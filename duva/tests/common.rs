@@ -126,10 +126,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
                 continue;
             }
 
-            if role_res.contains("leader") || role_res.contains("follower") {
-                // it's ready
-                break;
-            }
+            break;
         }
     }
 

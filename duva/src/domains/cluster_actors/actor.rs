@@ -385,25 +385,49 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
-        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
+        self.heartbeat_scheduler.reset_election_timeout();
 
-        let grant_vote = self.logger().last_log_index <= request_vote.last_log_index
-            && self.replication.become_follower_if_term_higher_and_votable(
-                &request_vote.candidate_id,
-                request_vote.term,
+        let current_term = self.replication.term;
+        let mut grant_vote = false;
+
+        if request_vote.term >= self.replication.term {
+            // If candidate's term is higher, update own term and step down
+            if request_vote.term > self.replication.term {
+                self.replication.term = request_vote.term;
+                self.replication.vote_for(None); // Clear votedFor
+                self.step_down().await; // Ensure follower mode
+            }
+
+            // Check if log is up-to-date and if not already voted in this term or voted for this candidate
+            if self
+                .replication
+                .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
+                && self.replication.election_state.is_votable(&request_vote.candidate_id)
+            {
+                self.replication.vote_for(Some(request_vote.candidate_id.clone()));
+                grant_vote = true;
+
+                REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
+            }
+        } else {
+            // If candidate's term is less than current term, reject
+            warn!(
+                "Rejecting vote for {} (term {}). My term is higher ({}).",
+                request_vote.candidate_id, request_vote.term, self.replication.term
             );
+        }
+
+        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
+        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
+            // if not found, revert the change
+            self.replication.revert_voting(current_term);
+            return;
+        };
 
         info!(
             "Voting for {} with term {} and granted: {grant_vote}",
             request_vote.candidate_id, request_vote.term
         );
-
-        // ! vote may have been made for requester, maybe not. Therefore, we have to set the term for self
-        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
-        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
-            return;
-        };
-
         let _ = peer.send(vote).await;
     }
 
@@ -448,24 +472,61 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
-    pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote), fields(from = %from))]
+    pub(crate) async fn receive_election_vote(
+        &mut self,
+        from: &PeerIdentifier,
+        election_vote: ElectionVote,
+    ) {
+        // If we receive a vote from a future term, we should step down.
+        if election_vote.term > self.replication.term {
+            warn!("Received a vote from a future term {}, stepping down.", election_vote.term);
+            self.replication.term = election_vote.term;
+            self.step_down().await;
+            return;
+        }
+
+        // A candidate should only process votes from its current term.
+        if election_vote.term < self.replication.term {
+            warn!(
+                "Received a stale vote with term {}, but current term is {}. Ignoring.",
+                election_vote.term, self.replication.term
+            );
+            return;
+        }
         if !election_vote.vote_granted {
             return;
         }
-        if !self.replication.election_state.can_transition_to_leader() {
+
+        if self.replication.is_leader() {
             return;
         }
 
-        info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
-        self.become_leader().await;
+        // If we are not a candidate, ignore the vote.
+        let ElectionState::Candidate { voting: Some(voting) } =
+            &mut self.replication.election_state
+        else {
+            return;
+        };
 
-        // * Replica notification
-        self.send_rpc_to_replicas().await;
+        // Record the vote
+        if !voting.record_vote(from.clone()) {
+            warn!("Received a duplicate vote from {}", from);
+            return; // Already voted
+        }
 
-        // * Cluster notification
-        let msg = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
-        self.send_heartbeat(msg).await;
+        // Check for majority
+        if voting.has_majority() {
+            info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
+            self.become_leader().await;
+
+            // * Replica notification
+            self.send_rpc_to_replicas().await;
+
+            // * Cluster notification
+            let msg = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
+            self.send_heartbeat(msg).await;
+        }
     }
 
     // * Forces the current node to become a replica of the given peer.
@@ -1041,7 +1102,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
         self.replication.vote_for(None);
-        self.heartbeat_scheduler.turn_follower_mode().await;
+        self.heartbeat_scheduler.turn_follower_mode();
     }
 
     async fn become_leader(&mut self) {
@@ -1070,7 +1131,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
         self.replication.term += 1;
         self.replication.election_state = ElectionState::Candidate {
-            voting: Some(ElectionVoting::new(self.replicas().count() as u8)),
+            voting: Some(ElectionVoting::new(
+                self.replicas().count() as u8,
+                self.replication.self_identifier(),
+            )),
         };
     }
 
