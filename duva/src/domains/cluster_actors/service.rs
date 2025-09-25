@@ -59,7 +59,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ScheduleMigrationBatch(tasks, callback) => {
                 self.migrate_batch(tasks, callback).await;
             },
-            | TryUnblockWriteReqs => self.unblock_write_reqs_if_done(),
+            | TryUnblockWriteReqs => self.unblock_write_on_migration_done(),
             | SendBatchAck { batch_id, to } => self.send_batch_ack(batch_id, to).await,
         }
     }
@@ -69,6 +69,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         use ClientMessage::*;
 
         match client_message {
+            | CanEnter(callback) => {
+                self.register_awaiter_if_pending(callback);
+            },
             | GetPeers(callback) => {
                 callback.send(self.members.keys().cloned().collect::<Vec<_>>());
             },

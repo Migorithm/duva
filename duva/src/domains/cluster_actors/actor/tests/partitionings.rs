@@ -16,7 +16,7 @@ async fn test_rebalance_request_with_lazy() {
     cluster_actor.rebalance_request(request_to, lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none())
+    assert!(cluster_actor.pending_reqs.is_none())
 }
 
 // ! when member has not been connected, ignore
@@ -31,7 +31,7 @@ async fn test_rebalance_request_before_member_connected() {
     cluster_actor.rebalance_request(request_to, lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none())
+    assert!(cluster_actor.pending_reqs.is_none())
 }
 
 // ! rebalance request to replica should be ignored
@@ -48,7 +48,7 @@ async fn test_rebalance_request_to_replica() {
     cluster_actor.rebalance_request(request_to.clone(), lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 
     let msg = buf.lock().await.pop_front();
     assert!(msg.is_none());
@@ -77,7 +77,7 @@ async fn test_rebalance_request_happypath() {
     // THEN
     // At this point, the re-balance request should not block the requests
     // requests will be blocked only if migrations needed.
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
     assert_expected_queryio(&buf, QueryIO::StartRebalance).await;
 }
 
@@ -91,7 +91,7 @@ async fn test_start_rebalance_before_connection_is_made() {
 
     // THEN
     // No pending requests should be created since the member is not connected
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 }
 
 // ! Failcase
@@ -106,7 +106,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
     let _ = cluster_actor.start_rebalance().await;
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
     let msg = buf.lock().await.pop_front();
     assert!(msg.is_none());
 }
@@ -192,7 +192,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     assert!(!batch.chunks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
-    assert!(cluster_actor.migrations_in_progress.is_some());
+    assert!(cluster_actor.pending_reqs.is_some());
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone()))).await;
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
     assert_eq!(cluster_actor.hash_ring, hash_ring);
     assert_ne!(cluster_actor.hash_ring.last_modified, last_modified);
 }
@@ -418,13 +418,13 @@ async fn test_receive_batch_when_consensus_is_required() {
 async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
-    cluster_actor.migrations_in_progress = Some(Default::default());
+    cluster_actor.pending_reqs = Some(Default::default());
 
     // WHEN
-    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_on_migration_done();
 
     // THEN
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 }
 
 #[tokio::test]
@@ -436,48 +436,48 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
     let (callback, _migration_rx) = Callback::create();
     let batch_id = "test_batch".into();
     cluster_actor
-        .migrations_in_progress
+        .pending_reqs
         .as_mut()
         .unwrap()
         .store_batch(batch_id, QueuedKeysToMigrate { callback, keys: vec![] });
 
     // WHEN
-    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_on_migration_done();
 
     // THEN - Nothing should change - requests should remain blocked
-    assert!(cluster_actor.migrations_in_progress.is_some());
-    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_reqs(), 1);
-    assert_eq!(cluster_actor.migrations_in_progress.unwrap().num_batches(), 1);
+    assert!(cluster_actor.pending_reqs.is_some());
+    assert_eq!(cluster_actor.pending_reqs.as_ref().unwrap().num_reqs(), 1);
+    assert_eq!(cluster_actor.pending_reqs.unwrap().num_batches(), 1);
 }
 
 #[tokio::test]
 async fn test_unblock_write_reqs_if_done_when_not_blocked() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    cluster_actor.migrations_in_progress = Some(Default::default());
+    cluster_actor.pending_reqs = Some(Default::default());
 
     // WHEN
-    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_on_migration_done();
 
     // THEN - Should not crash and pending_migrations should remain as empty
 
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 }
 
 #[tokio::test]
 async fn test_unblock_write_reqs_if_done_multiple_times() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-    cluster_actor.migrations_in_progress = Some(Default::default());
+    cluster_actor.pending_reqs = Some(Default::default());
 
     // WHEN - call unblock multiple times
-    cluster_actor.unblock_write_reqs_if_done();
-    cluster_actor.unblock_write_reqs_if_done();
-    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_on_migration_done();
+    cluster_actor.unblock_write_on_migration_done();
+    cluster_actor.unblock_write_on_migration_done();
 
     // THEN - Should be idempotent
 
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 }
 
 #[tokio::test]
@@ -508,7 +508,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     let (callback, _callback_rx) = Callback::create();
 
     cluster_actor
-        .migrations_in_progress
+        .pending_reqs
         .as_mut()
         .unwrap()
         .store_batch("existing_batch".into(), QueuedKeysToMigrate { callback, keys: vec![] });
@@ -519,7 +519,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     cluster_actor.handle_migration_ack(non_existent_batch_id).await;
 
     // THEN
-    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
+    assert_eq!(cluster_actor.pending_reqs.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
 }
 
 #[tokio::test]
@@ -555,17 +555,17 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     let batch_id = BatchId("last_batch".to_string());
     cluster_actor.cache_manager = cache_manager.clone();
     cluster_actor
-        .migrations_in_progress
+        .pending_reqs
         .as_mut()
         .unwrap()
         .store_batch(batch_id.clone(), QueuedKeysToMigrate { callback, keys: test_keys });
 
     // Verify initially blocked
-    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_reqs(), 2);
-    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1);
+    assert_eq!(cluster_actor.pending_reqs.as_ref().unwrap().num_reqs(), 2);
+    assert_eq!(cluster_actor.pending_reqs.as_ref().unwrap().num_batches(), 1);
 
     // WHEN
-    let pre_num_batches = cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches();
+    let pre_num_batches = cluster_actor.pending_reqs.as_ref().unwrap().num_batches();
     cluster_actor.handle_migration_ack(batch_id).await;
 
     // THEN
@@ -578,10 +578,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         cache_manager.route_get("migrate_key_2").await,
         Ok(CacheValue { value: TypedValue::Null, .. })
     ));
-    assert_eq!(
-        pre_num_batches - 1,
-        cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches()
-    );
+    assert_eq!(pre_num_batches - 1, cluster_actor.pending_reqs.as_ref().unwrap().num_batches());
 }
 
 #[tokio::test]
@@ -614,5 +611,5 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     assert_ne!(cluster_actor.hash_ring.last_modified, original_modified);
 
     // But no migration tasks should be initiated (no pending requests/migrations)
-    assert!(cluster_actor.migrations_in_progress.is_none());
+    assert!(cluster_actor.pending_reqs.is_none());
 }

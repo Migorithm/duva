@@ -213,11 +213,12 @@ mod peer_messages {
     }
 
     #[derive(Debug, Default)]
-    pub(crate) struct InProgressMigration {
+    pub(crate) struct PendingRequests {
         requests: VecDeque<ConsensusRequest>,
         batches: HashMap<BatchId, QueuedKeysToMigrate>,
+        pub(crate) callbacks: Vec<Callback<()>>,
     }
-    impl InProgressMigration {
+    impl PendingRequests {
         pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
             self.requests.push_back(req);
         }
@@ -227,8 +228,8 @@ mod peer_messages {
         pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
             self.batches.remove(id)
         }
-        pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {
-            self.requests
+        pub(crate) fn to_requests(&mut self) -> VecDeque<ConsensusRequest> {
+            std::mem::take(&mut self.requests)
         }
 
         #[cfg(test)]

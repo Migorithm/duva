@@ -2,7 +2,6 @@ use super::ClusterCommand;
 use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
-use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
@@ -15,8 +14,7 @@ use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::LogConsensusVoting;
-use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
+use crate::domains::cluster_actors::consensus::election::ElectionVotes;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -29,8 +27,8 @@ use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
-use crate::domains::peers::command::InProgressMigration;
 use crate::domains::peers::command::PendingMigrationTask;
+use crate::domains::peers::command::PendingRequests;
 use crate::domains::peers::command::QueuedKeysToMigrate;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
@@ -55,6 +53,7 @@ use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
+
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -78,7 +77,7 @@ pub struct ClusterActor<T> {
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) client_sessions: ClientSessions,
     pub(crate) hash_ring: HashRing,
-    migrations_in_progress: Option<InProgressMigration>,
+    pending_reqs: Option<PendingRequests>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -148,7 +147,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
             cluster_join_sync: ClusterJoinSync::default(),
-            migrations_in_progress: None,
+            pending_reqs: None,
             cache_manager,
         }
     }
@@ -307,7 +306,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(pending_mig) = self.migrations_in_progress.as_mut() {
+        if let Some(pending_mig) = self.pending_reqs.as_mut() {
             pending_mig.add_req(req);
             return;
         }
@@ -385,7 +384,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
-        self.heartbeat_scheduler.reset_election_timeout();
 
         let current_term = self.replication.term;
         let mut grant_vote = false;
@@ -394,7 +392,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // If candidate's term is higher, update own term and step down
             if request_vote.term > self.replication.term {
                 self.replication.term = request_vote.term;
-                self.replication.vote_for(None); // Clear votedFor
                 self.step_down().await; // Ensure follower mode
             }
 
@@ -402,12 +399,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if self
                 .replication
                 .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
-                && self.replication.election_state.is_votable(&request_vote.candidate_id)
+                && self.replication.election_votes.is_votable(&request_vote.candidate_id)
             {
-                self.replication.vote_for(Some(request_vote.candidate_id.clone()));
+                self.replication.vote_for(request_vote.candidate_id.clone());
                 grant_vote = true;
-
-                REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
             }
         } else {
             // If candidate's term is less than current term, reject
@@ -417,10 +412,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             );
         }
 
+        self.heartbeat_scheduler.reset_election_timeout();
+
         let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             // if not found, revert the change
-            self.replication.revert_voting(current_term);
+            self.replication.revert_voting(current_term, &request_vote.candidate_id);
             return;
         };
 
@@ -467,9 +464,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.reset_election_timeout(heartbeat.term);
 
         self.replicate(heartbeat).await;
-
-        // TODO Replace the following with watcher
-        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote), fields(from = %from))]
@@ -503,20 +497,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we are not a candidate, ignore the vote.
-        let ElectionState::Candidate { voting: Some(voting) } =
-            &mut self.replication.election_state
-        else {
+        if !self.replication.is_candidate() {
             return;
-        };
+        }
 
         // Record the vote
-        if !voting.record_vote(from.clone()) {
+        if !self.replication.election_votes.record_vote(from.clone()) {
             warn!("Received a duplicate vote from {}", from);
             return; // Already voted
         }
 
         // Check for majority
-        if voting.has_majority() {
+        if self.replication.election_votes.has_majority() {
             info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
             self.become_leader().await;
 
@@ -737,10 +729,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
+    pub(crate) fn register_awaiter_if_pending(&mut self, callback: Callback<()>) {
+        if let Some(pending_req) = self.pending_reqs.as_mut() {
+            pending_req.callbacks.push(callback);
+        } else {
+            callback.send(())
+        };
+    }
+
     // ! BLOCK subsequent requests until rebalance is done
     fn block_write_reqs(&mut self) {
-        if self.migrations_in_progress.is_none() {
-            self.migrations_in_progress = Some(Default::default());
+        if self.pending_reqs.is_none() {
+            self.pending_reqs = Some(PendingRequests::default());
         }
     }
 
@@ -1046,7 +1046,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn reset_election_timeout(&mut self, new_term: u64) {
         self.heartbeat_scheduler.reset_election_timeout();
-        self.replication.election_state = ElectionState::Follower { voted_for: None };
+
         self.replication.role = ReplicationRole::Follower;
         if new_term > self.replication.term {
             self.replication.term = new_term;
@@ -1101,13 +1101,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
-        self.replication.vote_for(None);
+        self.replication.reset_election_votes();
         self.heartbeat_scheduler.turn_follower_mode();
+        self.replication.role = ReplicationRole::Follower;
+
+        self.unblock_pending_requests();
     }
 
     async fn become_leader(&mut self) {
         self.replication.role = ReplicationRole::Leader;
-        self.replication.election_state = ElectionState::Leader;
+        self.replication.election_votes.votes.clear();
         self.heartbeat_scheduler.turn_leader_mode().await;
         self.hash_ring.update_repl_leader(
             self.replication.replid.clone(),
@@ -1125,17 +1128,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
         }
-        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
+
+        self.unblock_pending_requests();
     }
+
     fn become_candidate(&mut self) {
-        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
+        self.block_write_reqs();
         self.replication.term += 1;
-        self.replication.election_state = ElectionState::Candidate {
-            voting: Some(ElectionVoting::new(
-                self.replicas().count() as u8,
-                self.replication.self_identifier(),
-            )),
-        };
+        self.replication.election_votes =
+            ElectionVotes::new(self.replicas().count() as u8, self.replication.self_identifier());
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: Option<RejectionReason>) {
@@ -1309,7 +1310,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(p) = self.migrations_in_progress.as_mut() {
+        if let Some(p) = self.pending_reqs.as_mut() {
             p.store_batch(pending_task.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
         }
 
@@ -1359,7 +1360,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn handle_migration_ack(&mut self, batch_id: BatchId) {
-        let Some(pending) = self.migrations_in_progress.as_mut() else {
+        let Some(pending) = self.pending_reqs.as_mut() else {
             warn!("No Pending migration map available");
             return;
         };
@@ -1392,35 +1393,36 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // New hash ring stored at this point with the current shard leaders
-    pub(crate) fn unblock_write_reqs_if_done(&mut self) {
-        let migrations_done =
-            self.migrations_in_progress.as_ref().is_none_or(|p| p.num_batches() == 0);
+    pub(crate) fn unblock_write_on_migration_done(&mut self) {
+        let migrations_done = self.pending_reqs.as_ref().is_none_or(|p| p.num_batches() == 0);
 
         if migrations_done {
             if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
                 self.hash_ring = new_ring;
             }
             let _ = self.node_change_broadcast.send(self.get_topology());
-            if let Some(pending_mig) = self.migrations_in_progress.take() {
-                info!("All migrations complete, processing pending requests.");
+            self.unblock_pending_requests();
+        }
+    }
 
-                let mut pending_reqs = pending_mig.pending_requests();
-                if pending_reqs.is_empty() {
-                    return;
-                }
+    fn unblock_pending_requests(&mut self) {
+        if let Some(mut pending_mig) = self.pending_reqs.take() {
+            info!("All migrations complete, processing pending requests.");
+            let handler = self.self_handler.clone();
 
-                let handler = self.self_handler.clone();
-                tokio::spawn(async move {
-                    while let Some(req) = pending_reqs.pop_front() {
-                        if let Err(err) = handler
-                            .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
-                            .await
-                        {
-                            error!("{}", err)
-                        }
+            tokio::spawn(async move {
+                let mut pending_reqs = pending_mig.to_requests();
+
+                while let Some(req) = pending_reqs.pop_front() {
+                    if let Err(err) = handler
+                        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
+                        .await
+                    {
+                        error!("{}", err)
                     }
-                });
-            }
+                }
+                pending_mig.callbacks.into_iter().for_each(|c| c.send(()));
+            });
         }
     }
 

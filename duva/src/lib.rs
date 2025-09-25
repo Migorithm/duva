@@ -25,7 +25,6 @@ use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
 use std::sync::LazyLock;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::error;
@@ -39,7 +38,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 use crate::domains::TSerdeReadWrite;
-use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
+
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::prelude::ConnectionRequest;
 pub use config::ENV;
@@ -208,9 +207,8 @@ impl StartUpFacade {
         //TODO refactor: authentication should be simplified
         while let Ok((mut stream, _)) = listener.accept().await {
             let request = stream.deserialized_read().await?;
-            while REQUESTS_BLOCKED_BY_ELECTION.load(Ordering::Acquire) {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
+            self.cluster_communication_manager.wait_for_acceptance().await;
+
             match request {
                 | ConnectionRequest { .. } => {
                     let Ok((reader, writer)) =
