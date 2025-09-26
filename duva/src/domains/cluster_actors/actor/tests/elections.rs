@@ -235,3 +235,32 @@ async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
 
     assert_eq!(candidate_actor.replication.election_votes.votes.len(), 2);
 }
+
+#[tokio::test]
+async fn test_become_candidate_not_allow_write_request_processing() {
+    // GIVEN: A candidate actor
+    let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
+    let (tx, rx) = Callback::create();
+    let session_req = SessionRequest::new(1, "client1".to_string());
+
+    let consensus_request = ConsensusRequest {
+        entry: LogEntry::Set {
+            key: "key".to_string(),
+            value: "value".to_string(),
+            expires_at: None,
+        },
+        callback: tx,
+        session_req: Some(session_req),
+    };
+    // WHEN: A write request is received
+    candidate_actor.become_candidate();
+    candidate_actor.leader_req_consensus(consensus_request).await;
+
+    // THEN: The request should be stored in pending_reqs, and the value is not yet in the cache
+    assert!(candidate_actor.pending_reqs.is_some());
+    let value = candidate_actor.cache_manager.route_get("key").await.unwrap();
+    assert!(value.is_null());
+
+    let res = rx.0.await.unwrap();
+    assert!(matches!(res, ConsensusClientResponse::Err(_e)))
+}
