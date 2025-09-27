@@ -62,7 +62,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         }
     }
 
-    pub(super) fn self_info(&self) -> PeerState {
+    pub(super) fn state(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
             last_log_index: self.logger.last_log_index,
