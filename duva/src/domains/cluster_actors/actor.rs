@@ -1035,7 +1035,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.become_candidate();
-        let request_vote = RequestVote::new(self.replication.info(), &self.replication.logger);
+        let request_vote = self.replication.request_vote();
 
         self.replicas_mut()
             .map(|(peer, _)| peer.send(request_vote.clone()))
