@@ -79,7 +79,6 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
     }
 }
 
-#[async_trait::async_trait]
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeWrite for T {
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
@@ -88,11 +87,10 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     }
 }
 
-#[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeRead for T {
     async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
     where
-        U: bincode::Decode<()> + Send,
+        U: bincode::Decode<()>,
     {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
