@@ -2,6 +2,7 @@ use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::{
     ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
 };
@@ -9,14 +10,14 @@ use crate::domains::operation_logs::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;
-use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
+
 use crate::types::Callback;
 use tracing::info;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
     pub(crate) cache_manager: CacheManager,
-    pub(crate) cluster_communication_manager: ClusterCommunicationManager,
+    pub(crate) cluster_actor_sender: ClusterActorSender,
 }
 
 impl ClientController {
@@ -39,8 +40,7 @@ impl ClientController {
                     .open(&file_path)
                     .await?;
 
-                let repl_info =
-                    self.cluster_communication_manager.route_get_replication_state().await?;
+                let repl_info = self.cluster_actor_sender.route_get_replication_state().await?;
                 self.cache_manager
                     .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_idx)
                     .await?;
@@ -81,18 +81,16 @@ impl ClientController {
                 self.cache_manager.route_exists(keys).await?.to_string().into(),
             ),
             | Info => QueryIO::BulkString(
-                self.cluster_communication_manager
+                self.cluster_actor_sender
                     .route_get_replication_state()
                     .await?
                     .vectorize()
                     .join("\r\n")
                     .into(),
             ),
-            | ClusterInfo => {
-                self.cluster_communication_manager.route_get_cluster_info().await?.into()
-            },
+            | ClusterInfo => self.cluster_actor_sender.route_get_cluster_info().await?.into(),
             | ClusterNodes => self
-                .cluster_communication_manager
+                .cluster_actor_sender
                 .route_cluster_nodes()
                 .await?
                 .into_iter()
@@ -100,25 +98,21 @@ impl ClientController {
                 .collect::<Vec<_>>()
                 .into(),
             | ClusterForget(peer_identifier) => {
-                match self.cluster_communication_manager.route_forget_peer(peer_identifier).await {
+                match self.cluster_actor_sender.route_forget_peer(peer_identifier).await {
                     | Ok(true) => QueryIO::SimpleString("OK".into()),
                     | Ok(false) => QueryIO::Err("No such peer".into()),
                     | Err(e) => QueryIO::Err(e.to_string().into()),
                 }
             },
-            | ClusterMeet(peer_identifier, option) => self
-                .cluster_communication_manager
-                .route_cluster_meet(peer_identifier, option)
-                .await?
-                .into(),
-            | ClusterReshard => {
-                self.cluster_communication_manager.route_cluster_reshard().await?.into()
+            | ClusterMeet(peer_identifier, option) => {
+                self.cluster_actor_sender.route_cluster_meet(peer_identifier, option).await?.into()
             },
+            | ClusterReshard => self.cluster_actor_sender.route_cluster_reshard().await?.into(),
             | ReplicaOf(peer_identifier) => {
-                self.cluster_communication_manager.route_replicaof(peer_identifier.clone()).await?;
+                self.cluster_actor_sender.route_replicaof(peer_identifier.clone()).await?;
                 QueryIO::SimpleString("OK".into())
             },
-            | Role => self.cluster_communication_manager.route_get_roles().await?.into(),
+            | Role => self.cluster_actor_sender.route_get_roles().await?.into(),
             | Ttl { key } => QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into()),
 
             | LLen { key } => {
@@ -142,7 +136,7 @@ impl ClientController {
     ) -> anyhow::Result<QueryIO> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
-        self.cluster_communication_manager
+        self.cluster_actor_sender
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest {
                 entry,
                 callback,

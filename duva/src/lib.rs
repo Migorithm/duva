@@ -22,7 +22,7 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
-use presentation::clusters::communication_manager::ClusterCommunicationManager;
+
 use std::fs::File;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -38,6 +38,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 use crate::domains::TSerdeReadWrite;
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::prelude::ConnectionRequest;
@@ -60,7 +61,7 @@ pub mod prelude {
 // * StartUp Facade that manages invokes subsystems
 #[derive(Clone)]
 pub struct StartUpFacade {
-    cluster_communication_manager: ClusterCommunicationManager,
+    cluster_actor_sender: ClusterActorSender,
     cache_manager: CacheManager,
 }
 
@@ -110,10 +111,7 @@ impl StartUpFacade {
         let cluster_actor_handler =
             ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone());
 
-        StartUpFacade {
-            cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),
-            cache_manager,
-        }
+        StartUpFacade { cluster_actor_sender: cluster_actor_handler, cache_manager }
     }
 
     pub async fn run(self) -> Result<()> {
@@ -135,7 +133,7 @@ impl StartUpFacade {
 
         tokio::spawn(Self::start_accepting_peer_connections(
             ENV.peer_bind_addr(),
-            self.cluster_communication_manager.clone(),
+            self.cluster_actor_sender.clone(),
         ));
 
         self.discover_cluster().await?;
@@ -149,12 +147,12 @@ impl StartUpFacade {
 
     async fn discover_cluster(&self) -> Result<(), anyhow::Error> {
         if let Some(seed) = ENV.seed_server.as_ref() {
-            return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
+            return self.cluster_actor_sender.route_connect_to_server(seed.clone()).await;
         }
 
         for peer in ENV.stored_peer_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
             if let Err(err) =
-                self.cluster_communication_manager.route_connect_to_server(peer.id().clone()).await
+                self.cluster_actor_sender.route_connect_to_server(peer.id().clone()).await
             {
                 error!("{err}");
             }
@@ -166,7 +164,7 @@ impl StartUpFacade {
     #[instrument(skip_all)]
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        cluster_communication_manager: ClusterCommunicationManager,
+        ca_sender: ClusterActorSender,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr).await.unwrap();
 
@@ -176,7 +174,7 @@ impl StartUpFacade {
                 | Ok((peer_stream, socket_addr)) => {
                     let (read, write) = peer_stream.into_split();
                     let host_ip = socket_addr.ip().to_string();
-                    if cluster_communication_manager
+                    if ca_sender
                         .send(ConnectionMessage::AcceptInboundPeer {
                             read: read.into(),
                             write: write.into(),
@@ -207,25 +205,23 @@ impl StartUpFacade {
         //TODO refactor: authentication should be simplified
         while let Ok((mut stream, _)) = listener.accept().await {
             let request = stream.deserialized_read().await?;
-            self.cluster_communication_manager.wait_for_acceptance().await;
+            self.cluster_actor_sender.wait_for_acceptance().await;
 
             match request {
                 | ConnectionRequest { .. } => {
                     let Ok((reader, writer)) =
-                        authenticate(stream, &self.cluster_communication_manager, request).await
+                        authenticate(stream, &self.cluster_actor_sender, request).await
                     else {
                         error!("Failed to authenticate client stream");
                         continue;
                     };
 
-                    let observer = self
-                        .cluster_communication_manager
-                        .route_subscribe_topology_change()
-                        .await?;
+                    let observer =
+                        self.cluster_actor_sender.route_subscribe_topology_change().await?;
 
                     let stream_writer = writer.run(observer);
                     let client_controller = ClientController {
-                        cluster_communication_manager: self.cluster_communication_manager.clone(),
+                        cluster_actor_sender: self.cluster_actor_sender.clone(),
                         cache_manager: self.cache_manager.clone(),
                     };
                     tokio::spawn(reader.handle_client_stream(client_controller, stream_writer));

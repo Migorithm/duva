@@ -1,5 +1,6 @@
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
-use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
+
 use crate::{
     domains::{IoError, TSerdeReadWrite, cluster_actors::topology::Topology},
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
@@ -9,7 +10,7 @@ use uuid::Uuid;
 
 pub(crate) async fn authenticate(
     mut stream: TcpStream,
-    cluster_manager: &ClusterCommunicationManager,
+    cluster_manager: &ClusterActorSender,
     auth_req: ConnectionRequest,
 ) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
     let replication_state = cluster_manager.route_get_replication_state().await?;
