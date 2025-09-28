@@ -117,7 +117,7 @@ impl ClientStreamWriter {
         tx
     }
 
-    pub(crate) async fn authenticate(
+    pub(crate) async fn send_conn_res(
         &mut self,
         cluster_manager: &ClusterActorSender,
         auth_req: ConnectionRequest,

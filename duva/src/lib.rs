@@ -215,7 +215,7 @@ impl StartUpFacade {
             match request {
                 | ConnectionRequest { .. } => {
                     let Ok(client_id) =
-                        writer.authenticate(&self.cluster_actor_sender, request).await
+                        writer.send_conn_res(&self.cluster_actor_sender, request).await
                     else {
                         error!("Failed to authenticate client stream");
                         continue;
