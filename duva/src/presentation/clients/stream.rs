@@ -5,10 +5,11 @@ use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
 
 use crate::domains::{
-    IoError, QueryIO,
+    QueryIO,
     cluster_actors::SessionRequest,
     interface::{TRead, TWrite},
 };
+use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::presentation::clients::request::ClientAction;
 use tokio::{
@@ -86,11 +87,8 @@ impl ClientStreamReader {
 }
 
 pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
+make_smart_pointer!(ClientStreamWriter, OwnedWriteHalf);
 impl ClientStreamWriter {
-    pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
-        self.0.write(query_io).await
-    }
-
     pub(crate) fn run(
         mut self,
         mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
@@ -126,30 +124,21 @@ impl ClientStreamWriter {
 
         // if the request is not new authentication but the client is already authenticated
         if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
-            self.0
-                .serialized_write(ConnectionResponse {
-                    is_leader_node: false,
-                    client_id: Default::default(),
-                    request_id: Default::default(),
-                    topology: Default::default(),
-                    replication_id: Default::default(),
-                })
-                .await?;
+            self.serialized_write(ConnectionResponse::default()).await?;
             // ! The following will be removed once we allow for follower read.
             return Err(anyhow::anyhow!("Follower node cannot authenticate"));
         }
 
         let (client_id, request_id) = auth_req.deconstruct()?;
 
-        self.0
-            .serialized_write(ConnectionResponse {
-                client_id: client_id.to_string(),
-                request_id,
-                topology: cluster_manager.route_get_topology().await?,
-                is_leader_node: replication_state.role == ReplicationRole::Leader,
-                replication_id: replication_state.replid.clone(),
-            })
-            .await?;
+        self.serialized_write(ConnectionResponse {
+            client_id: client_id.to_string(),
+            request_id,
+            topology: cluster_manager.route_get_topology().await?,
+            is_leader_node: replication_state.role == ReplicationRole::Leader,
+            replication_id: replication_state.replid.clone(),
+        })
+        .await?;
 
         Ok(client_id)
     }
