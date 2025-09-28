@@ -224,20 +224,15 @@ impl StartUpFacade {
                         .await?;
 
                     let stream_writer = writer.run(observer);
-                    tokio::spawn(
-                        reader.handle_client_stream(self.client_controller(), stream_writer),
-                    );
+                    let client_controller = ClientController {
+                        cluster_communication_manager: self.cluster_communication_manager.clone(),
+                        cache_manager: self.cache_manager.clone(),
+                    };
+                    tokio::spawn(reader.handle_client_stream(client_controller, stream_writer));
                 },
             }
         }
         Ok(())
-    }
-
-    pub(crate) fn client_controller(&self) -> ClientController {
-        ClientController {
-            cluster_communication_manager: self.cluster_communication_manager.clone(),
-            cache_manager: self.cache_manager.clone(),
-        }
     }
 }
 
