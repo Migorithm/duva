@@ -56,12 +56,8 @@ mod peer_messages {
     use crate::{
         domains::{
             caches::cache_objects::CacheEntry,
-            cluster_actors::{
-                ConsensusRequest,
-                hash_ring::HashRing,
-                replication::{ReplicationId, ReplicationInfo},
-            },
-            operation_logs::{WriteOperation, logger::ReplicatedLogs},
+            cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
+            operation_logs::WriteOperation,
             peers::peer::PeerState,
         },
         types::Callback,
@@ -73,16 +69,6 @@ mod peer_messages {
         pub(crate) candidate_id: PeerIdentifier,
         pub(crate) last_log_index: u64,
         pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won't win the election.
-    }
-    impl RequestVote {
-        pub(crate) fn new<T>(repl: ReplicationInfo, logger: &ReplicatedLogs<T>) -> Self {
-            Self {
-                term: repl.term,
-                candidate_id: repl.self_identifier(),
-                last_log_index: logger.last_log_index,
-                last_log_term: logger.last_log_term,
-            }
-        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]

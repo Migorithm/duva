@@ -3,6 +3,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
+use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 use crate::domains::peers::peer::PeerState;
@@ -61,7 +62,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         }
     }
 
-    pub(super) fn self_info(&self) -> PeerState {
+    pub(super) fn state(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
             last_log_index: self.logger.last_log_index,
@@ -123,6 +124,15 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
 
         candidate_last_log_term == self.logger.last_log_term
             && candidate_last_log_index >= self.logger.last_log_index
+    }
+
+    pub(crate) fn request_vote(&self) -> RequestVote {
+        RequestVote {
+            term: self.term,
+            candidate_id: self.self_identifier(),
+            last_log_index: self.logger.last_log_index,
+            last_log_term: self.logger.last_log_term,
+        }
     }
 }
 

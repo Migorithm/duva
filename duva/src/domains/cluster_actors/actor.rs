@@ -376,7 +376,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members
             .values()
             .map(|p| p.state().clone())
-            .chain(std::iter::once(self.replication.self_info()))
+            .chain(std::iter::once(self.replication.state()))
             .collect()
     }
     #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
@@ -1035,7 +1035,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.become_candidate();
-        let request_vote = RequestVote::new(self.replication.info(), &self.replication.logger);
+        let request_vote = self.replication.request_vote();
 
         self.replicas_mut()
             .map(|(peer, _)| peer.send(request_vote.clone()))
