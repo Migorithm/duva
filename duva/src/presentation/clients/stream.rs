@@ -1,10 +1,16 @@
 use super::{ClientController, request::ClientRequest};
+use crate::domains::cluster_actors::queue::ClusterActorSender;
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
+use crate::domains::interface::TSerdeWrite;
+
 use crate::domains::{
-    IoError, QueryIO,
+    QueryIO,
     cluster_actors::SessionRequest,
     interface::{TRead, TWrite},
 };
+use crate::make_smart_pointer;
+use crate::prelude::ConnectionRequest;
 use crate::presentation::clients::request::ClientAction;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -81,11 +87,8 @@ impl ClientStreamReader {
 }
 
 pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
+make_smart_pointer!(ClientStreamWriter, OwnedWriteHalf);
 impl ClientStreamWriter {
-    pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
-        self.0.write(query_io).await
-    }
-
     pub(crate) fn run(
         mut self,
         mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
@@ -111,4 +114,41 @@ impl ClientStreamWriter {
         });
         tx
     }
+
+    pub(crate) async fn send_conn_res(
+        &mut self,
+        cluster_manager: &ClusterActorSender,
+        auth_req: ConnectionRequest,
+    ) -> anyhow::Result<String> {
+        let replication_state = cluster_manager.route_get_replication_state().await?;
+
+        // if the request is not new authentication but the client is already authenticated
+        if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
+            self.serialized_write(ConnectionResponse::default()).await?;
+            // ! The following will be removed once we allow for follower read.
+            return Err(anyhow::anyhow!("Follower node cannot authenticate"));
+        }
+
+        let (client_id, request_id) = auth_req.deconstruct()?;
+
+        self.serialized_write(ConnectionResponse {
+            client_id: client_id.to_string(),
+            request_id,
+            topology: cluster_manager.route_get_topology().await?,
+            is_leader_node: replication_state.role == ReplicationRole::Leader,
+            replication_id: replication_state.replid.clone(),
+        })
+        .await?;
+
+        Ok(client_id)
+    }
+}
+
+#[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
+pub struct ConnectionResponse {
+    pub client_id: String,
+    pub request_id: u64,
+    pub topology: Topology,
+    pub is_leader_node: bool,
+    pub replication_id: ReplicationId,
 }

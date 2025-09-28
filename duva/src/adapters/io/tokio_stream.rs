@@ -1,7 +1,7 @@
-use crate::domains::interface::{TRead, TSerdeReadWrite, TWrite};
+use crate::domains::interface::{TRead, TWrite};
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
-use crate::domains::{IoError, TAsyncReadWrite};
+use crate::domains::{IoError, TAsyncReadWrite, TSerdeRead, TSerdeWrite};
 use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
@@ -79,19 +79,18 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
     }
 }
 
-#[async_trait::async_trait]
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeReadWrite for T
-where
-    T: AsyncWriteExt + AsyncReadExt + std::marker::Unpin + Sync + Send,
-{
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeWrite for T {
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
         self.write_all(&encoded).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
+}
+
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeRead for T {
     async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
     where
-        U: bincode::Decode<()> + Send,
+        U: bincode::Decode<()>,
     {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
