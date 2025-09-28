@@ -19,9 +19,12 @@ pub(crate) trait TWrite: Send + Sync + Debug + 'static {
 }
 
 #[async_trait::async_trait]
-pub trait TSerdeReadWrite {
+pub trait TSerdeWrite {
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError>;
+}
 
+#[async_trait::async_trait]
+pub trait TSerdeRead {
     async fn deserialized_read<U: bincode::Decode<()> + Send>(&mut self) -> Result<U, IoError>;
 }
 

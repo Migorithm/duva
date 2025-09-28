@@ -21,7 +21,6 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use presentation::clients::ClientController;
-use presentation::clients::authenticate;
 
 use std::fs::File;
 use std::sync::LazyLock;
@@ -37,11 +36,14 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
-use crate::domains::TSerdeReadWrite;
+use crate::domains::TSerdeRead;
+
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::prelude::ConnectionRequest;
+use crate::presentation::clients::stream::ClientStreamReader;
+use crate::presentation::clients::stream::ClientStreamWriter;
 pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
@@ -203,14 +205,17 @@ impl StartUpFacade {
         info!("start listening on {}", ENV.bind_addr());
 
         //TODO refactor: authentication should be simplified
-        while let Ok((mut stream, _)) = listener.accept().await {
-            let request = stream.deserialized_read().await?;
+        while let Ok((stream, _)) = listener.accept().await {
+            let (mut read_half, write_half) = stream.into_split();
+
+            let mut writer = ClientStreamWriter(write_half);
+            let request = read_half.deserialized_read().await?;
             self.cluster_actor_sender.wait_for_acceptance().await;
 
             match request {
                 | ConnectionRequest { .. } => {
-                    let Ok((reader, writer)) =
-                        authenticate(stream, &self.cluster_actor_sender, request).await
+                    let Ok(client_id) =
+                        writer.authenticate(&self.cluster_actor_sender, request).await
                     else {
                         error!("Failed to authenticate client stream");
                         continue;
@@ -220,11 +225,13 @@ impl StartUpFacade {
                         self.cluster_actor_sender.route_subscribe_topology_change().await?;
 
                     let stream_writer = writer.run(observer);
+
                     let client_controller = ClientController {
                         cluster_actor_sender: self.cluster_actor_sender.clone(),
                         cache_manager: self.cache_manager.clone(),
                     };
-                    tokio::spawn(reader.handle_client_stream(client_controller, stream_writer));
+                    let listener = ClientStreamReader { client_id, r: read_half };
+                    tokio::spawn(listener.handle_client_stream(client_controller, stream_writer));
                 },
             }
         }
