@@ -5,11 +5,8 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-
 use crate::domains::peers::peer::PeerState;
-use std::collections::HashSet;
 use std::fmt::Display;
-
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -20,7 +17,7 @@ pub(crate) struct ReplicationState<T> {
     pub(crate) self_port: u16,
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) banlist: HashSet<BannedPeer>,
+    pub(crate) banlist: Vec<BannedPeer>,
     pub(crate) election_votes: ElectionVotes,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) last_applied: u64,
@@ -77,7 +74,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
 
     pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
         let Ok(current_time) = time_in_secs() else { return false };
-        self.banlist.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
+        self.banlist.iter().any(|x| x.p_id == *peer_identifier && current_time - x.ban_time < 60)
     }
 
     pub(super) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
@@ -89,7 +86,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
                 .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
             replid: self.replid.clone(),
             hop_count,
-            ban_list: self.banlist.iter().cloned().collect(),
+            ban_list: self.banlist.clone(),
             prev_log_index: self.logger.last_log_index,
             prev_log_term: self.logger.last_log_term,
             ..Default::default()
@@ -97,7 +94,7 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
     }
 
     pub(super) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
-        self.election_votes.votes.remove(&candidate_id);
+        self.election_votes.votes.remove(candidate_id);
         self.term = term;
     }
 

@@ -159,7 +159,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         let peer_id = peer.id().clone();
-        self.replication.banlist.remove(&peer_id);
+        if let Some(pos) = self.replication.banlist.iter().position(|x| x.p_id == peer_id) {
+            self.replication.banlist.swap_remove(pos);
+        };
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -275,7 +277,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
         let res = self.remove_peer(&peer_addr).await;
-        self.replication.banlist.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
+        self.replication.banlist.push(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
 
         Ok(res)
     }
@@ -808,19 +810,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
         for banned_peer in ban_list {
             let ban_list = &mut self.replication.banlist;
-            if let Some(existing) = ban_list.take(&banned_peer) {
-                let newer =
-                    if banned_peer.ban_time > existing.ban_time { banned_peer } else { existing };
-                ban_list.insert(newer);
+
+            if let Some(pos) = ban_list.iter().position(|x| x.p_id == banned_peer.p_id) {
+                if banned_peer.ban_time > ban_list[pos].ban_time {
+                    ban_list[pos] = banned_peer;
+                }
             } else {
-                ban_list.insert(banned_peer);
+                ban_list.push(banned_peer);
             }
         }
 
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
-        for banned_peer in self.replication.banlist.iter().cloned().collect::<Vec<_>>() {
-            self.remove_peer(&banned_peer.p_id).await;
+        for banned_peer_id in
+            self.replication.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
+        {
+            self.remove_peer(&banned_peer_id).await;
         }
     }
 
@@ -1411,7 +1416,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let handler = self.self_handler.clone();
 
             tokio::spawn(async move {
-                let mut pending_reqs = pending_mig.to_requests();
+                let mut pending_reqs = pending_mig.extract_requests();
 
                 while let Some(req) = pending_reqs.pop_front() {
                     if let Err(err) = handler

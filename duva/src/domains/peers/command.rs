@@ -214,7 +214,7 @@ mod peer_messages {
         pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
             self.batches.remove(id)
         }
-        pub(crate) fn to_requests(&mut self) -> VecDeque<ConsensusRequest> {
+        pub(crate) fn extract_requests(&mut self) -> VecDeque<ConsensusRequest> {
             std::mem::take(&mut self.requests)
         }
 

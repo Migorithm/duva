@@ -23,7 +23,7 @@ impl CommandQueue {
     pub(crate) fn finalize_or_requeue(&mut self, query_io: QueryIO, mut context: InputContext) {
         context.results.push(query_io);
 
-        if !(context.results.len() == context.expected_result_cnt) {
+        if context.results.len() != context.expected_result_cnt {
             self.push(context);
             return;
         }
