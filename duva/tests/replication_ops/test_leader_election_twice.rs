@@ -6,9 +6,9 @@ use crate::{
 /// following test is to see if election works even after the first election.
 fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_env = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
-    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
-    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
+    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [leader_p, follower_p1, follower_p2] =
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);
@@ -26,10 +26,8 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
             continue;
         }
 
-        let follower_env3 = ServerEnv::default()
-            .with_bind_addr(f.bind_addr())
-            .with_append_only(with_append_only)
-            .with_hf(1000);
+        let follower_env3 =
+            ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
         let new_process = spawn_server_process(&follower_env3)?;
 
         // WHEN

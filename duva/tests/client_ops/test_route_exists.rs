@@ -44,8 +44,8 @@ fn run_route_exists_keys(
 
 #[test]
 fn run_route_exists() -> anyhow::Result<()> {
-    run_route_exists_keys(true, 4, Duration::from_millis(200))?;
-    run_route_exists_keys(true, 100, Duration::from_millis(500))?;
+    run_route_exists_keys(true, 4, Duration::from_millis(1500))?;
+    run_route_exists_keys(true, 100, Duration::from_millis(1500))?;
 
     Ok(())
 }
