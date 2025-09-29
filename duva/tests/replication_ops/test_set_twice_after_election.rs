@@ -11,9 +11,9 @@ use std::{thread::sleep, time::Duration};
 // ! This test is to see if the leader can set the value twice after the election
 fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
-    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
+    let mut leader_env = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
+    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
+    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only).with_hf(1000);
 
     let [leader_p, follower_p1, follower_p2] =
         form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2]);

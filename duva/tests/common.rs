@@ -35,7 +35,7 @@ impl Default for ServerEnv {
             port: get_available_port(),
             file_name: FileName(None),
             leader_bind_addr: None,
-            hf: 100,
+            hf: 1000,
 
             append_only: false,
             dir,

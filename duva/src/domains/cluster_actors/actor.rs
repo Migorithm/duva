@@ -422,12 +422,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.revert_voting(current_term, &request_vote.candidate_id);
             return;
         };
+        let _ = peer.send(vote).await;
 
         info!(
-            "Voting for {} with term {} and granted: {grant_vote}",
-            request_vote.candidate_id, request_vote.term
+            "{} votes for {} with term {} and granted: {grant_vote}",
+            self.replication.self_identifier(),
+            request_vote.candidate_id,
+            request_vote.term
         );
-        let _ = peer.send(vote).await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, from,repl_res), fields(peer_id = %from))]
@@ -767,7 +769,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.cluster_join_sync.known_peers.remove(peer_addr);
 
         if let Some(peer) = self.members.remove(peer_addr) {
-            warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
             self.broadcast_topology_change();
@@ -791,6 +792,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .cloned()
             .collect::<Vec<_>>()
         {
+            warn!(
+                "idle peer detected! {} removes {}...",
+                self.replication.self_identifier(),
+                peer_id
+            );
             self.remove_peer(&peer_id).await;
         }
     }
@@ -825,6 +831,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         for banned_peer_id in
             self.replication.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
         {
+            warn!(
+                "applying ban list! {} removes {}...",
+                self.replication.self_identifier(),
+                banned_peer_id
+            );
             self.remove_peer(&banned_peer_id).await;
         }
     }

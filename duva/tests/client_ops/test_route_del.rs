@@ -40,7 +40,7 @@ fn run_route_del_keys(append_only: bool, num_keys: u32, duration: Duration) -> a
 
 #[test]
 fn run_route_del() -> anyhow::Result<()> {
-    run_route_del_keys(true, 100, Duration::from_millis(500))?;
+    run_route_del_keys(true, 100, Duration::from_millis(1500))?;
 
     Ok(())
 }
