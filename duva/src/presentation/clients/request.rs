@@ -50,64 +50,38 @@ impl From<LogEntry> for ClientAction {
 }
 
 pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientAction> {
-    // Check for invalid characters in command parts
-    // Command-specific validation
     let cmd = action.to_uppercase();
 
-    let require_exact_args = |count: usize| {
-        if args.len() != count {
-            Err(anyhow::anyhow!(
-                "(error) ERR wrong number of arguments for '{}' command",
-                cmd.to_lowercase()
-            ))
-        } else {
-            Ok(())
-        }
+    let wrong_args_error = || {
+        anyhow::anyhow!(
+            "(error) ERR wrong number of arguments for '{}' command",
+            cmd.to_lowercase()
+        )
     };
-    let require_non_empty_args = || {
-        if args.is_empty() {
-            Err(anyhow::anyhow!(
-                "(error) ERR wrong number of arguments for '{}' command",
-                cmd.to_lowercase()
-            ))
-        } else {
-            Ok(())
-        }
-    };
+
+    let require_exact_args =
+        |count: usize| (args.len() == count).then_some(()).ok_or_else(wrong_args_error);
+
+    let require_non_empty_args = || (!args.is_empty()).then_some(()).ok_or_else(wrong_args_error);
 
     let entry: ClientAction = match cmd.as_str() {
         | "SET" => {
-            if !(args.len() == 2 || (args.len() == 4 && args[2].eq_ignore_ascii_case("PX"))) {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'set' command"
-                ));
-            }
-            if args.len() == 2 {
-                LogEntry::Set {
-                    key: args[0].to_string(),
-                    value: args[1].to_string(),
-                    expires_at: None,
-                }
+            let expires_at = match args.len() {
+                | 2 => None,
+                | 4 if args[2].eq_ignore_ascii_case("PX") => Some(extract_expiry(args[3])?),
+                | _ => return Err(wrong_args_error()),
+            };
+            LogEntry::Set { key: args[0].to_string(), value: args[1].to_string(), expires_at }
                 .into()
-            } else {
-                LogEntry::Set {
-                    key: args[0].to_string(),
-                    value: args[1].to_string(),
-                    expires_at: Some(extract_expiry(args[3])?),
-                }
-                .into()
-            }
         },
         | "DEL" => {
             require_non_empty_args()?;
             LogEntry::Delete { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
-
         | "APPEND" => {
             require_exact_args(2)?;
             LogEntry::Append { key: args[0].to_string(), value: args[1].to_string() }.into()
         },
-
         | "INCR" => {
             require_exact_args(1)?;
             LogEntry::IncrBy { key: args[0].to_string(), delta: 1 }.into()
@@ -125,50 +99,34 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             LogEntry::DecrBy { key: args[0].to_string(), delta: args[1].parse()? }.into()
         },
         | "LPUSH" | "RPUSH" => {
-            require_non_empty_args()?;
-
+            if args.len() < 2 {
+                return Err(wrong_args_error());
+            }
             let key = args[0].to_string();
             let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
-            if values.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for '{}' command",
-                    action.to_uppercase()
-                ));
+            match cmd.as_str() {
+                | "LPUSH" => LogEntry::LPush { key, value: values }.into(),
+                | _ => LogEntry::RPush { key, value: values }.into(),
             }
-            if action.to_uppercase() == "LPUSH" {
-                return Ok(LogEntry::LPush { key, value: values }.into());
-            }
-            LogEntry::RPush { key, value: values }.into()
         },
         | "LPUSHX" | "RPUSHX" => {
-            require_non_empty_args()?;
+            if args.len() < 2 {
+                return Err(wrong_args_error());
+            }
             let key = args[0].to_string();
             let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
-            if values.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for '{}' command",
-                    action.to_uppercase()
-                ));
-            }
-            if action.to_uppercase() == "LPUSHX" {
-                LogEntry::LPushX { key, value: values }.into()
-            } else {
-                LogEntry::RPushX { key, value: values }.into()
+            match cmd.as_str() {
+                | "LPUSHX" => LogEntry::LPushX { key, value: values }.into(),
+                | _ => LogEntry::RPushX { key, value: values }.into(),
             }
         },
         | "LPOP" | "RPOP" => {
             require_non_empty_args()?;
             let key = args[0].to_string();
             let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
-
-            if action.to_uppercase() == "LPOP" {
-                LogEntry::LPop { key, count }.into()
-            } else {
-                LogEntry::RPop {
-                    key,
-                    count: args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1),
-                }
-                .into()
+            match cmd.as_str() {
+                | "LPOP" => LogEntry::LPop { key, count }.into(),
+                | _ => LogEntry::RPop { key, count }.into(),
             }
         },
         | "LTRIM" => {
@@ -180,7 +138,6 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
             .into()
         },
-
         | "LSET" => {
             require_exact_args(3)?;
             LogEntry::LSet {
@@ -191,34 +148,24 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             .into()
         },
 
-        | "GET" => {
-            if args.len() == 1 {
-                NonMutatingAction::Get { key: args[0].to_string() }.into()
-            } else if args.len() == 2 {
+        | "GET" => match args.len() {
+            | 1 => NonMutatingAction::Get { key: args[0].to_string() }.into(),
+            | 2 => {
                 NonMutatingAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? }
                     .into()
-            } else {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'get' command"
-                ));
-            }
+            },
+            | _ => return Err(wrong_args_error()),
         },
 
         | "KEYS" => {
             require_exact_args(1)?;
-
-            if args[0] == "*" {
-                NonMutatingAction::Keys { pattern: None }.into()
-            } else {
-                NonMutatingAction::Keys { pattern: Some(args[0].to_string()) }.into()
-            }
+            let pattern = if args[0] == "*" { None } else { Some(args[0].to_string()) };
+            NonMutatingAction::Keys { pattern }.into()
         },
-
         | "EXISTS" => {
             require_non_empty_args()?;
             NonMutatingAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
-
         | "PING" => {
             require_exact_args(0)?;
             NonMutatingAction::Ping.into()

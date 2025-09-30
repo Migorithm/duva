@@ -9,10 +9,13 @@ use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
+const BUFFER_SIZE: usize = 512;
+const INITIAL_CAPACITY: usize = 1024;
+
 #[async_trait::async_trait]
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
     async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
-        self.write_all(&io.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
+        self.write_all(&io.serialize()).await.map_err(|e| io_error_from_kind(e.kind()))
     }
 }
 
@@ -23,13 +26,10 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
     // we might not receive all the data in one go.
     // So, we need to read the data in chunks until we have received all the data for the message.
     async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), IoError> {
-        // fixed size buffer
-        let mut temp_buffer = [0u8; 512];
+        let mut temp_buffer = [0u8; BUFFER_SIZE];
         loop {
-            let bytes_read = self
-                .read(&mut temp_buffer)
-                .await
-                .map_err(|err| Into::<IoError>::into(err.kind()))?;
+            let bytes_read =
+                self.read(&mut temp_buffer).await.map_err(|err| io_error_from_kind(err.kind()))?;
 
             if bytes_read == 0 {
                 // read 0 bytes AND buffer is empty - connection closed
@@ -54,7 +54,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
     }
 
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let mut buffer = BytesMut::with_capacity(512);
+        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
         self.read_bytes(&mut buffer).await?;
 
         let mut parsed_values = Vec::new();
@@ -64,13 +64,9 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
             match deserialize(remaining_buffer.clone()) {
                 | Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
-
-                    // * Remove the parsed portion from the buffer
                     remaining_buffer = remaining_buffer.split_off(consumed);
                 },
                 | Err(e) => {
-                    // Handle parsing errors
-                    // You might want to log the error or handle it differently based on your use case
                     return Err(IoError::Custom(format!("Parsing error: {e:?}")));
                 },
             }
@@ -83,7 +79,7 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
-        self.write_all(&encoded).await.map_err(|e| Into::<IoError>::into(e.kind()))
+        self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
     }
 }
 
@@ -92,7 +88,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
     where
         U: bincode::Decode<()>,
     {
-        let mut buffer = BytesMut::with_capacity(512);
+        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
         self.read_bytes(&mut buffer).await?;
 
         let (request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
@@ -105,26 +101,30 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
 impl TAsyncReadWrite for TcpStream {
     async fn connect(connect_to: &str) -> Result<(ReadConnected, WriteConnected), IoError> {
         let stream =
-            TcpStream::connect(connect_to).await.map_err(|e| Into::<IoError>::into(e.kind()))?;
+            TcpStream::connect(connect_to).await.map_err(|e| io_error_from_kind(e.kind()))?;
         let (r, w) = stream.into_split();
         Ok((ReadConnected(Box::new(r)), WriteConnected(Box::new(w))))
     }
 }
 
+fn io_error_from_kind(kind: ErrorKind) -> IoError {
+    match kind {
+        | ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+        | ErrorKind::ConnectionReset => IoError::ConnectionReset,
+        | ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+        | ErrorKind::NotConnected => IoError::NotConnected,
+        | ErrorKind::BrokenPipe => IoError::BrokenPipe,
+        | ErrorKind::TimedOut => IoError::TimedOut,
+        | _ => {
+            eprintln!("unknown error: {kind:?}");
+            IoError::Custom(format!("unknown error: {kind:?}"))
+        },
+    }
+}
+
 impl From<ErrorKind> for IoError {
     fn from(value: ErrorKind) -> Self {
-        match value {
-            | ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
-            | ErrorKind::ConnectionReset => IoError::ConnectionReset,
-            | ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
-            | ErrorKind::NotConnected => IoError::NotConnected,
-            | ErrorKind::BrokenPipe => IoError::BrokenPipe,
-            | ErrorKind::TimedOut => IoError::TimedOut,
-            | _ => {
-                eprintln!("unknown error: {value:?}");
-                IoError::Custom(format!("unknown error: {value:?}"))
-            },
-        }
+        io_error_from_kind(value)
     }
 }
 
@@ -140,7 +140,7 @@ fn test_socket_to_string() {
 
 #[tokio::test]
 async fn test_read_values() {
-    let mut buffer = BytesMut::with_capacity(512);
+    let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
     // add a simple string to buffer
     buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
     buffer.extend_from_slice(b"+PEERS 127.0.0.1:6378\r\n");
