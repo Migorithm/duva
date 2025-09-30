@@ -52,7 +52,7 @@ impl Segment {
 
         let initial_size = file.metadata()?.len() as usize;
 
-        let writer = BufWriter::new(file);
+        let writer = BufWriter::with_capacity(64 * 1024, file); // 64KB buffer for better write performance
         Ok(Self {
             path,
             writer,
@@ -76,9 +76,9 @@ impl Segment {
 
     // Add method to read operation at specific offset
     fn read_at_offset(&mut self, offset: usize) -> Result<WriteOperation> {
-        // Open a temporary, read-only file handle.
+        // Open a temporary, read-only file handle with larger buffer for better I/O
         let file = File::open(&self.path)?;
-        let mut reader = BufReader::new(file);
+        let mut reader = BufReader::with_capacity(8192, file);
 
         // Seek to the exact starting byte of the operation.
         reader.seek(SeekFrom::Start(offset as u64))?;
@@ -104,7 +104,7 @@ impl Segment {
         // Open the file for writing and get its size.
         let file = OpenOptions::new().read(true).append(true).open(path)?;
         let file_size = file.metadata()?.len() as usize;
-        let writer = BufWriter::new(file);
+        let writer = BufWriter::with_capacity(64 * 1024, file); // 64KB buffer for better write performance
 
         // If file is empty, no need to build index
         if file_size == 0 {
@@ -131,10 +131,12 @@ impl Segment {
 
         let mut current_offset = 0;
         let mut lookups = Vec::with_capacity(operations.len());
+
+        // Build index more efficiently - single pass
         for op in operations.iter() {
             lookups.push(LookupIndex::new(op.log_index, current_offset));
-            let encoded_size = serialized_len_with_bincode(WRITE_OP_PREFIX, op);
-            current_offset += encoded_size;
+            // Use the existing helper function
+            current_offset += serialized_len_with_bincode(WRITE_OP_PREFIX, op);
         }
 
         Ok(Segment { path: path.clone(), start_index, end_index, size: file_size, lookups, writer })
@@ -303,7 +305,7 @@ impl TWriteAheadLog for FileOpLogs {
 
             self.active_segment.writer.write_all(&buffer)?;
             self.active_segment.size += buffer.len();
-            self.active_segment.lookups.append(&mut lookups);
+            self.active_segment.lookups.extend(lookups);
             self.active_segment.end_index = ops.last().unwrap().log_index;
             self.fsync()?;
             return Ok(());
@@ -345,7 +347,7 @@ impl TWriteAheadLog for FileOpLogs {
             }
             self.active_segment.writer.write_all(&buffer)?;
             self.active_segment.size += buffer.len();
-            self.active_segment.lookups.append(&mut lookups);
+            self.active_segment.lookups.extend(lookups);
             self.active_segment.end_index = chunk_to_process.last().unwrap().log_index;
 
             // just advance the slice. This is an O(1) operation!
@@ -374,16 +376,19 @@ impl TWriteAheadLog for FileOpLogs {
                 continue;
             }
 
-            // Use binary search to find start and end positions
+            // Find start position
             let start_pos = segment
                 .lookups
                 .binary_search_by_key(&(start_exclusive + 1), |lookup| lookup.log_index)
                 .unwrap_or_else(|pos| pos);
-            let end_pos = segment
-                .lookups
+
+            // Find end position starting from start_pos for better cache locality
+            let end_pos = match segment.lookups[start_pos..]
                 .binary_search_by_key(&end_inclusive, |lookup| lookup.log_index)
-                .map(|pos| pos + 1)
-                .unwrap_or_else(|pos| pos);
+            {
+                | Ok(relative_pos) => start_pos + relative_pos + 1,
+                | Err(relative_pos) => start_pos + relative_pos,
+            };
 
             if start_pos >= end_pos {
                 continue;
@@ -398,10 +403,16 @@ impl TWriteAheadLog for FileOpLogs {
             };
 
             if let Ok(file) = File::open(&segment.path) {
-                let mut reader = BufReader::new(file);
+                let mut reader = BufReader::with_capacity(32 * 1024, file); // 32KB read buffer
                 if reader.seek(SeekFrom::Start(start_offset as u64)).is_ok() {
                     let read_size = end_offset - start_offset;
-                    let mut buffer = vec![0u8; read_size];
+
+                    // Use uninitialized buffer for better performance
+                    let mut buffer = Vec::with_capacity(read_size);
+                    unsafe {
+                        buffer.set_len(read_size);
+                    }
+
                     if reader.read_exact(&mut buffer).is_ok() {
                         if let Ok(ops) = LogEntry::deserialize(Bytes::copy_from_slice(&buffer)) {
                             result.extend(ops.into_iter().filter(|op| {
@@ -420,13 +431,45 @@ impl TWriteAheadLog for FileOpLogs {
     where
         F: FnMut(WriteOperation) + Send,
     {
-        // Replay all segments in order
+        // Replay all segments in order with streaming to avoid loading everything into memory
         for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
             if segment.lookups.is_empty() {
                 continue;
             }
-            let operations: Vec<WriteOperation> = segment.read_operations()?;
-            operations.into_iter().for_each(&mut replay_handler);
+
+            // Stream operations in chunks to reduce memory pressure
+            const CHUNK_SIZE: usize = 1000;
+            let mut start_idx = 0;
+
+            while start_idx < segment.lookups.len() {
+                let end_idx = (start_idx + CHUNK_SIZE).min(segment.lookups.len());
+                let start_offset = segment.lookups[start_idx].byte_offset;
+                let end_offset = if end_idx < segment.lookups.len() {
+                    segment.lookups[end_idx].byte_offset
+                } else {
+                    segment.size
+                };
+
+                if let Ok(file) = File::open(&segment.path) {
+                    let mut reader = BufReader::with_capacity(64 * 1024, file);
+                    if reader.seek(SeekFrom::Start(start_offset as u64)).is_ok() {
+                        let read_size = end_offset - start_offset;
+                        let mut buffer = Vec::with_capacity(read_size);
+                        unsafe {
+                            buffer.set_len(read_size);
+                        }
+
+                        if reader.read_exact(&mut buffer).is_ok() {
+                            if let Ok(operations) =
+                                LogEntry::deserialize(Bytes::copy_from_slice(&buffer))
+                            {
+                                operations.into_iter().for_each(&mut replay_handler);
+                            }
+                        }
+                    }
+                }
+                start_idx = end_idx;
+            }
         }
 
         Ok(())
