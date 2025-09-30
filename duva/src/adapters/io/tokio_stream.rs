@@ -62,13 +62,13 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
 
         while !remaining_buffer.is_empty() {
             match deserialize(remaining_buffer.clone()) {
-                Ok((query_io, consumed)) => {
+                | Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
                     remaining_buffer = remaining_buffer.split_off(consumed);
-                }
-                Err(e) => {
+                },
+                | Err(e) => {
                     return Err(IoError::Custom(format!("Parsing error: {e:?}")));
-                }
+                },
             }
         }
         Ok(parsed_values)
