@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use super::{
     command::SaveCommand,
     endec::encoder::{
@@ -11,6 +9,7 @@ use crate::domains::saves::snapshot::Metadata;
 use crate::domains::{
     IoError, caches::cache_objects::CacheEntry, cluster_actors::replication::ReplicationId,
 };
+use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
 pub struct SaveActor {
@@ -50,13 +49,11 @@ impl SaveActor {
                             self.meta.total_expires_table_size,
                         )?)
                         .await?;
+                    self.encode_chunk_queue().await?;
                 }
             },
             | SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
-                if self.meta.num_of_saved_table_size_actor == 0 {
-                    self.encode_chunk_queue().await?;
-                }
             },
             | SaveCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
@@ -72,11 +69,15 @@ impl SaveActor {
     }
 
     async fn encode_chunk_queue(&mut self) -> anyhow::Result<()> {
+        let mut buffer = Vec::new();
         while let Some(chunk) = self.meta.chunk_queue.pop_front() {
             for kvs in chunk {
                 let encoded_chunk = kvs.encode_with_key()?;
-                self.target.write(&encoded_chunk).await?;
+                buffer.extend_from_slice(&encoded_chunk);
             }
+        }
+        if !buffer.is_empty() {
+            self.target.write(&buffer).await?;
         }
         Ok(())
     }
