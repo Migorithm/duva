@@ -234,7 +234,6 @@ impl FileOpLogs {
                 let file_name = entry.file_name();
                 let name_str = file_name.to_string_lossy();
 
-                // Manual parsing is faster than regex for this simple pattern
                 if name_str.starts_with("segment_") && name_str.ends_with(".oplog") {
                     let number_part = &name_str[8..name_str.len() - 6]; // Remove "segment_" and ".oplog"
                     if let Ok(index) = number_part.parse::<u64>() {
