@@ -1309,7 +1309,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let keys = pending_task
             .chunks
             .iter()
-            .flat_map(|task| task.keys_to_migrate.iter().cloned())
+            .flat_map(|task| task.keys_to_migrate.iter())
+            .cloned()
             .collect::<Vec<_>>();
 
         let entries = self
@@ -1326,11 +1327,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(p) = self.pending_reqs.as_mut() {
-            p.store_batch(pending_task.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
+        // Send batch first, then store in pending ONLY IF successful
+        if let Err(e) = target_peer
+            .send(BatchEntries { batch_id: pending_task.batch_id.clone(), entries })
+            .await
+        {
+            callback.send(res_err!("Failed to send migration batch: {}", e));
+            return;
         }
 
-        let _ = target_peer.send(BatchEntries { batch_id: pending_task.batch_id, entries }).await;
+        if let Some(p) = self.pending_reqs.as_mut() {
+            p.store_batch(pending_task.batch_id, QueuedKeysToMigrate { callback, keys })
+        }
     }
 
     pub(crate) async fn receive_batch(
