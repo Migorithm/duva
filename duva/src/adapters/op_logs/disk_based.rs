@@ -109,28 +109,36 @@ impl Segment {
         let file_size = file.metadata()?.len() as usize;
         let writer = BufWriter::new(file);
 
-        // Open a separate read-only handle to read the contents.
+        // If file is empty, no need to build index
+        if file_size == 0 {
+            return Ok(Segment {
+                path: path.clone(),
+                start_index: 0,
+                end_index: 0,
+                size: 0,
+                lookups: Vec::new(),
+                writer,
+            });
+        }
+
+        // Optimized index building - only read what we need
         let mut reader = File::open(path)?;
         let mut buf = Vec::with_capacity(file_size);
         reader.read_to_end(&mut buf)?;
 
-        // Use your custom deserializer that understands the on-disk format.
-        let operations = if buf.is_empty() {
-            Vec::new()
-        } else {
-            LogEntry::deserialize(Bytes::copy_from_slice(&buf))?
-        };
-
+        let operations = LogEntry::deserialize(Bytes::copy_from_slice(&buf))?;
         let (start_index, end_index) = match (operations.first(), operations.last()) {
             | (Some(first), Some(last)) => (first.log_index, last.log_index),
             | _ => (0, 0),
         };
+
         let mut current_offset = 0;
         let mut lookups = Vec::with_capacity(operations.len());
         for op in operations.into_iter() {
             lookups.push(LookupIndex::new(op.log_index, current_offset));
+
             let encoded_size = bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len())?;
-            current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size
+            current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size;
         }
 
         Ok(Segment { path: path.clone(), start_index, end_index, size: file_size, lookups, writer })
@@ -306,7 +314,7 @@ impl TWriteAheadLog for FileOpLogs {
             // Find how many operations fit in current segment
             for op in remaining_ops {
                 let op_size = serialized_len_with_bincode(WRITE_OP_PREFIX, op);
-                if chunk_size + op_size > available_space {
+                if chunk_size + op_size > available_space && count > 0 {
                     break;
                 }
                 chunk_size += op_size;
@@ -322,7 +330,7 @@ impl TWriteAheadLog for FileOpLogs {
             let mut buffer = Vec::new();
             let mut lookups = Vec::with_capacity(count);
 
-            let chunk_to_process = &ops[..count];
+            let chunk_to_process = &remaining_ops[..count];
             for op in chunk_to_process {
                 lookups
                     .push(LookupIndex::new(op.log_index, self.active_segment.size + buffer.len()));
