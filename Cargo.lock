@@ -486,7 +486,6 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rand",
- "regex",
  "tempfile",
  "thiserror 2.0.14",
  "tokio",
