@@ -828,15 +828,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
-        let banned_peers: Vec<_> = self.replication.banlist.iter().map(|p| &p.p_id).collect();
-
-        for banned_peer_id in banned_peers {
+        for banned_peer_id in
+            self.replication.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
+        {
             warn!(
                 "applying ban list! {} removes {}...",
                 self.replication.self_identifier(),
                 banned_peer_id
             );
-            self.remove_peer(banned_peer_id).await;
+            self.remove_peer(&banned_peer_id).await;
         }
     }
 
