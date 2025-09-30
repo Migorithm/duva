@@ -4,10 +4,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::query_io::serialized_len_with_bincode;
 use crate::domains::query_io::{SERDE_CONFIG, WRITE_OP_PREFIX};
 use anyhow::Result;
-
 use bytes::Bytes;
-
-use regex::Regex;
 use std::fs::{File, OpenOptions};
 use std::io::BufWriter;
 use std::io::Write;
@@ -229,17 +226,25 @@ impl FileOpLogs {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let re = Regex::new(r"^segment_(\d+)\.oplog$")?;
-        let mut segments_with_indices = Vec::new();
+        // Pre-allocate with reasonable capacity
+        let mut segments_with_indices = Vec::with_capacity(16);
+
         for entry in std::fs::read_dir(path)? {
-            if let Ok(entry) = entry
-                && let Some(captures) = re.captures(entry.file_name().to_string_lossy().as_ref())
-                && let Ok(index) = captures[1].parse::<u64>()
-            {
-                segments_with_indices.push((index, entry.path()));
+            if let Ok(entry) = entry {
+                let file_name = entry.file_name();
+                let name_str = file_name.to_string_lossy();
+
+                // Manual parsing is faster than regex for this simple pattern
+                if name_str.starts_with("segment_") && name_str.ends_with(".oplog") {
+                    let number_part = &name_str[8..name_str.len() - 6]; // Remove "segment_" and ".oplog"
+                    if let Ok(index) = number_part.parse::<u64>() {
+                        segments_with_indices.push((index, entry.path()));
+                    }
+                }
             }
         }
-        segments_with_indices.sort_by_key(|(index, _)| *index);
+
+        segments_with_indices.sort_unstable_by_key(|(index, _)| *index);
         Ok(segments_with_indices.into_iter().map(|(_, path)| path).collect())
     }
 
@@ -272,38 +277,36 @@ impl FileOpLogs {
         self.segments.push(old_active_segment);
         Ok(())
     }
-
-    fn read_ops_from_reader(
-        &self,
-        reader: &mut BufReader<File>,
-        start_exclusive: u64,
-        end_inclusive: u64,
-    ) -> Result<Vec<WriteOperation>> {
-        let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer)?;
-
-        if buffer.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let operations_in_buffer = LogEntry::deserialize(Bytes::copy_from_slice(&buffer))?;
-
-        // Pre-allocate capacity based on estimated filtering ratio
-        let mut collected_ops = Vec::with_capacity(operations_in_buffer.len() / 2);
-        for op in operations_in_buffer {
-            if op.log_index > start_exclusive && op.log_index <= end_inclusive {
-                collected_ops.push(op);
-            }
-        }
-        collected_ops.shrink_to_fit();
-
-        Ok(collected_ops)
-    }
 }
 
 impl TWriteAheadLog for FileOpLogs {
     fn write_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         if ops.is_empty() {
+            return Ok(());
+        }
+
+        // Pre-calculate total size to optimize buffer allocation
+        let total_estimated_size: usize =
+            ops.iter().map(|op| serialized_len_with_bincode(WRITE_OP_PREFIX, op)).sum();
+
+        // If all operations fit in current segment, optimize for single write
+        if total_estimated_size <= SEGMENT_SIZE.saturating_sub(self.active_segment.size) {
+            let mut buffer = Vec::with_capacity(total_estimated_size);
+            let mut lookups = Vec::with_capacity(ops.len());
+
+            for op in &ops {
+                lookups
+                    .push(LookupIndex::new(op.log_index, self.active_segment.size + buffer.len()));
+                buffer.push(WRITE_OP_PREFIX as u8);
+                let serialized = bincode::encode_to_vec(op, SERDE_CONFIG)?;
+                buffer.extend_from_slice(&serialized);
+            }
+
+            self.active_segment.writer.write_all(&buffer)?;
+            self.active_segment.size += buffer.len();
+            self.active_segment.lookups.append(&mut lookups);
+            self.active_segment.end_index = ops.last().unwrap().log_index;
+            self.fsync()?;
             return Ok(());
         }
 
@@ -364,37 +367,48 @@ impl TWriteAheadLog for FileOpLogs {
         let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
 
         for segment in all_segments {
-            // if no overlaps, continue
-            if !(segment.end_index > start_exclusive && segment.start_index <= end_inclusive) {
+            // Skip segments with no overlap
+            if segment.lookups.is_empty()
+                || segment.end_index <= start_exclusive
+                || segment.start_index > end_inclusive
+            {
                 continue;
             }
 
-            let first_included_index = start_exclusive.saturating_add(1); // Avoid overflow
-            let starting_idx_in_index = segment
+            // Use binary search to find start and end positions
+            let start_pos = segment
                 .lookups
-                .binary_search_by(|index| index.log_index.cmp(&first_included_index))
-                .unwrap_or_else(|pos| pos); // If not found, pos is where it would be inserted
+                .binary_search_by_key(&(start_exclusive + 1), |lookup| lookup.log_index)
+                .unwrap_or_else(|pos| pos);
+            let end_pos = segment
+                .lookups
+                .binary_search_by_key(&end_inclusive, |lookup| lookup.log_index)
+                .map(|pos| pos + 1)
+                .unwrap_or_else(|pos| pos);
 
-            let file_result = OpenOptions::new().read(true).open(&segment.path);
-            if let Ok(file) = file_result {
+            if start_pos >= end_pos {
+                continue;
+            }
+
+            // Calculate exact byte range to read
+            let start_offset = segment.lookups[start_pos].byte_offset;
+            let end_offset = if end_pos < segment.lookups.len() {
+                segment.lookups[end_pos].byte_offset
+            } else {
+                segment.size
+            };
+
+            if let Ok(file) = File::open(&segment.path) {
                 let mut reader = BufReader::new(file);
-
-                let seek_and_read = if starting_idx_in_index < segment.lookups.len() {
-                    let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
-                    reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok()
-                } else if first_included_index <= segment.start_index
-                    && segment.start_index <= end_inclusive
-                {
-                    true // Already at offset 0
-                } else {
-                    false
-                };
-
-                if seek_and_read {
-                    if let Ok(ops) =
-                        self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                    {
-                        result.extend(ops);
+                if reader.seek(SeekFrom::Start(start_offset as u64)).is_ok() {
+                    let read_size = end_offset - start_offset;
+                    let mut buffer = vec![0u8; read_size];
+                    if reader.read_exact(&mut buffer).is_ok() {
+                        if let Ok(ops) = LogEntry::deserialize(Bytes::copy_from_slice(&buffer)) {
+                            result.extend(ops.into_iter().filter(|op| {
+                                op.log_index > start_exclusive && op.log_index <= end_inclusive
+                            }));
+                        }
                     }
                 }
             }
@@ -420,8 +434,16 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     fn read_at(&mut self, log_index: u64) -> Option<WriteOperation> {
-        for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
-            // if overlab is found
+        // Check active segment first (most likely to contain recent reads)
+        if self.active_segment.start_index <= log_index
+            && self.active_segment.end_index >= log_index
+            && let Some(offset) = self.active_segment.find_offset(log_index)
+        {
+            return self.active_segment.read_at_offset(offset).ok();
+        }
+
+        // Then check sealed segments in reverse order (more recent first)
+        for segment in self.segments.iter_mut().rev() {
             if segment.start_index <= log_index
                 && segment.end_index >= log_index
                 && let Some(offset) = segment.find_offset(log_index)
