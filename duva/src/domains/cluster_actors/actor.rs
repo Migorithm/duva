@@ -908,8 +908,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter(|peer| peer.is_replica(&self.replication.replid))
-            .map(|peer| peer.curr_match_index())
+            .filter_map(|peer| {
+                if peer.is_replica(&self.replication.replid) {
+                    Some(peer.curr_match_index())
+                } else {
+                    None
+                }
+            })
             .min()
     }
 

@@ -67,14 +67,14 @@ impl Segment {
     }
 
     fn read_operations(&mut self) -> Result<Vec<WriteOperation>> {
-        let mut file = File::open(&self.path)?; // Open a temporary read handle
-        file.seek(SeekFrom::Start(0))?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-        if buf.is_empty() {
+        if self.lookups.is_empty() || self.size == 0 {
             return Ok(Vec::new());
         }
-        LogEntry::deserialize(Bytes::copy_from_slice(&buf[..]))
+
+        let mut file = File::open(&self.path)?;
+        let mut buf = Vec::with_capacity(self.size);
+        file.read_to_end(&mut buf)?;
+        LogEntry::deserialize(Bytes::copy_from_slice(&buf))
     }
 
     // Add method to read operation at specific offset
@@ -134,11 +134,10 @@ impl Segment {
 
         let mut current_offset = 0;
         let mut lookups = Vec::with_capacity(operations.len());
-        for op in operations.into_iter() {
+        for op in operations.iter() {
             lookups.push(LookupIndex::new(op.log_index, current_offset));
-
-            let encoded_size = bincode::encode_to_vec(&op, SERDE_CONFIG).map(|v| v.len())?;
-            current_offset += WRITE_OP_PREFIX.len_utf8() + encoded_size;
+            let encoded_size = serialized_len_with_bincode(WRITE_OP_PREFIX, op);
+            current_offset += encoded_size;
         }
 
         Ok(Segment { path: path.clone(), start_index, end_index, size: file_size, lookups, writer })
@@ -152,10 +151,14 @@ impl Segment {
     }
 
     fn truncate(&mut self, log_index: u64) -> Result<()> {
-        // Finds the position of the last entry to keep, which is the entry with the given log_index or the one just before it.
-        let Some(last_entry_pos) =
-            self.lookups.iter().rposition(|lookup| lookup.log_index <= log_index)
-        else {
+        // Use binary search for better performance on large segments
+        let truncate_pos =
+            match self.lookups.binary_search_by_key(&log_index, |lookup| lookup.log_index) {
+                | Ok(pos) => pos + 1, // Keep the found entry
+                | Err(pos) => pos,    // Insert position is where we truncate
+            };
+
+        if truncate_pos == 0 {
             // No entry with log_index <= specified one, so truncate the entire segment.
             self.lookups.clear();
             self.end_index = self.start_index;
@@ -163,19 +166,17 @@ impl Segment {
             self.writer.get_ref().set_len(0)?;
             self.writer.seek(SeekFrom::Start(0))?;
             return Ok(());
-        };
+        }
 
-        // Determine the new size of the file. It's the offset of the entry *after* the one we're keeping.
-        let new_size = if let Some(next_lookup) = self.lookups.get(last_entry_pos + 1) {
+        // Determine the new size of the file
+        let new_size = if let Some(next_lookup) = self.lookups.get(truncate_pos) {
             next_lookup.byte_offset
         } else {
-            // We are keeping all entries up to the end of the segment.
             self.size
         };
 
-        // Truncate lookups vector to keep only the entries up to last_entry_pos.
-        self.lookups.truncate(last_entry_pos + 1);
-
+        // Truncate lookups vector
+        self.lookups.truncate(truncate_pos);
         self.end_index = self.lookups.last().map_or(self.start_index, |l| l.log_index);
         self.size = new_size;
 
@@ -258,8 +259,15 @@ impl FileOpLogs {
         let next_index = self.segments.len() + 1;
         let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
         let mut new_active_segment = Segment::new(segment_path)?;
-        new_active_segment.start_index = self.active_segment.end_index + 1;
-        new_active_segment.end_index = self.active_segment.end_index;
+
+        // Set start_index based on the current active segment's state
+        if self.active_segment.lookups.is_empty() {
+            new_active_segment.start_index = self.active_segment.start_index;
+        } else {
+            new_active_segment.start_index = self.active_segment.end_index + 1;
+        }
+        new_active_segment.end_index = new_active_segment.start_index.saturating_sub(1);
+
         let old_active_segment = std::mem::replace(&mut self.active_segment, new_active_segment);
         self.segments.push(old_active_segment);
         Ok(())
@@ -271,29 +279,23 @@ impl FileOpLogs {
         start_exclusive: u64,
         end_inclusive: u64,
     ) -> Result<Vec<WriteOperation>> {
-        let mut collected_ops = Vec::new();
         let mut buffer = Vec::new();
-
         reader.read_to_end(&mut buffer)?;
 
         if buffer.is_empty() {
-            return Ok(collected_ops);
+            return Ok(Vec::new());
         }
 
-        let bytes = Bytes::copy_from_slice(&buffer);
+        let operations_in_buffer = LogEntry::deserialize(Bytes::copy_from_slice(&buffer))?;
 
-        let operations_in_buffer = LogEntry::deserialize(bytes)?;
-
+        // Pre-allocate capacity based on estimated filtering ratio
+        let mut collected_ops = Vec::with_capacity(operations_in_buffer.len() / 2);
         for op in operations_in_buffer {
-            if op.log_index > end_inclusive {
-                // Reached beyond the end of the desired range
-                break;
-            }
-            if op.log_index > start_exclusive {
-                // Operation is within the desired range
+            if op.log_index > start_exclusive && op.log_index <= end_inclusive {
                 collected_ops.push(op);
             }
         }
+        collected_ops.shrink_to_fit();
 
         Ok(collected_ops)
     }
@@ -326,8 +328,8 @@ impl TWriteAheadLog for FileOpLogs {
                 continue;
             }
 
-            // Process batch directly
-            let mut buffer = Vec::new();
+            // Process batch directly with pre-allocated buffer
+            let mut buffer = Vec::with_capacity(chunk_size);
             let mut lookups = Vec::with_capacity(count);
 
             let chunk_to_process = &remaining_ops[..count];
@@ -373,24 +375,22 @@ impl TWriteAheadLog for FileOpLogs {
                 .binary_search_by(|index| index.log_index.cmp(&first_included_index))
                 .unwrap_or_else(|pos| pos); // If not found, pos is where it would be inserted
 
-            if starting_idx_in_index < segment.lookups.len() {
-                let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
+            let file_result = OpenOptions::new().read(true).open(&segment.path);
+            if let Ok(file) = file_result {
+                let mut reader = BufReader::new(file);
 
-                if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
-                    let mut reader = BufReader::new(file);
-                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok()
-                        && let Ok(ops) =
-                            self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                    {
-                        result.extend(ops);
-                    }
-                }
-            } else if first_included_index <= segment.start_index
-                && segment.start_index <= end_inclusive
-                && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
-            {
+                let seek_and_read = if starting_idx_in_index < segment.lookups.len() {
+                    let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
+                    reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok()
+                } else if first_included_index <= segment.start_index
+                    && segment.start_index <= end_inclusive
                 {
-                    let mut reader = BufReader::new(file); // Starts at offset 0
+                    true // Already at offset 0
+                } else {
+                    false
+                };
+
+                if seek_and_read {
                     if let Ok(ops) =
                         self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
                     {
@@ -409,6 +409,9 @@ impl TWriteAheadLog for FileOpLogs {
     {
         // Replay all segments in order
         for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
+            if segment.lookups.is_empty() {
+                continue;
+            }
             let operations: Vec<WriteOperation> = segment.read_operations()?;
             operations.into_iter().for_each(&mut replay_handler);
         }
@@ -434,49 +437,52 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     fn truncate_after(&mut self, log_index: u64) {
-        // * Discard any sealed segments that are entirely after the truncation point.
-        self.segments.retain(|segment| {
-            if segment.start_index > log_index {
-                let _ = std::fs::remove_file(&segment.path);
-                false
-            } else {
-                true
-            }
-        });
+        // Early return if no truncation needed
+        if self.segments.is_empty() && self.active_segment.end_index <= log_index {
+            return;
+        }
 
-        // * Check if the last sealed segment needs to be truncated and promoted.
+        // Find segments to remove in reverse order for efficient removal
+        let mut segments_to_remove = Vec::new();
+        for (i, segment) in self.segments.iter().enumerate().rev() {
+            if segment.start_index > log_index {
+                segments_to_remove.push(i);
+            } else {
+                break;
+            }
+        }
+
+        // Remove segments and their files
+        for &i in &segments_to_remove {
+            let segment = self.segments.remove(i);
+            let _ = std::fs::remove_file(&segment.path);
+        }
+
+        // Check if the last sealed segment needs to be truncated and promoted
         if let Some(last_segment) = self.segments.last()
             && last_segment.end_index > log_index
             && let Some(mut new_active) = self.segments.pop()
         {
             if new_active.truncate(log_index).is_ok() {
-                // This truncated segment becomes the new active one.
-                // The old active segment is now obsolete.
                 let _ = std::fs::remove_file(&self.active_segment.path);
                 self.active_segment = new_active;
             }
-            // After promoting a sealed segment, the job is done.
             return;
         }
 
         if self.active_segment.end_index <= log_index {
             return;
         }
-        // * If no sealed segment was promoted, the active segment might need truncation.
+
+        // Handle active segment truncation
         if self.active_segment.start_index > log_index {
-            // The active segment is entirely after the truncation point.
-            // It should be replaced with a new, empty segment.
             let _ = std::fs::remove_file(&self.active_segment.path);
             let new_segment_idx = self.segments.len();
             let new_path = self.path.join(format!("segment_{}.oplog", new_segment_idx));
             let mut new_active = Segment::new(new_path).expect("Failed to create new segment");
-            // The start_index of the new segment should be consistent.
-            // If the previous segment (now the last in self.segments) exists,
-            // its end_index + 1 should be the start of the new active segment.
             new_active.start_index = self.segments.last().map_or(0, |s| s.end_index + 1);
             self.active_segment = new_active;
         } else {
-            // The truncation point is within the active segment.
             let _ = self.active_segment.truncate(log_index);
         }
     }
