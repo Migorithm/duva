@@ -63,17 +63,6 @@ impl Segment {
         })
     }
 
-    fn read_operations(&mut self) -> Result<Vec<WriteOperation>> {
-        if self.lookups.is_empty() || self.size == 0 {
-            return Ok(Vec::new());
-        }
-
-        let mut file = File::open(&self.path)?;
-        let mut buf = Vec::with_capacity(self.size);
-        file.read_to_end(&mut buf)?;
-        LogEntry::deserialize(Bytes::copy_from_slice(&buf))
-    }
-
     // Add method to read operation at specific offset
     fn read_at_offset(&mut self, offset: usize) -> Result<WriteOperation> {
         // Open a temporary, read-only file handle with larger buffer for better I/O
@@ -231,16 +220,14 @@ impl FileOpLogs {
         // Pre-allocate with reasonable capacity
         let mut segments_with_indices = Vec::with_capacity(16);
 
-        for entry in std::fs::read_dir(path)? {
-            if let Ok(entry) = entry {
-                let file_name = entry.file_name();
-                let name_str = file_name.to_string_lossy();
+        for entry in std::fs::read_dir(path)?.flatten() {
+            let file_name = entry.file_name();
+            let name_str = file_name.to_string_lossy();
 
-                if name_str.starts_with("segment_") && name_str.ends_with(".oplog") {
-                    let number_part = &name_str[8..name_str.len() - 6]; // Remove "segment_" and ".oplog"
-                    if let Ok(index) = number_part.parse::<u64>() {
-                        segments_with_indices.push((index, entry.path()));
-                    }
+            if name_str.starts_with("segment_") && name_str.ends_with(".oplog") {
+                let number_part = &name_str[8..name_str.len() - 6]; // Remove "segment_" and ".oplog"
+                if let Ok(index) = number_part.parse::<u64>() {
+                    segments_with_indices.push((index, entry.path()));
                 }
             }
         }
@@ -407,18 +394,15 @@ impl TWriteAheadLog for FileOpLogs {
                 if reader.seek(SeekFrom::Start(start_offset as u64)).is_ok() {
                     let read_size = end_offset - start_offset;
 
-                    // Use uninitialized buffer for better performance
-                    let mut buffer = Vec::with_capacity(read_size);
-                    unsafe {
-                        buffer.set_len(read_size);
-                    }
+                    // Use zeroed buffer - safer and clippy-compliant
+                    let mut buffer = vec![0u8; read_size];
 
-                    if reader.read_exact(&mut buffer).is_ok() {
-                        if let Ok(ops) = LogEntry::deserialize(Bytes::copy_from_slice(&buffer)) {
-                            result.extend(ops.into_iter().filter(|op| {
-                                op.log_index > start_exclusive && op.log_index <= end_inclusive
-                            }));
-                        }
+                    if reader.read_exact(&mut buffer).is_ok()
+                        && let Ok(ops) = LogEntry::deserialize(Bytes::copy_from_slice(&buffer))
+                    {
+                        result.extend(ops.into_iter().filter(|op| {
+                            op.log_index > start_exclusive && op.log_index <= end_inclusive
+                        }));
                     }
                 }
             }
@@ -454,17 +438,13 @@ impl TWriteAheadLog for FileOpLogs {
                     let mut reader = BufReader::with_capacity(64 * 1024, file);
                     if reader.seek(SeekFrom::Start(start_offset as u64)).is_ok() {
                         let read_size = end_offset - start_offset;
-                        let mut buffer = Vec::with_capacity(read_size);
-                        unsafe {
-                            buffer.set_len(read_size);
-                        }
+                        let mut buffer = vec![0u8; read_size];
 
-                        if reader.read_exact(&mut buffer).is_ok() {
-                            if let Ok(operations) =
+                        if reader.read_exact(&mut buffer).is_ok()
+                            && let Ok(operations) =
                                 LogEntry::deserialize(Bytes::copy_from_slice(&buffer))
-                            {
-                                operations.into_iter().for_each(&mut replay_handler);
-                            }
+                        {
+                            operations.into_iter().for_each(&mut replay_handler);
                         }
                     }
                 }
