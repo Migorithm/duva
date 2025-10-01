@@ -212,10 +212,7 @@ impl QuickListNode {
                 };
 
                 let decompressed = lzf::decompress(&bytes, max_size).unwrap_or_default();
-                let mut ziplist = Ziplist {
-                    data: decompressed,
-                    tail_offset: None,
-                };
+                let mut ziplist = Ziplist { data: decompressed, tail_offset: None };
 
                 // Recalculate tail offset for the restored ziplist
                 ziplist.tail_offset = ziplist.find_tail_offset();
@@ -799,7 +796,8 @@ mod tests {
         assert_eq!(ql.nodes.len(), 3);
 
         // Force compression by temporarily lowering threshold
-        for i in 1..2 { // Only compress middle node
+        for i in 1..2 {
+            // Only compress middle node
             if let Some(node) = ql.nodes.get_mut(i) {
                 if node.entry_count > 1 && !node.is_compressed() {
                     node.try_compress();
