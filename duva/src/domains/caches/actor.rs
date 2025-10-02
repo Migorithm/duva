@@ -15,14 +15,19 @@ use tokio::sync::mpsc::{self};
 pub struct CacheActor {
     pub(crate) cache: LruCache<String, CacheValue>,
     pub(crate) self_handler: CacheCommandSender,
+    pub(crate) read_queue: ReadQueue,
 }
 
 impl CacheActor {
     pub(crate) fn run(con_idx: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(2000);
         tokio::spawn(
-            Self { cache: LruCache::new(1000), self_handler: CacheCommandSender(tx.clone()) }
-                .handle(cache_actor_inbox, ReadQueue::new(con_idx)),
+            Self {
+                cache: LruCache::new(1000),
+                self_handler: CacheCommandSender(tx.clone()),
+                read_queue: ReadQueue::new(con_idx),
+            }
+            .handle(cache_actor_inbox),
         );
         CacheCommandSender(tx)
     }

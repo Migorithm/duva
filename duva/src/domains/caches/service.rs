@@ -1,18 +1,14 @@
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
+use crate::domains::caches::read_queue::DeferredRead;
 
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
-    pub(super) async fn handle(
-        mut self,
-        mut recv: Receiver<CacheCommand>,
-        mut rq: ReadQueue,
-    ) -> Result<Self> {
+    pub(super) async fn handle(mut self, mut recv: Receiver<CacheCommand>) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
                 | CacheCommand::Set { cache_entry } => {
@@ -23,7 +19,8 @@ impl CacheActor {
                     self.get(&key, callback);
                 },
                 | CacheCommand::IndexGet { key, read_idx, callback } => {
-                    if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
+                    if let Some(callback) = self.read_queue.defer_if_stale(read_idx, &key, callback)
+                    {
                         self.get(&key, callback);
                     }
                 },
@@ -51,7 +48,7 @@ impl CacheActor {
                     outbox.send(SaveCommand::StopSentinel).await?;
                 },
                 | CacheCommand::Ping => {
-                    if let Some(pending_rqs) = rq.take_pending_requests() {
+                    if let Some(pending_rqs) = self.read_queue.take_pending_requests() {
                         for DeferredRead { key, callback } in pending_rqs {
                             self.get(&key, callback);
                         }
@@ -158,8 +155,9 @@ mod test {
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
+                read_queue: ReadQueue::new(con_idx.clone()),
             }
-            .handle(rx, ReadQueue::new(con_idx.clone())),
+            .handle(rx),
         );
         // WHEN
         let cache = S(cache);
@@ -192,8 +190,9 @@ mod test {
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
+                read_queue: ReadQueue::new(con_idx.clone()),
             }
-            .handle(rx, ReadQueue::new(con_idx.clone())),
+            .handle(rx),
         );
 
         let cache = S(cache);
@@ -228,8 +227,9 @@ mod test {
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
+                read_queue: ReadQueue::new(con_idx.clone()),
             }
-            .handle(rx, ReadQueue::new(con_idx.clone())),
+            .handle(rx),
         );
         // WHEN
         let cache = S(cache);
