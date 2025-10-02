@@ -10,7 +10,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
 
     p1_h.send_and_get("set key 1");
     p1_h.send_and_get("set key2 2");
-    assert_eq!(p1_h.send_and_get_vec("KEYS *", 2), vec!["1) \"key\"", "2) \"key2\""]);
+    assert_eq!(p1_h.send_and_get_vec("KEYS *", 2), vec!["1) \"key2\"", "2) \"key\""]);
 
     let env2 = ServerEnv::default().with_append_only(with_append_only);
     let p2 = spawn_server_process(&env2)?;

@@ -127,7 +127,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(cache_handler) };
     cluster_actor.cache_manager = cache_manager.clone();
     cluster_actor.replicate(heartbeat.clone()).await;
 
@@ -198,7 +198,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
     follower_c_actor.cache_manager = cache_manager.clone();
 
     // This just appends the entries to the log but doesn't commit them
@@ -259,7 +259,7 @@ async fn test_apply_multiple_committed_entries() {
     let heartbeat = Helper::heartbeat(1, 0.into(), entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
 
     // First append entries but don't commit
     follower_c_actor.cache_manager = cache_manager.clone();
@@ -310,7 +310,7 @@ async fn test_partial_commit_with_new_entries() {
     let first_heartbeat = Helper::heartbeat(1, Some(0), first_entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
 
     follower_c_actor.cache_manager = cache_manager.clone();
     follower_c_actor.replicate(first_heartbeat).await;
@@ -504,7 +504,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (tx, _rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
     cluster_actor.cache_manager = cache_manager.clone();
 
     let replid = cluster_actor.replication.replid.clone();
@@ -554,7 +554,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
     let (tx, _rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.cache_manager = cache_manager.clone();
 
@@ -594,7 +594,7 @@ async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (tx, _rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(tx) };
     cluster_actor.cache_manager = cache_manager.clone();
     let (tx, _rx) = Callback::create();
 

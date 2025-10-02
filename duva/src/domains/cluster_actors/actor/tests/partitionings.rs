@@ -337,9 +337,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
-    let cache_manager = CacheManager {
-        inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
-    };
+    let cache_manager = CacheManager { cache_actor: CacheCommandSender(channel(10).0) };
 
     cluster_actor.cache_manager = cache_manager.clone();
 

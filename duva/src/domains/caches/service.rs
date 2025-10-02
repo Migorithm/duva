@@ -9,7 +9,7 @@ use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
     pub(super) async fn handle(
-        mut self,
+        self,
         mut recv: Receiver<CacheCommand>,
         mut rq: ReadQueue,
     ) -> Result<Self> {
@@ -17,35 +17,41 @@ impl CacheActor {
             match command {
                 | CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(&cache_entry).await;
-                    self.set(cache_entry);
+                    self.set(cache_entry).await;
                 },
                 | CacheCommand::Get { key, callback } => {
-                    self.get(&key, callback);
+                    self.get(&key, callback).await;
                 },
                 | CacheCommand::IndexGet { key, read_idx, callback } => {
                     if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
-                        self.get(&key, callback);
+                        self.get(&key, callback).await;
                     }
                 },
                 | CacheCommand::Keys { pattern, callback } => {
-                    self.keys(pattern, callback);
+                    self.keys(pattern, callback).await;
                 },
                 | CacheCommand::Delete { key, callback } => {
-                    self.delete(key, callback);
+                    self.delete(key, callback).await;
                 },
                 | CacheCommand::Exists { key, callback } => {
-                    self.exists(key, callback);
+                    self.exists(key, callback).await;
                 },
                 | CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveCommand::LocalShardSize {
-                            table_size: self.len(),
-                            expiry_size: self.keys_with_expiry(),
+                            table_size: self.len().await,
+                            expiry_size: self.keys_with_expiry().await,
                         })
                         .await?;
 
-                    for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox.send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk))).await?;
+                    // Save from all segments
+                    for segment in &self.segments {
+                        let guard = segment.read().await;
+                        for chunk in guard.iter().collect::<Vec<_>>().chunks(10) {
+                            outbox
+                                .send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk)))
+                                .await?;
+                        }
                     }
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
@@ -53,52 +59,54 @@ impl CacheActor {
                 | CacheCommand::Ping => {
                     if let Some(pending_rqs) = rq.take_pending_requests() {
                         for DeferredRead { key, callback } in pending_rqs {
-                            self.get(&key, callback);
+                            self.get(&key, callback).await;
                         }
                     };
                 },
                 | CacheCommand::Drop { callback } => {
-                    self.cache.clear();
+                    for segment in &self.segments {
+                        segment.write().await.clear();
+                    }
                     callback.send(());
                 },
                 | CacheCommand::Append { key, value, callback } => {
-                    callback.send(self.append(key, value));
+                    callback.send(self.append(key, value).await);
                 },
                 | CacheCommand::NumericDetla { key, delta, callback } => {
-                    callback.send(self.numeric_delta(key, delta));
+                    callback.send(self.numeric_delta(key, delta).await);
                 },
                 | CacheCommand::LPush { key, values, callback } => {
-                    callback.send(self.lpush(key, values));
+                    callback.send(self.lpush(key, values).await);
                 },
                 | CacheCommand::LPushX { key, values, callback } => {
-                    callback.send(self.lpushx(key, values));
+                    callback.send(self.lpushx(key, values).await);
                 },
                 | CacheCommand::LPop { key, count, callback } => {
-                    callback.send(self.pop(key, count, true));
+                    callback.send(self.pop(key, count, true).await);
                 },
                 | CacheCommand::RPush { key, values, callback } => {
-                    callback.send(self.rpush(key, values));
+                    callback.send(self.rpush(key, values).await);
                 },
                 | CacheCommand::RPushX { key, values, callback } => {
-                    callback.send(self.rpushx(key, values));
+                    callback.send(self.rpushx(key, values).await);
                 },
                 | CacheCommand::RPop { key, count, callback } => {
-                    callback.send(self.pop(key, count, false));
+                    callback.send(self.pop(key, count, false).await);
                 },
                 | CacheCommand::LLen { key, callback } => {
-                    callback.send(self.llen(key));
+                    callback.send(self.llen(key).await);
                 },
                 | CacheCommand::LRange { key, start, end, callback } => {
-                    callback.send(self.lrange(key, start, end));
+                    callback.send(self.lrange(key, start, end).await);
                 },
                 | CacheCommand::LTrim { key, start, end, callback } => {
-                    callback.send(self.ltrim(key, start, end));
+                    callback.send(self.ltrim(key, start, end).await);
                 },
                 | CacheCommand::LIndex { key, index, callback } => {
-                    callback.send(self.lindex(key, index));
+                    callback.send(self.lindex(key, index).await);
                 },
                 | CacheCommand::LSet { key, index, value, callback } => {
-                    callback.send(self.lset(key, index, value));
+                    callback.send(self.lset(key, index, value).await);
                 },
             }
         }
@@ -156,7 +164,7 @@ mod test {
         let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: LruCache::new(1000),
+                segments: vec![LruCache::new(1000).into()],
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(con_idx.clone())),
@@ -190,7 +198,7 @@ mod test {
         let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: LruCache::new(1000),
+                segments: vec![LruCache::new(1000).into()],
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(con_idx.clone())),
@@ -226,7 +234,7 @@ mod test {
         let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: LruCache::new(1000),
+                segments: vec![LruCache::new(1000).into()],
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(con_idx.clone())),
