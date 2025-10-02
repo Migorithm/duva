@@ -1,8 +1,6 @@
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::caches::read_queue::DeferredRead;
-
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
@@ -12,17 +10,13 @@ impl CacheActor {
         while let Some(command) = recv.recv().await {
             match command {
                 | CacheCommand::Set { cache_entry } => {
-                    let _ = self.try_send_ttl(&cache_entry).await;
-                    self.set(cache_entry);
+                    self.set(cache_entry).await;
                 },
                 | CacheCommand::Get { key, callback } => {
                     self.get(&key, callback);
                 },
                 | CacheCommand::IndexGet { key, read_idx, callback } => {
-                    if let Some(callback) = self.read_queue.defer_if_stale(read_idx, &key, callback)
-                    {
-                        self.get(&key, callback);
-                    }
+                    self.index_get(&key, read_idx, callback);
                 },
                 | CacheCommand::Keys { pattern, callback } => {
                     self.keys(pattern, callback);
@@ -48,11 +42,7 @@ impl CacheActor {
                     outbox.send(SaveCommand::StopSentinel).await?;
                 },
                 | CacheCommand::Ping => {
-                    if let Some(pending_rqs) = self.read_queue.take_pending_requests() {
-                        for DeferredRead { key, callback } in pending_rqs {
-                            self.get(&key, callback);
-                        }
-                    };
+                    self.flushout_readqueue();
                 },
                 | CacheCommand::Drop { callback } => {
                     self.cache.clear();

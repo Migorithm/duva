@@ -3,7 +3,7 @@ use super::command::CacheCommand;
 use crate::domains::caches::cache_objects::TypedValue;
 use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::lru_cache::LruCache;
-use crate::domains::caches::read_queue::ReadQueue;
+use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
 use crate::make_smart_pointer;
 use crate::types::Callback;
 use anyhow::Context;
@@ -63,7 +63,14 @@ impl CacheActor {
         callback.send(self.cache.get(key).cloned().unwrap_or(Default::default()));
     }
 
-    pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
+    pub(crate) fn index_get(&mut self, key: &str, read_idx: u64, callback: Callback<CacheValue>) {
+        if let Some(callback) = self.read_queue.defer_if_stale(read_idx, &key, callback) {
+            self.get(&key, callback);
+        }
+    }
+
+    pub(crate) async fn set(&mut self, cache_entry: CacheEntry) {
+        let _ = self.try_send_ttl(&cache_entry).await;
         let (key, value) = cache_entry.destructure();
         self.cache.put(key, value);
     }
@@ -252,6 +259,14 @@ impl CacheActor {
         };
 
         list.lset(index, val)
+    }
+
+    pub(crate) fn flushout_readqueue(&mut self) {
+        if let Some(pending_rqs) = self.read_queue.take_pending_requests() {
+            for DeferredRead { key, callback } in pending_rqs {
+                self.get(&key, callback);
+            }
+        };
     }
 }
 
