@@ -4,6 +4,7 @@ use crate::domains::caches::cache_objects::TypedValue;
 use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
+use crate::domains::saves::command::SaveCommand;
 use crate::make_smart_pointer;
 use crate::types::Callback;
 use anyhow::Context;
@@ -64,8 +65,8 @@ impl CacheActor {
     }
 
     pub(crate) fn index_get(&mut self, key: &str, read_idx: u64, callback: Callback<CacheValue>) {
-        if let Some(callback) = self.read_queue.defer_if_stale(read_idx, &key, callback) {
-            self.get(&key, callback);
+        if let Some(callback) = self.read_queue.defer_if_stale(read_idx, key, callback) {
+            self.get(key, callback);
         }
     }
 
@@ -267,6 +268,22 @@ impl CacheActor {
                 self.get(&key, callback);
             }
         };
+    }
+
+    pub(crate) async fn save(
+        &self,
+        outbox: tokio::sync::mpsc::Sender<SaveCommand>,
+    ) -> Result<(), anyhow::Error> {
+        outbox
+            .send(SaveCommand::LocalShardSize {
+                table_size: self.len(),
+                expiry_size: self.keys_with_expiry(),
+            })
+            .await?;
+        for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
+            outbox.send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk))).await?;
+        }
+        Ok(outbox.send(SaveCommand::StopSentinel).await?)
     }
 }
 

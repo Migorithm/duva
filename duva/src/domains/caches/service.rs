@@ -1,7 +1,5 @@
 use crate::domains::caches::actor::CacheActor;
-use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
 
@@ -28,18 +26,7 @@ impl CacheActor {
                     self.exists(key, callback);
                 },
                 | CacheCommand::Save { outbox } => {
-                    outbox
-                        .send(SaveCommand::LocalShardSize {
-                            table_size: self.len(),
-                            expiry_size: self.keys_with_expiry(),
-                        })
-                        .await?;
-
-                    for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox.send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk))).await?;
-                    }
-                    // finalize the save operation
-                    outbox.send(SaveCommand::StopSentinel).await?;
+                    self.save(outbox).await?;
                 },
                 | CacheCommand::Ping => {
                     self.flushout_readqueue();
