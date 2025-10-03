@@ -297,7 +297,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            req.callback.send("Write given to follower".into());
+            req.callback.send(ConsensusClientResponse::Err("Write given to follower".into()));
             return;
         }
 
@@ -321,11 +321,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
                 let moved_keys = replids.except(&self.replication.replid).join(" ");
-                req.callback.send(format!("MOVED {moved_keys}").into());
+                req.callback.send(ConsensusClientResponse::Err(format!("Moved {moved_keys}")))
             },
             | Err(err) => {
                 err!("{}", err);
-                req.callback.send(err.to_string().into());
+                req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             },
         }
     }

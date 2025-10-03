@@ -137,35 +137,14 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
+    #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
     pub struct BannedPeer {
         pub(crate) p_id: PeerIdentifier,
         pub(crate) ban_time: u64,
     }
-    impl PartialEq for BannedPeer {
-        fn eq(&self, other: &Self) -> bool {
-            self.p_id == other.p_id
-        }
-    }
-    impl Hash for BannedPeer {
-        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-            self.p_id.hash(state);
-        }
-    }
 
-    impl std::borrow::Borrow<PeerIdentifier> for BannedPeer {
-        fn borrow(&self) -> &PeerIdentifier {
-            &self.p_id
-        }
-    }
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Hash)]
     pub struct BatchId(pub(crate) String);
-
-    impl From<&str> for BatchId {
-        fn from(value: &str) -> Self {
-            BatchId(value.into())
-        }
-    }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct BatchEntries {
