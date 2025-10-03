@@ -5,4 +5,3 @@ pub mod cache_objects;
 pub mod command;
 mod lru_cache;
 pub mod read_queue;
-mod service;
