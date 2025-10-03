@@ -368,7 +368,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = BatchEntries { batch_id: "empty_test".into(), entries: vec![] };
+    let batch = BatchEntries { batch_id: BatchId("empty_test".into()), entries: vec![] };
     cluster_actor.receive_batch(batch.clone(), &_id).await;
 
     // THEN - verify that no log index is incremented
@@ -389,7 +389,7 @@ async fn test_receive_batch_when_consensus_is_required() {
 
     let entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch = BatchEntries { batch_id: "success_test".into(), entries: entries.clone() };
+    let batch = BatchEntries { batch_id: BatchId("success_test".into()), entries: entries.clone() };
 
     // WHEN
     cluster_actor.receive_batch(batch, &ack_to).await;
@@ -434,7 +434,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
 
     // Add pending migration (simulating migration still in progress)
     let (callback, _migration_rx) = Callback::create();
-    let batch_id = "test_batch".into();
+    let batch_id = BatchId("test_batch".into());
     cluster_actor
         .pending_reqs
         .as_mut()
@@ -507,13 +507,12 @@ async fn test_handle_migration_ack_batch_id_not_found() {
 
     let (callback, _callback_rx) = Callback::create();
 
-    cluster_actor
-        .pending_reqs
-        .as_mut()
-        .unwrap()
-        .store_batch("existing_batch".into(), QueuedKeysToMigrate { callback, keys: vec![] });
+    cluster_actor.pending_reqs.as_mut().unwrap().store_batch(
+        BatchId("existing_batch".into()),
+        QueuedKeysToMigrate { callback, keys: vec![] },
+    );
 
-    let non_existent_batch_id = "non_existent_batch".into();
+    let non_existent_batch_id = BatchId("non_existent_batch".into());
 
     // WHEN
     cluster_actor.handle_migration_ack(non_existent_batch_id).await;
