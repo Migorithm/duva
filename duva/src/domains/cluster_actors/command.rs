@@ -64,7 +64,6 @@ pub enum ClientMessage {
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
     GetTopology(Callback<Topology>),
     ClusterReshard(Callback<Result<(), anyhow::Error>>),
-
     CanEnter(Callback<()>),
 }
 
@@ -86,17 +85,6 @@ pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String> },
     Err(String),
     Result(anyhow::Result<QueryIO>),
-}
-
-impl From<String> for ConsensusClientResponse {
-    fn from(value: String) -> Self {
-        Self::Err(value)
-    }
-}
-impl From<&'static str> for ConsensusClientResponse {
-    fn from(value: &'static str) -> Self {
-        Self::Err(value.to_string())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
