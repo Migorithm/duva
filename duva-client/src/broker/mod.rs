@@ -5,7 +5,7 @@ use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, InputContext, RoutingRule};
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
-use duva::domains::operation_logs::operation::LogEntry;
+use duva::domains::replications::LogEntry;
 use duva::domains::replications::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::domains::{TSerdeRead, TSerdeWrite};

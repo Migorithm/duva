@@ -1,3 +1,5 @@
+use crate::domains::replications::logger::ReplicatedLogs;
+
 use super::*;
 
 #[test]

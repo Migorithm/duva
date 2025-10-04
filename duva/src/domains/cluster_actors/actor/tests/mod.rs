@@ -13,14 +13,12 @@ use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::operation_logs::LogEntry;
-use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::replications::logger::ReplicatedLogs;
+
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
-use crate::domains::replications::ReplicationRole;
 
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;

@@ -1,4 +1,4 @@
-use duva::domains::operation_logs::operation::LogEntry;
+use duva::domains::replications::LogEntry;
 use duva::prelude::anyhow::{self, Context};
 use duva::presentation::clients::request::NonMutatingAction;
 use duva::{

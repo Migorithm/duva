@@ -1,6 +1,6 @@
 //! A local write-ahead-lof file (WAL) adapter.
-use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::interfaces::TWriteAheadLog;
+use crate::domains::replications::WriteOperation;
+use crate::domains::replications::interfaces::TWriteAheadLog;
 use anyhow::Result;
 
 #[derive(Default, Clone)]

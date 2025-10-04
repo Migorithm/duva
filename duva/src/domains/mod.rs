@@ -1,6 +1,5 @@
 pub mod caches;
 pub mod cluster_actors;
-pub mod operation_logs;
 
 pub mod error;
 pub mod peers;

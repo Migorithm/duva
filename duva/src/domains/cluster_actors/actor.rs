@@ -16,8 +16,6 @@ use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
-use crate::domains::operation_logs::LogEntry;
-use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;

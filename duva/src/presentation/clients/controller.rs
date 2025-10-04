@@ -6,7 +6,7 @@ use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::{
     ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
 };
-use crate::domains::operation_logs::LogEntry;
+use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;

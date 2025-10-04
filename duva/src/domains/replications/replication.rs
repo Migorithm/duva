@@ -1,10 +1,10 @@
 use crate::domains::cluster_actors::consensus::election::ElectionVotes;
-use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::replications::interfaces::TWriteAheadLog;
+use crate::domains::replications::logger::ReplicatedLogs;
 use crate::domains::replications::state::ReplicationState;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;

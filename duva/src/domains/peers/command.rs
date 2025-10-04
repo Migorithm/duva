@@ -57,7 +57,7 @@ mod peer_messages {
         domains::{
             caches::cache_objects::CacheEntry,
             cluster_actors::{ConsensusRequest, hash_ring::HashRing},
-            operation_logs::WriteOperation,
+            replications::WriteOperation,
             replications::{ReplicationId, state::ReplicationState},
         },
         types::Callback,
