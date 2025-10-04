@@ -9,7 +9,7 @@ use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use bytes::Bytes;
@@ -20,8 +20,8 @@ pub(crate) struct InboundStream {
     pub(crate) r: ReadConnected,
     pub(crate) w: WriteConnected,
     pub(crate) host_ip: String,
-    pub(crate) self_state: NodeState,
-    pub(crate) peer_state: NodeState,
+    pub(crate) self_state: ReplicationState,
+    pub(crate) peer_state: ReplicationState,
 }
 
 impl InboundStream {
@@ -37,7 +37,7 @@ impl InboundStream {
 
         let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
-        self.peer_state = NodeState { node_id: id, replid, last_log_index, role, term };
+        self.peer_state = ReplicationState { node_id: id, replid, last_log_index, role, term };
 
         Ok(())
     }

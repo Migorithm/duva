@@ -21,7 +21,7 @@ use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
 use crate::{
@@ -111,7 +111,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                NodeState { node_id: id, last_log_index: con_idx, replid, role, term }
+                ReplicationState { node_id: id, last_log_index: con_idx, replid, role, term }
             },
             kill_switch,
         );
@@ -168,7 +168,7 @@ impl Helper {
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        let state = NodeState {
+        let state = ReplicationState {
             node_id: PeerIdentifier::new("127.0.0.1", 8080),
             replid: ReplicationId::Key("master".into()),
             role,
@@ -208,7 +208,7 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        NodeState {
+                        ReplicationState {
                             node_id: id,
                             last_log_index: follower_con_idx,
                             replid,

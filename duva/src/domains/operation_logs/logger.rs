@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::AtomicU64};
 
-use crate::domains::{cluster_actors::SessionRequest, peers::peer::NodeState};
+use crate::domains::{cluster_actors::SessionRequest, peers::peer::ReplicationState};
 
 use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
 
@@ -9,21 +9,21 @@ pub(crate) struct ReplicatedLogs<T> {
     pub(crate) target: T,
     pub(crate) last_log_term: u64,
     pub(crate) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
-    pub(crate) state: NodeState,
+    pub(crate) state: ReplicationState,
+    pub(crate) last_applied: u64,
 }
 
-impl<T> ReplicatedLogs<T> {
-    pub fn new(target: T, state: NodeState) -> Self {
+impl<T: TWriteAheadLog> ReplicatedLogs<T> {
+    pub fn new(target: T, state: ReplicationState) -> Self {
         Self {
             target,
             last_log_term: state.term,
             con_idx: Arc::new(state.last_log_index.into()),
             state,
+            last_applied: 0,
         }
     }
-}
 
-impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) fn list_append_log_entries(
         &self,
         low_watermark: Option<u64>,

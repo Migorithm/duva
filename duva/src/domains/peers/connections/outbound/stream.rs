@@ -4,7 +4,7 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::replication::ReplicationId;
 
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
@@ -23,15 +23,15 @@ use tracing::trace;
 pub(crate) struct OutboundStream {
     pub(crate) r: ReadConnected,
     pub(crate) w: WriteConnected,
-    pub(crate) self_state: NodeState,
-    pub(crate) peer_state: Option<NodeState>,
+    pub(crate) self_state: ReplicationState,
+    pub(crate) peer_state: Option<ReplicationState>,
 }
 
 impl OutboundStream {
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-        let mut peer_state = NodeState::default();
+        let mut peer_state = ReplicationState::default();
 
         loop {
             let res = self.r.read_values().await?;

@@ -14,13 +14,13 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) phi: PhiAccrualDetector,
-    state: NodeState,
+    state: ReplicationState,
 }
 
 impl Peer {
     pub(crate) fn new(
         w: impl Into<WriteConnected>,
-        state: NodeState,
+        state: ReplicationState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
         Self {
@@ -33,7 +33,7 @@ impl Peer {
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.node_id
     }
-    pub(crate) fn state(&self) -> &NodeState {
+    pub(crate) fn state(&self) -> &ReplicationState {
         &self.state
     }
     pub(crate) fn replid(&self) -> &ReplicationId {
@@ -79,7 +79,7 @@ impl Peer {
 
 // TODO move this to replication logs
 #[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub struct NodeState {
+pub struct ReplicationState {
     pub node_id: PeerIdentifier,
     pub replid: ReplicationId,
     pub role: ReplicationRole,
@@ -87,7 +87,7 @@ pub struct NodeState {
     pub(crate) term: u64,
 }
 
-impl NodeState {
+impl ReplicationState {
     pub(crate) fn decide_peer_state(self, my_repl_id: &ReplicationId) -> Self {
         let replid = match (&self.replid, my_repl_id) {
             | (ReplicationId::Undecided, _) => my_repl_id.clone(),
@@ -325,7 +325,7 @@ fn test_prioritize_nodes_with_same_replid() {
     write!(temp_file, "{file_content}").expect("Failed to write to temp file");
 
     // Read and prioritize nodes
-    let nodes = NodeState::from_file(temp_file.path().to_str().unwrap());
+    let nodes = ReplicationState::from_file(temp_file.path().to_str().unwrap());
 
     // There should be 4 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 5);

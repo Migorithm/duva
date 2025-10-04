@@ -501,7 +501,7 @@ mod test {
     use crate::domains::operation_logs::LogEntry;
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
-    use crate::domains::peers::peer::NodeState;
+    use crate::domains::peers::peer::ReplicationState;
     use uuid::Uuid;
 
     #[test]
@@ -703,42 +703,42 @@ mod test {
                 },
             ],
             cluster_nodes: vec![
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30004".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                     term: 1,
                 },
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30002".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                     term: 1,
                 },
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30003".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                     term: 1,
                 },
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30005".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                     term: 1,
                 },
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30006".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                     term: 1,
                 },
-                NodeState {
+                ReplicationState {
                     node_id: PeerIdentifier("127.0.0.1:30001".into()),
                     last_log_index: 0,
                     replid: ReplicationId::Undecided,
@@ -796,14 +796,14 @@ mod test {
     fn test_topology_change_serde() {
         //GIVEN
         let connected_nodes = vec![
-            NodeState {
+            ReplicationState {
                 node_id: PeerIdentifier("localhost:3333".to_string()),
                 replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                 role: ReplicationRole::Follower,
                 last_log_index: 0,
                 term: 0,
             },
-            NodeState {
+            ReplicationState {
                 node_id: PeerIdentifier("localhost:2222".to_string()),
                 replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                 role: ReplicationRole::Follower,
@@ -814,7 +814,7 @@ mod test {
         let hash_ring = HashRing::default();
         let node_states = connected_nodes
             .iter()
-            .map(|peer| NodeState {
+            .map(|peer| ReplicationState {
                 node_id: peer.node_id.clone(),
                 last_log_index: 0,
                 replid: ReplicationId::Key(Uuid::now_v7().to_string()),

@@ -8,7 +8,7 @@ use futures::{Stream, StreamExt};
 use crate::{
     domains::{
         cluster_actors::{ClientMessage, ClusterCommand, ConnectionMessage, LazyOption},
-        peers::peer::NodeState,
+        peers::peer::ReplicationState,
     },
     prelude::{PeerIdentifier, Topology},
     types::Callback,
@@ -79,7 +79,7 @@ impl ClusterActorSender {
         Ok(())
     }
 
-    pub(crate) async fn route_get_node_state(&self) -> anyhow::Result<NodeState> {
+    pub(crate) async fn route_get_node_state(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::NodeInfo(tx)).await?;
         Ok(rx.recv().await)
@@ -136,7 +136,7 @@ impl ClusterActorSender {
         rx.recv().await
     }
 
-    pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<NodeState>> {
+    pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<ReplicationState>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ClusterNodes(tx)).await?;
         Ok(rx.recv().await)

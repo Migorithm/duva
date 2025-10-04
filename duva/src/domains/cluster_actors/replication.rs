@@ -5,7 +5,7 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;
 
@@ -15,7 +15,6 @@ pub(crate) struct Replication<T> {
     pub(crate) banlist: Vec<BannedPeer>,
     pub(crate) election_votes: ElectionVotes,
     pub(crate) logger: ReplicatedLogs<T>,
-    pub(crate) last_applied: u64,
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
@@ -24,7 +23,6 @@ impl<T: TWriteAheadLog> Replication<T> {
             election_votes: ElectionVotes::default(),
             self_port,
             banlist: Default::default(),
-            last_applied: 0,
             logger,
         }
     }
@@ -33,7 +31,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.election_votes = ElectionVotes::default();
     }
 
-    pub(crate) fn state(&self) -> NodeState {
+    pub(crate) fn state(&self) -> ReplicationState {
         self.logger.state.clone()
     }
 
@@ -189,7 +187,7 @@ fn test_cloning_replication_state() {
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 
     //GIVEN
-    let state = NodeState {
+    let state = ReplicationState {
         node_id: PeerIdentifier::new("127.0.0.1", 1231),
         replid: ReplicationId::Key("dsd".into()),
         role: ReplicationRole::Leader,

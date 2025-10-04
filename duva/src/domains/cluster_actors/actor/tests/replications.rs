@@ -4,7 +4,7 @@ use super::*;
 fn logger_create_entries_from_lowest() {
     // GIVEN
 
-    let state = NodeState {
+    let state = ReplicationState {
         node_id: PeerIdentifier::new("localhost", 8080),
         replid: ReplicationId::Key("master".into()),
         role: ReplicationRole::Leader,
@@ -355,7 +355,7 @@ async fn test_partial_commit_with_new_entries() {
 #[tokio::test]
 async fn follower_truncates_log_on_term_mismatch() {
     // GIVEN: A follower with an existing log entry at index  term 1
-    let state = NodeState {
+    let state = ReplicationState {
         node_id: PeerIdentifier::new("localhost", 8080),
         replid: ReplicationId::Key("master".into()),
         role: ReplicationRole::Leader,

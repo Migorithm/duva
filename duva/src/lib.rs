@@ -37,7 +37,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 use crate::domains::TSerdeRead;
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
@@ -102,7 +102,7 @@ impl StartUpFacade {
 
         let node_id = PeerIdentifier::new(&ENV.host, ENV.port);
         let state =
-            NodeState { node_id, replid, role: ENV.role.clone(), last_log_index: con_idx, term: 0 };
+            ReplicationState { node_id, replid, role: ENV.role.clone(), last_log_index: con_idx, term: 0 };
 
         let repl_logs = ReplicatedLogs::new(wal, state);
         let replication_state = Replication::new(ENV.port, repl_logs);

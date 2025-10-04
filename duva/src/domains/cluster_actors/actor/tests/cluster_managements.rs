@@ -47,7 +47,7 @@ async fn test_cluster_nodes() {
 
     let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
     write!(temp_file, "{file_content}").expect("Failed to write to temp file");
-    let nodes = NodeState::from_file(temp_file.path().to_str().unwrap());
+    let nodes = ReplicationState::from_file(temp_file.path().to_str().unwrap());
 
     for value in nodes {
         assert!(res.contains(&value));
@@ -110,7 +110,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent::<TcpStream>(vec![NodeState {
+        .join_peer_network_if_absent::<TcpStream>(vec![ReplicationState {
             node_id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
             last_log_index: 0,
             replid: cluster_actor.log_state().replid.clone(),
@@ -170,7 +170,7 @@ async fn test_update_cluster_members_updates_fields() {
     let initial_last_seen = initial.phi.last_seen();
     let initial_role = initial.state().role.clone();
 
-    let peer_states = vec![NodeState {
+    let peer_states = vec![ReplicationState {
         node_id: peer_id.clone(),
         last_log_index: 100,
         replid: cluster_actor.log_state().replid.clone(),

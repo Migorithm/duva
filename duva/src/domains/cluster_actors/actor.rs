@@ -37,7 +37,7 @@ use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
-use crate::domains::peers::peer::NodeState;
+use crate::domains::peers::peer::ReplicationState;
 use crate::err;
 use crate::res_err;
 use crate::types::Callback;
@@ -111,7 +111,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         actor_handler
     }
 
-    pub(crate) fn log_state(&self) -> &NodeState {
+    pub(crate) fn log_state(&self) -> &ReplicationState {
         &self.replication.logger.state
     }
 
@@ -368,7 +368,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.send_rpc_to_replicas().await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<NodeState> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<ReplicationState> {
         self.members
             .values()
             .map(|p| p.state().clone())
@@ -947,7 +947,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
         // TODO could be  if self.last_applied < index{ .. }
         let res = self.cache_manager.apply_entry(entry, index).await;
-        self.replication.last_applied = index;
+        self.replication.logger.last_applied = index;
 
         res
     }
@@ -1142,7 +1142,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let logs_to_reconcile = self
             .replication
             .logger
-            .range(self.replication.last_applied, self.log_state().last_log_index);
+            .range(self.replication.logger.last_applied, self.log_state().last_log_index);
         for op in logs_to_reconcile {
             self.increase_con_idx();
             if let Err(e) = self.commit_entry(op.entry, op.log_index).await {
@@ -1179,7 +1179,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn join_peer_network_if_absent<C: TAsyncReadWrite>(
         &mut self,
-        cluster_nodes: Vec<NodeState>,
+        cluster_nodes: Vec<ReplicationState>,
     ) {
         let self_id = self.replication.self_identifier();
 
@@ -1462,7 +1462,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
-    async fn update_cluster_members(&mut self, from: &PeerIdentifier, cluster_nodes: &[NodeState]) {
+    async fn update_cluster_members(
+        &mut self,
+        from: &PeerIdentifier,
+        cluster_nodes: &[ReplicationState],
+    ) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.record_heartbeat();
         }
