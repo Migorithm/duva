@@ -10,8 +10,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::consensus::LogConsensusVoting;
-use crate::domains::cluster_actors::consensus::election::ElectionVotes;
+
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -55,6 +54,8 @@ use tracing::instrument;
 use tracing::warn;
 #[cfg(test)]
 mod tests;
+
+const FANOUT: usize = 2;
 
 #[derive(Debug)]
 pub struct ClusterActor<T> {
@@ -108,7 +109,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn log_state(&self) -> &ReplicationState {
-        &self.replication.logger.state
+        self.replication.get_state()
     }
 
     fn new(
@@ -154,9 +155,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         let peer_id = peer.id().clone();
-        if let Some(pos) = self.replication.banlist.iter().position(|x| x.p_id == peer_id) {
-            self.replication.banlist.swap_remove(pos);
-        };
+
+        self.replication.remove_from_banlist(&peer_id);
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -267,22 +267,33 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
         let res = self.remove_peer(&peer_addr).await;
-        self.replication.banlist.push(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
-
+        self.replication.ban(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
         Ok(res)
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
+    // #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
     pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
         if self.replication.in_ban_list(&heartbeat.from) {
             err!("The given peer is in the ban list {}", heartbeat.from);
             return;
         }
-        self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.apply_banlist(&mut heartbeat).await;
         self.update_cluster_members(&heartbeat.from, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring).await;
+    }
+
+    async fn apply_banlist(&mut self, heartbeat: &mut HeartBeat) {
+        let remaining = self.replication.apply_banlist(std::mem::take(&mut heartbeat.ban_list));
+        for banned_peer_id in remaining {
+            warn!(
+                "applying ban list! {} removes {}...",
+                self.replication.self_identifier(),
+                banned_peer_id
+            );
+            self.remove_peer(&banned_peer_id).await;
+        }
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
@@ -753,7 +764,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 .values()
                 .clone()
                 .map(|peer| peer.state().clone())
-                .chain(iter::once(self.replication.state().clone()))
+                .chain(iter::once(self.replication.state()))
                 .collect(),
             hash_ring: self.hash_ring.clone(),
         }
@@ -761,7 +772,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         self.cluster_join_sync.known_peers.remove(peer_addr);
-
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
@@ -805,33 +815,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let hb =
             self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes());
         self.send_heartbeat(hb).await;
-    }
-
-    async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
-        for banned_peer in ban_list {
-            let ban_list = &mut self.replication.banlist;
-
-            if let Some(pos) = ban_list.iter().position(|x| x.p_id == banned_peer.p_id) {
-                if banned_peer.ban_time > ban_list[pos].ban_time {
-                    ban_list[pos] = banned_peer;
-                }
-            } else {
-                ban_list.push(banned_peer);
-            }
-        }
-
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.replication.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
-        for banned_peer_id in
-            self.replication.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
-        {
-            warn!(
-                "applying ban list! {} removes {}...",
-                self.replication.self_identifier(),
-                banned_peer_id
-            );
-            self.remove_peer(&banned_peer_id).await;
-        }
     }
 
     async fn send_rpc_to_replicas(&mut self) {

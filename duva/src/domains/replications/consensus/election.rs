@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use crate::domains::peers::identifier::PeerIdentifier;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ElectionVotes {

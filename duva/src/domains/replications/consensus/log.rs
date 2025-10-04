@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     domains::{
         cluster_actors::{ConsensusClientResponse, SessionRequest},
@@ -8,6 +6,7 @@ use crate::{
     make_smart_pointer,
     types::Callback,
 };
+use std::collections::HashMap;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);

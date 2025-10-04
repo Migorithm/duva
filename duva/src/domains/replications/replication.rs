@@ -1,18 +1,16 @@
-use crate::domains::cluster_actors::consensus::election::ElectionVotes;
+use super::*;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::replications::interfaces::TWriteAheadLog;
-use crate::domains::replications::logger::ReplicatedLogs;
-use crate::domains::replications::state::ReplicationState;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub(crate) struct Replication<T> {
     pub(crate) self_port: u16,
-    pub(crate) banlist: Vec<BannedPeer>,
+    // TODO move this to cluster actor
+    banlist: Vec<BannedPeer>,
     pub(crate) election_votes: ElectionVotes,
     pub(crate) logger: ReplicatedLogs<T>,
 }
@@ -33,6 +31,9 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     pub(crate) fn state(&self) -> ReplicationState {
         self.logger.state.clone()
+    }
+    pub(crate) fn get_state(&self) -> &ReplicationState {
+        &self.logger.state
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -110,6 +111,35 @@ impl<T: TWriteAheadLog> Replication<T> {
             last_log_index: self.logger.state.last_log_index,
             last_log_term: self.logger.last_log_term,
         }
+    }
+
+    pub(crate) fn remove_from_banlist(&mut self, peer_id: &PeerIdentifier) {
+        if let Some(pos) = self.banlist.iter().position(|x| x.p_id == *peer_id) {
+            self.banlist.swap_remove(pos);
+        };
+    }
+
+    pub(crate) fn ban(&mut self, banned_peer: BannedPeer) {
+        self.banlist.push(banned_peer);
+    }
+
+    pub(crate) fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) -> Vec<PeerIdentifier> {
+        for banned_peer in ban_list {
+            let ban_list = &mut self.banlist;
+
+            if let Some(pos) = ban_list.iter().position(|x| x.p_id == banned_peer.p_id) {
+                if banned_peer.ban_time > ban_list[pos].ban_time {
+                    ban_list[pos] = banned_peer;
+                }
+            } else {
+                ban_list.push(banned_peer);
+            }
+        }
+
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
+        let remaining = self.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>();
+        return remaining;
     }
 }
 

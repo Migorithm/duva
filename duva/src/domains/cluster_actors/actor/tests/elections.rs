@@ -1,8 +1,8 @@
 use super::*;
 
-use crate::domains::cluster_actors::consensus::election::ElectionVotes;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::RequestVote;
+use crate::domains::replications::ElectionVotes;
 
 #[tokio::test]
 async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes() {

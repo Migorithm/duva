@@ -1,13 +1,16 @@
-pub mod operation_logs;
+pub(crate) mod consensus;
+pub(crate) mod interfaces;
+pub(crate) mod logger;
+pub(crate) mod operation;
 pub(crate) mod replication;
 pub(crate) mod state;
-
+pub(crate) use consensus::election::*;
+pub(crate) use consensus::log::*;
+pub(crate) use interfaces::*;
+pub(crate) use logger::*;
+pub use operation::LogEntry;
+pub use operation::WriteOperation;
 pub use replication::ReplicationId;
 pub use replication::ReplicationRole;
 pub(crate) use replication::*;
 pub(crate) use state::*;
-
-pub(crate) use operation_logs::interfaces::*;
-
-pub use operation::LogEntry;
-pub(crate) use operation_logs::*;

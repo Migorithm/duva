@@ -1,8 +1,6 @@
-use std::sync::{Arc, atomic::AtomicU64};
-
+use super::*;
 use crate::domains::{cluster_actors::SessionRequest, replications::state::ReplicationState};
-
-use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
+use std::sync::{Arc, atomic::AtomicU64};
 
 #[derive(Debug)]
 pub(crate) struct ReplicatedLogs<T> {

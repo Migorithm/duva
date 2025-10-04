@@ -13,7 +13,7 @@ use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::replications::logger::ReplicatedLogs;
+use crate::domains::replications::ReplicatedLogs;
 
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;

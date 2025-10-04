@@ -1,4 +1,4 @@
-use crate::domains::replications::logger::ReplicatedLogs;
+use crate::domains::replications::ReplicatedLogs;
 
 use super::*;
 
