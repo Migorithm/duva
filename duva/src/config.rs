@@ -12,7 +12,7 @@ use std::fs::OpenOptions;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
-    pub stored_node_states: Vec<ReplicationState>,
+    pub repl_states: Vec<ReplicationState>,
     pub(crate) role: ReplicationRole,
     pub dir: String,
     pub dbfilename: String,
@@ -43,8 +43,8 @@ impl Environment {
         );
 
         let replicaof = replicaof.map(|s| PeerIdentifier(s.bind_addr().unwrap()));
-        let stored_node_states = ReplicationState::from_file(&tpp);
-        let role = Self::determine_role(replicaof.as_ref(), &stored_node_states);
+        let repl_states = ReplicationState::from_file(&tpp);
+        let role = Self::determine_role(replicaof.as_ref(), &repl_states);
 
         Self {
             role,
@@ -56,7 +56,7 @@ impl Environment {
             hf_mills: hf,
             append_only,
             tpp,
-            stored_node_states,
+            repl_states,
             log_level,
         }
     }

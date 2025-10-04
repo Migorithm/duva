@@ -77,7 +77,7 @@ impl StartUpFacade {
         // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
         let repl_id_from_topp = if ENV.seed_server.is_none() {
             ReplicationId::Key(
-                ENV.stored_node_states
+                ENV.repl_states
                     .iter()
                     .find(|p| p.is_self(ENV.bind_addr().as_str()))
                     .map(|p| p.replid.to_string())
@@ -101,8 +101,13 @@ impl StartUpFacade {
         let (replid, con_idx) = snapshot_info.extract_replication_info();
 
         let node_id = PeerIdentifier::new(&ENV.host, ENV.port);
-        let state =
-            ReplicationState { node_id, replid, role: ENV.role.clone(), last_log_index: con_idx, term: 0 };
+        let state = ReplicationState {
+            node_id,
+            replid,
+            role: ENV.role.clone(),
+            last_log_index: con_idx,
+            term: 0,
+        };
 
         let repl_logs = ReplicatedLogs::new(wal, state);
         let replication_state = Replication::new(ENV.port, repl_logs);
@@ -154,7 +159,7 @@ impl StartUpFacade {
             return self.cluster_actor_sender.route_connect_to_server(seed.clone()).await;
         }
 
-        for node in ENV.stored_node_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
+        for node in ENV.repl_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
             if let Err(err) =
                 self.cluster_actor_sender.route_connect_to_server(node.id().clone()).await
             {

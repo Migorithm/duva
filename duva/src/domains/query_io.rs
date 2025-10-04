@@ -812,7 +812,7 @@ mod test {
             },
         ];
         let hash_ring = HashRing::default();
-        let node_states = connected_nodes
+        let repl_states = connected_nodes
             .iter()
             .map(|peer| ReplicationState {
                 node_id: peer.node_id.clone(),
@@ -822,7 +822,7 @@ mod test {
                 term: 0,
             })
             .collect();
-        let topology = Topology { node_states, hash_ring };
+        let topology = Topology { repl_states, hash_ring };
         let query_io = QueryIO::TopologyChange(topology.clone());
 
         //WHEN

@@ -752,7 +752,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) fn get_topology(&self) -> Topology {
         Topology {
-            node_states: self
+            repl_states: self
                 .members
                 .values()
                 .clone()
