@@ -78,7 +78,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ClusterNodes(callback) => {
                 callback.send(self.cluster_nodes());
             },
-            | NodeInfo(callback) => {
+            | ReplicationState(callback) => {
                 callback.send(self.replication.state());
             },
             | Forget(peer_addr, callback) => {

@@ -81,7 +81,7 @@ impl ClusterActorSender {
 
     pub(crate) async fn route_get_node_state(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::NodeInfo(tx)).await?;
+        self.send(ClientMessage::ReplicationState(tx)).await?;
         Ok(rx.recv().await)
     }
 

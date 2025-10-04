@@ -40,9 +40,13 @@ impl ClientController {
                     .open(&file_path)
                     .await?;
 
-                let repl_info = self.cluster_actor_sender.route_get_node_state().await?;
+                let repl_state = self.cluster_actor_sender.route_get_node_state().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_index)
+                    .route_save(
+                        SaveTarget::File(file),
+                        repl_state.replid,
+                        repl_state.last_log_index,
+                    )
                     .await?;
 
                 QueryIO::Null
