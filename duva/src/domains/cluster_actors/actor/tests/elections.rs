@@ -21,7 +21,7 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
     assert_eq!(actor.log_state().term, initial_term + 1);
 
     assert!(matches!(
-        actor.replication.election_votes,
+        actor.replication.election_votes(),
         ElectionVotes { replica_count: 2, votes: _ }
     ));
 
@@ -53,7 +53,7 @@ async fn test_run_for_election_no_replicas() {
     assert_eq!(actor.log_state().term, initial_term + 1);
 
     assert!(matches!(
-        actor.replication.election_votes,
+        actor.replication.election_votes(),
         ElectionVotes { replica_count: 0, votes: _ }
     ));
 }
@@ -80,7 +80,7 @@ async fn test_vote_election_grant_vote() {
     // THEN: Follower should grant the vote and update its state
     assert_eq!(follower_actor.log_state().term, initial_term + 1);
 
-    assert!(follower_actor.replication.election_votes.votes.contains(&request_vote.candidate_id));
+    assert!(follower_actor.replication.election_votes().votes.contains(&request_vote.candidate_id));
     assert_eq!(follower_actor.log_state().role, ReplicationRole::Follower); // Stays follower
 
     // Check message sent to candidate
@@ -123,7 +123,7 @@ async fn test_vote_election_deny_vote_older_log() {
 
     //THEN
 
-    assert!(follower_actor.replication.election_votes.votes.is_empty());
+    assert!(follower_actor.replication.election_votes().votes.is_empty());
 
     assert_expected_queryio(
         &candidate_fake_buf,
@@ -166,10 +166,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
 
     // Manually set up as candidate that has run for election
     candidate_actor.replication.set_term(candidate_term);
-
-    let voting = ElectionVotes::new(2, candidate_actor.replication.self_identifier());
-
-    candidate_actor.replication.election_votes = voting;
+    candidate_actor.replication.initiate_vote(2);
 
     // Add a mock replica to send initial heartbeat to
     let (replica1_fake_buf, voter_id) = candidate_actor.test_add_peer(8051, None, false);
@@ -221,9 +218,7 @@ async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
     let candidate_term = 3;
     let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     candidate_actor.replication.set_term(candidate_term);
-
-    candidate_actor.replication.election_votes =
-        ElectionVotes::new(5, candidate_actor.replication.self_identifier());
+    candidate_actor.replication.initiate_vote(5);
 
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 
@@ -233,7 +228,7 @@ async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
 
     assert_eq!(candidate_actor.log_state().role, ReplicationRole::Follower); // Stays follower
 
-    assert_eq!(candidate_actor.replication.election_votes.votes.len(), 2);
+    assert_eq!(candidate_actor.replication.election_votes().votes.len(), 2);
 }
 
 #[tokio::test]

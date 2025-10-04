@@ -11,7 +11,7 @@ pub(crate) struct Replication<T> {
     pub(crate) self_port: u16,
     // TODO move this to cluster actor
     banlist: Vec<BannedPeer>,
-    pub(crate) election_votes: ElectionVotes,
+    election_votes: ElectionVotes,
     pub(crate) logger: ReplicatedLogs<T>,
 }
 
@@ -138,8 +138,32 @@ impl<T: TWriteAheadLog> Replication<T> {
 
         let current_time_in_sec = time_in_secs().unwrap();
         self.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
-        let remaining = self.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>();
-        return remaining;
+
+        // remanings after applying banlist
+        self.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
+    }
+
+    pub(crate) fn is_votable(&self, candidate_id: &PeerIdentifier) -> bool {
+        self.election_votes.is_votable(candidate_id)
+    }
+
+    pub(crate) fn record_vote(&mut self, voter_id: PeerIdentifier) -> bool {
+        self.election_votes.record_vote(voter_id)
+    }
+
+    pub(crate) fn has_majority_vote(&self) -> bool {
+        self.election_votes.has_majority()
+    }
+    pub(crate) fn clear_votes(&mut self) {
+        self.election_votes.votes.clear();
+    }
+    pub(crate) fn initiate_vote(&mut self, replica_count: usize) {
+        self.election_votes = ElectionVotes::new(replica_count as u8, self.self_identifier());
+    }
+
+    #[cfg(test)]
+    pub fn election_votes(&self) -> ElectionVotes {
+        self.election_votes.clone()
     }
 }
 

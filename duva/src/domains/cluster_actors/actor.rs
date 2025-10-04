@@ -402,7 +402,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if self
                 .replication
                 .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
-                && self.replication.election_votes.is_votable(&request_vote.candidate_id)
+                && self.replication.is_votable(&request_vote.candidate_id)
             {
                 self.replication.vote_for(request_vote.candidate_id.clone());
                 grant_vote = true;
@@ -510,13 +510,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // Record the vote
-        if !self.replication.election_votes.record_vote(from.clone()) {
+        if !self.replication.record_vote(from.clone()) {
             warn!("Received a duplicate vote from {}", from);
             return; // Already voted
         }
 
         // Check for majority
-        if self.replication.election_votes.has_majority() {
+        if self.replication.has_majority_vote() {
             info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
             self.become_leader().await;
 
@@ -1108,7 +1108,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn become_leader(&mut self) {
         self.replication.set_role(ReplicationRole::Leader);
-        self.replication.election_votes.votes.clear();
+        self.replication.clear_votes();
         self.heartbeat_scheduler.turn_leader_mode().await;
         self.hash_ring.update_repl_leader(
             self.log_state().replid.clone(),
@@ -1135,8 +1135,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn become_candidate(&mut self) {
         self.block_write_reqs();
         self.replication.set_term(self.log_state().term + 1);
-        self.replication.election_votes =
-            ElectionVotes::new(self.replicas().count() as u8, self.replication.self_identifier());
+        self.replication.initiate_vote(self.replicas().count());
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: Option<RejectionReason>) {
