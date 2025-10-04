@@ -30,7 +30,7 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
         term: initial_term + 1,
         candidate_id: actor.replication.self_identifier(),
         last_log_index: actor.log_state().last_log_index,
-        last_log_term: actor.replication.logger.last_log_term,
+        last_log_term: actor.replication.last_log_term(),
     };
 
     assert_expected_queryio(&fakebuf1, expected_request_vote.clone()).await;
@@ -99,7 +99,6 @@ async fn test_vote_election_deny_vote_older_log() {
 
     follower_actor
         .replication
-        .logger
         .write_many(vec![WriteOperation {
             log_index: initial_term + 2,
             term: initial_term,
@@ -193,7 +192,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
         append_entries: vec![WriteOperation {
             entry: LogEntry::NoOp,
             log_index: candidate_actor.log_state().last_log_index,
-            term: candidate_actor.replication.logger.last_log_term,
+            term: candidate_actor.replication.last_log_term(),
             session_req: None,
         }],
         ..Default::default()

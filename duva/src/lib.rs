@@ -105,8 +105,7 @@ impl StartUpFacade {
         let repl_logs = ReplicatedLogs::new(wal, state);
         let replication_state = Replication::new(ENV.port, repl_logs);
 
-        let cache_manager =
-            CacheManager::run_cache_actors(replication_state.logger.con_idx.clone());
+        let cache_manager = CacheManager::run_cache_actors(replication_state.clone_con_idx());
 
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 

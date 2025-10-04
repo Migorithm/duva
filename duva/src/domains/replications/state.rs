@@ -12,7 +12,7 @@ pub struct ReplicationState {
     pub replid: ReplicationId,
     pub role: ReplicationRole,
     pub(crate) last_log_index: u64,
-    pub(crate) term: u64,
+    pub(crate) term: u64, // current term
 }
 
 impl ReplicationState {

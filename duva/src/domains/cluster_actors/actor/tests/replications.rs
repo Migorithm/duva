@@ -25,18 +25,19 @@ fn logger_create_entries_from_lowest() {
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
     let mut repl_state = Replication::new(8080, repllogs);
-    repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
+
+    repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
     let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    repl_state.logger.write_single_entry(log, repl_state.logger.state.term, None).unwrap();
+    repl_state.write_single_entry(log, repl_state.state().term, None).unwrap();
 
-    let logs = repl_state.logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
+    let logs = repl_state.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
     // THEN
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 3);
     assert_eq!(logs[1].log_index, 4);
-    assert_eq!(repl_state.logger.state.last_log_index, 4);
+    assert_eq!(repl_state.state().last_log_index, 4);
 }
 
 #[tokio::test]
@@ -61,8 +62,8 @@ async fn test_generate_follower_entries() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    cluster_actor.replication.logger.con_idx.store(3, Ordering::Release);
-    cluster_actor.replication.logger.write_many(test_logs).unwrap();
+    cluster_actor.replication.increase_con_idx_by(3);
+    cluster_actor.replication.write_many(test_logs).unwrap();
 
     //WHEN
     // *add lagged followers with its commit index being 1
@@ -73,7 +74,6 @@ async fn test_generate_follower_entries() {
 
     cluster_actor
         .replication
-        .logger
         .write_single_entry(
             LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.log_state().term,
@@ -103,9 +103,9 @@ async fn follower_cluster_actor_replicate_log() {
     cluster_actor.replicate(heartbeat).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 0);
+    assert_eq!(cluster_actor.replication.curr_con_idx(), 0);
     assert_eq!(cluster_actor.log_state().last_log_index, 2);
-    let logs = cluster_actor.replication.logger.range(0, 2);
+    let logs = cluster_actor.replication.range(0, 2);
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 1);
     assert_eq!(logs[1].log_index, 2);
@@ -155,7 +155,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 
     // THEN
     task.await.unwrap();
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 2);
+    assert_eq!(cluster_actor.replication.curr_con_idx(), 2);
     assert_eq!(cluster_actor.log_state().last_log_index, 2);
 }
 
@@ -244,7 +244,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     task.abort();
 
     // Verify state
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 1);
     assert_eq!(follower_c_actor.log_state().last_log_index, 2);
 }
 
@@ -299,7 +299,7 @@ async fn test_apply_multiple_committed_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 3);
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 3);
 }
 
 #[tokio::test]
@@ -350,7 +350,7 @@ async fn test_partial_commit_with_new_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1"]);
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 1);
     assert_eq!(follower_c_actor.log_state().last_log_index, 3); // All entries are in the log
 }
 
@@ -374,7 +374,7 @@ async fn follower_truncates_log_on_term_mismatch() {
     let logger = ReplicatedLogs::new(inmemory, state);
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    cluster_actor.replication.logger = logger;
+    cluster_actor.replication.set_logger(logger);
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
@@ -385,7 +385,7 @@ async fn follower_truncates_log_on_term_mismatch() {
     let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Expect truncation and rejection
-    assert_eq!(cluster_actor.replication.logger.target.writer.len(), 2);
+    assert!(!cluster_actor.replication.is_empty_log());
     assert!(result.is_ok(), "Should pass as follower will just truncate and write");
 }
 

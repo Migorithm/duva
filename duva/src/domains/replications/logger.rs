@@ -1,14 +1,17 @@
 use super::*;
 use crate::domains::{cluster_actors::SessionRequest, replications::state::ReplicationState};
-use std::sync::{Arc, atomic::AtomicU64};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[derive(Debug)]
 pub(crate) struct ReplicatedLogs<T> {
-    pub(crate) target: T,
-    pub(crate) last_log_term: u64,
-    pub(crate) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
-    pub(crate) state: ReplicationState,
-    pub(crate) last_applied: u64,
+    pub(super) target: T,
+    pub(super) last_log_term: u64,
+    pub(super) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
+    pub(super) state: ReplicationState,
+    pub(super) last_applied: u64,
 }
 
 impl<T: TWriteAheadLog> ReplicatedLogs<T> {
@@ -95,6 +98,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     pub(crate) fn reset(&mut self) {
+        self.con_idx.store(0, Ordering::Release);
         self.state.last_log_index = 0;
         self.last_log_term = 0;
         self.truncate_after(0);

@@ -1,9 +1,15 @@
 use super::*;
+use crate::domains::cluster_actors::SessionRequest;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
+use crate::domains::peers::command::RejectionReason;
+use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::err;
 use std::fmt::Display;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -12,7 +18,7 @@ pub(crate) struct Replication<T> {
     // TODO move this to cluster actor
     banlist: Vec<BannedPeer>,
     election_votes: ElectionVotes,
-    pub(crate) logger: ReplicatedLogs<T>,
+    logger: ReplicatedLogs<T>,
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
@@ -27,6 +33,14 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     pub(crate) fn reset_election_votes(&mut self) {
         self.election_votes = ElectionVotes::default();
+        self.set_role(ReplicationRole::Follower);
+    }
+
+    pub(crate) fn last_applied(&self) -> u64 {
+        self.logger.last_applied
+    }
+    pub(crate) fn last_applied_mut(&mut self) -> &mut u64 {
+        &mut self.logger.last_applied
     }
 
     pub(crate) fn state(&self) -> ReplicationState {
@@ -34,6 +48,9 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
     pub(crate) fn get_state(&self) -> &ReplicationState {
         &self.logger.state
+    }
+    pub(crate) fn is_empty_log(&self) -> bool {
+        self.logger.is_empty()
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -161,9 +178,114 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.election_votes = ElectionVotes::new(replica_count as u8, self.self_identifier());
     }
 
+    pub(crate) fn write_single_entry(
+        &mut self,
+        entry: LogEntry,
+        current_term: u64,
+        session_req: Option<SessionRequest>,
+    ) -> anyhow::Result<()> {
+        self.logger.write_single_entry(entry, current_term, session_req)
+    }
+
+    pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
+        self.logger.write_many(entries)
+    }
+
+    pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
+        self.logger.read_at(at)
+    }
+
+    pub(crate) fn increase_con_idx_by(&self, by: u64) {
+        self.logger.con_idx.fetch_add(by, Ordering::Relaxed);
+    }
+    pub(crate) fn curr_con_idx(&self) -> u64 {
+        self.logger.con_idx.load(Ordering::Relaxed)
+    }
+    pub(crate) fn clone_con_idx(&self) -> Arc<AtomicU64> {
+        self.logger.con_idx.clone()
+    }
+
+    pub(crate) fn reset_log(&mut self) {
+        self.logger.reset();
+    }
+
+    pub(crate) fn list_append_log_entries(
+        &self,
+        low_watermark: Option<u64>,
+    ) -> Vec<WriteOperation> {
+        self.logger.list_append_log_entries(low_watermark)
+    }
+    pub(crate) fn truncate_after(&mut self, log_index: u64) {
+        self.logger.truncate_after(log_index);
+    }
+
+    pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+        self.logger.range(start_exclusive, end_inclusive)
+    }
+
+    pub(crate) fn replicate_log_entries(
+        &mut self,
+        operations: Vec<WriteOperation>,
+        prev_log_index: u64,
+        prev_log_term: u64,
+        session_reqs: &mut Vec<SessionRequest>,
+    ) -> Result<ReplicationAck, RejectionReason> {
+        let mut entries = Vec::with_capacity(operations.len());
+
+        for mut log in operations {
+            if log.log_index > self.logger.state.last_log_index {
+                if let Some(session_req) = log.session_req.take() {
+                    session_reqs.push(session_req);
+                }
+                entries.push(log);
+            }
+        }
+
+        // ! Ensure Previous Log consistency
+        // Case: Empty log
+        if self.is_empty_log() && prev_log_index != 0 {
+            err!("Log is empty but leader expects an entry");
+            return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
+        }
+
+        // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
+        // * Just returning an error is breaking consistency
+        if let Some(prev_entry) = self.read_at(prev_log_index)
+            && prev_entry.term != prev_log_term
+        {
+            // ! Term mismatch -> triggers log truncation
+            err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
+            self.truncate_after(prev_log_index);
+        }
+
+        let log_idx = self.write_many(entries).map_err(|e| {
+            err!("{}", e);
+            RejectionReason::FailToWrite
+        })?;
+
+        Ok(ReplicationAck::ack(log_idx, self.logger.state.term))
+    }
+
     #[cfg(test)]
     pub fn election_votes(&self) -> ElectionVotes {
         self.election_votes.clone()
+    }
+
+    #[cfg(test)]
+    pub fn set_logger(&mut self, logger: ReplicatedLogs<T>) {
+        self.logger = logger;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_log_term(&self) -> u64 {
+        self.logger.last_log_term
+    }
+
+    pub(crate) fn on_election_timeout(&mut self, term: u64) {
+        self.set_role(ReplicationRole::Follower);
+        if term > self.logger.state.term {
+            self.set_term(term);
+        }
     }
 }
 

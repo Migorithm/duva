@@ -10,7 +10,6 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
-
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -45,9 +44,8 @@ use std::fs::File;
 use std::io::Seek;
 use std::io::Write;
 use std::iter;
-use std::sync::atomic::Ordering;
-use tokio::net::TcpStream;
 
+use tokio::net::TcpStream;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -127,7 +125,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default().add_partitions(vec![(
-            init_repl_state.logger.state.replid.clone(),
+            init_repl_state.state().replid.clone(),
             init_repl_state.self_identifier(),
         )]);
 
@@ -333,7 +331,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
-        if let Err(err) = self.replication.logger.write_single_entry(
+        if let Err(err) = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
             req.session_req.clone(),
@@ -346,8 +344,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
-            let entry = self.replication.logger.read_at(last_log_index).unwrap();
-            self.increase_con_idx();
+            let entry = self.replication.read_at(last_log_index).unwrap();
+            self.replication.increase_con_idx_by(1);
             let res = self.commit_entry(entry.entry, last_log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
@@ -357,10 +355,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
         );
         self.send_rpc_to_replicas().await;
-    }
-
-    fn increase_con_idx(&mut self) {
-        self.replication.logger.con_idx.fetch_add(1, Ordering::Relaxed);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
@@ -536,8 +530,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback: Callback<anyhow::Result<()>>,
     ) {
         self.cache_manager.drop_cache().await;
-        self.replication.logger.reset();
-        self.replication.logger.con_idx.store(0, Ordering::Release);
+        self.replication.reset_log();
         self.replication.set_replid(ReplicationId::Undecided);
         self.step_down().await;
         self.connect_to_server::<C>(peer_addr, Some(callback)).await;
@@ -843,7 +836,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
-        let append_entries = self.replication.logger.list_append_log_entries(lowest_watermark);
+        let append_entries = self.replication.list_append_log_entries(lowest_watermark);
         let default_heartbeat: HeartBeat = self.replication.default_heartbeat(0);
 
         // Handle empty entries case
@@ -854,7 +847,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we have entries, find the entry before the first one to use as backup
-        let backup_entry = self.replication.logger.read_at(append_entries[0].log_index - 1);
+        let backup_entry = self.replication.read_at(append_entries[0].log_index - 1);
 
         let iterator = self.replicas_mut().map(move |(peer, p_log_idx)| {
             let missing_entries = append_entries
@@ -914,10 +907,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.increase_con_idx();
+        self.replication.increase_con_idx_by(1);
         self.client_sessions.set_response(voting.session_req.take());
 
-        let log_entry = self.replication.logger.read_at(log_index).unwrap();
+        let log_entry = self.replication.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
 
         voting.callback.send(ConsensusClientResponse::Result(res));
@@ -926,7 +919,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
         // TODO could be  if self.last_applied < index{ .. }
         let res = self.cache_manager.apply_entry(entry, index).await;
-        self.replication.logger.last_applied = index;
+        *self.replication.last_applied_mut() = index;
 
         res
     }
@@ -970,57 +963,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if rpc.append_entries.is_empty() {
             return Ok(());
         }
-        let mut entries = Vec::with_capacity(rpc.append_entries.len());
+
         let mut session_reqs = Vec::with_capacity(rpc.append_entries.len());
+        let ack = self.replication.replicate_log_entries(
+            std::mem::take(&mut rpc.append_entries),
+            rpc.prev_log_index,
+            rpc.prev_log_term,
+            &mut session_reqs,
+        )?;
 
-        for mut log in std::mem::take(&mut rpc.append_entries) {
-            if log.log_index > self.log_state().last_log_index {
-                if let Some(session_req) = log.session_req.take() {
-                    session_reqs.push(session_req);
-                }
-                entries.push(log);
-            }
-        }
-
-        self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
-        let log_idx = self.replication.logger.write_many(entries).map_err(|e| {
-            err!("{}", e);
-            RejectionReason::FailToWrite
-        })?;
-
-        self.send_replication_ack(&rpc.from, ReplicationAck::ack(log_idx, self.log_state().term))
-            .await;
+        self.send_replication_ack(&rpc.from, ack).await;
 
         // * The following is to allow for failure of leader and follower elected as new leader.
-        // Subscription request with the same session req should be treated as idempotent operation
-        session_reqs.into_iter().for_each(|req| self.client_sessions.set_response(Some(req)));
-
-        Ok(())
-    }
-
-    async fn ensure_prev_consistency(
-        &mut self,
-
-        prev_log_index: u64,
-        prev_log_term: u64,
-    ) -> Result<(), RejectionReason> {
-        // Case: Empty log
-        if self.replication.logger.is_empty() {
-            if prev_log_index == 0 {
-                return Ok(()); // First entry, no previous log to check
-            }
-            err!("Log is empty but leader expects an entry");
-            return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
-        }
-
-        // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
-        // * Just returning an error is breaking consistency
-        if let Some(prev_entry) = self.replication.logger.read_at(prev_log_index)
-            && prev_entry.term != prev_log_term
-        {
-            // ! Term mismatch -> triggers log truncation
-            err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
-            self.replication.logger.truncate_after(prev_log_index);
+        // request with the same session req should be treated as idempotent operation
+        for sr in session_reqs {
+            self.client_sessions.set_response(Some(sr))
         }
 
         Ok(())
@@ -1042,24 +999,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    fn reset_election_timeout(&mut self, new_term: u64) {
+    fn reset_election_timeout(&mut self, term: u64) {
         self.heartbeat_scheduler.reset_election_timeout();
-
-        self.replication.set_role(ReplicationRole::Follower);
-        if new_term > self.log_state().term {
-            self.replication.set_term(new_term);
-        }
+        self.replication.on_election_timeout(term);
     }
 
     async fn replicate_state(&mut self, leader_hb: HeartBeat) {
-        let old_con_idx = self.replication.logger.con_idx.load(Ordering::Relaxed);
+        let old_con_idx = self.replication.curr_con_idx();
         let leader_commit_idx =
             leader_hb.leader_commit_idx.expect("Leader must send leader commit index");
         if leader_commit_idx > old_con_idx {
-            let logs = self.replication.logger.range(old_con_idx, leader_commit_idx);
+            let logs = self.replication.range(old_con_idx, leader_commit_idx);
 
             for log in logs {
-                self.increase_con_idx();
+                self.replication.increase_con_idx_by(1);
 
                 if let Err(e) = self.commit_entry(log.entry, log.log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
@@ -1080,13 +1033,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
-        if heartbeat.term < self.log_state().term {
+        let log_state = self.log_state();
+
+        if heartbeat.term < log_state.term {
             self.send_replication_ack(
                 &heartbeat.from,
                 ReplicationAck::reject(
-                    self.log_state().last_log_index,
+                    log_state.last_log_index,
                     RejectionReason::ReceiverHasHigherTerm,
-                    self.log_state().term,
+                    log_state.term,
                 ),
             )
             .await;
@@ -1101,7 +1056,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn step_down(&mut self) {
         self.replication.reset_election_votes();
         self.heartbeat_scheduler.turn_follower_mode();
-        self.replication.set_role(ReplicationRole::Follower);
 
         self.unblock_pending_requests();
     }
@@ -1114,16 +1068,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.log_state().replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ =
-            self.replication.logger.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
+        let _ = self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
 
         // * force reconciliation
         let logs_to_reconcile = self
             .replication
-            .logger
-            .range(self.replication.logger.last_applied, self.log_state().last_log_index);
+            .range(self.replication.last_applied(), self.log_state().last_log_index);
         for op in logs_to_reconcile {
-            self.increase_con_idx();
+            self.replication.increase_con_idx_by(1);
             if let Err(e) = self.commit_entry(op.entry, op.log_index).await {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
