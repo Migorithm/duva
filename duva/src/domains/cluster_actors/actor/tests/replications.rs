@@ -14,7 +14,7 @@ fn logger_create_entries_from_lowest() {
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
-    let mut repl_state = ReplicationState::new(
+    let mut repl_state = Replication::new(
         ReplicationId::Key("master".into()),
         ReplicationRole::Leader,
         "localhost",
@@ -24,7 +24,7 @@ fn logger_create_entries_from_lowest() {
     repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
+    repl_state.logger.write_single_entry(log, repl_state.state.term, None).unwrap();
 
     let logs = repl_state.logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
@@ -39,7 +39,7 @@ fn logger_create_entries_from_lowest() {
 async fn test_generate_follower_entries() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.replication.state.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
@@ -72,7 +72,7 @@ async fn test_generate_follower_entries() {
         .logger
         .write_single_entry(
             LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-            cluster_actor.replication.term,
+            cluster_actor.replication.state.term,
             None,
         )
         .unwrap();
@@ -417,7 +417,7 @@ async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
     let mut leader_c_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let replid = leader_c_actor.replication.replid.clone();
+    let replid = leader_c_actor.replication.state.replid.clone();
     // - add 5 followers
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
@@ -458,7 +458,7 @@ async fn req_consensus_inserts_consensus_voting() {
             &follower,
             QueryIO::AppendEntriesRPC(HeartBeat {
                 from: leader_c_actor.replication.self_identifier(),
-                replid: leader_c_actor.replication.replid.clone(),
+                replid: leader_c_actor.replication.state.replid.clone(),
                 append_entries: vec![WriteOperation {
                     entry: w_req.clone(),
                     log_index: 1,
@@ -507,7 +507,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
     cluster_actor.cache_manager = cache_manager.clone();
 
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.replication.state.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
@@ -558,7 +558,7 @@ async fn test_same_voter_can_vote_only_once() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.cache_manager = cache_manager.clone();
 
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.replication.state.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add followers to create quorum

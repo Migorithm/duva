@@ -59,6 +59,7 @@ impl Peer {
         self.listener_kill_trigger.kill().await
     }
 
+    // TODO move to replicaiotn
     pub(crate) fn is_replica(&self, replid: &ReplicationId) -> bool {
         self.state.replid == *replid
     }
@@ -76,13 +77,14 @@ impl Peer {
     }
 }
 
+// TODO move this to replication logs
 #[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct NodeState {
     pub node_id: PeerIdentifier,
-    pub(crate) last_log_index: u64,
-    pub(crate) term: u64,
     pub replid: ReplicationId,
     pub role: ReplicationRole,
+    pub(crate) last_log_index: u64,
+    pub(crate) term: u64,
 }
 
 impl NodeState {

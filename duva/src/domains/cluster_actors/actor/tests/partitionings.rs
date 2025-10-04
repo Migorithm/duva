@@ -132,7 +132,7 @@ async fn test_start_rebalance_happy_path() {
         QueryIO::ClusterHeartBeat(HeartBeat {
             from: cluster_actor.replication.self_identifier(),
             hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
-            replid: cluster_actor.replication.replid.clone(),
+            replid: cluster_actor.replication.state.replid.clone(),
             leader_commit_idx: Some(0),
             ..Default::default()
         }),
@@ -209,7 +209,10 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     let hash_ring = hash_ring
         .set_partitions(vec![
             (coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999)),
-            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+            (
+                cluster_actor.replication.state.replid.clone(),
+                cluster_actor.replication.self_identifier(),
+            ),
         ])
         .unwrap();
 
@@ -400,7 +403,7 @@ async fn test_receive_batch_when_consensus_is_required() {
         &repl_buf,
         QueryIO::AppendEntriesRPC(HeartBeat {
             from: cluster_actor.replication.self_identifier(),
-            replid: cluster_actor.replication.replid.clone(),
+            replid: cluster_actor.replication.state.replid.clone(),
             append_entries: vec![WriteOperation {
                 entry: LogEntry::MSet { entries: entries.clone() },
                 log_index: 1,
@@ -598,7 +601,10 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     let new_ring = HashRing::default()
         .set_partitions(vec![
             (new_node_replid, PeerIdentifier::new("127.0.0.1", 6000)),
-            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+            (
+                cluster_actor.replication.state.replid.clone(),
+                cluster_actor.replication.self_identifier(),
+            ),
         ])
         .unwrap();
     cluster_actor.cache_manager = cache_manager.clone();

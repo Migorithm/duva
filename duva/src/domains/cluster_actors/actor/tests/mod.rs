@@ -6,8 +6,8 @@ mod replications;
 use super::actor::ClusterActorSender;
 use super::*;
 use crate::CacheManager;
+use crate::Replication;
 use crate::ReplicationId;
-use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
@@ -168,7 +168,7 @@ impl Helper {
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        let replication = ReplicationState::new(
+        let replication = Replication::new(
             ReplicationId::Key("master".into()),
             role,
             "127.0.0.1",
@@ -195,7 +195,7 @@ impl Helper {
                 cluster_sender.clone(),
                 key.clone(),
             );
-            let term = actor.replication.term;
+            let term = actor.replication.state.term;
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -275,7 +275,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (id, peer) = Helper::create_peer(
             self.self_handler.clone(),
             0,
-            &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
+            &repl_id.unwrap_or_else(|| self.replication.state.replid.clone()),
             port,
             if is_leader { ReplicationRole::Leader } else { ReplicationRole::Follower },
             buf.clone(),

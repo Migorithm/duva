@@ -48,7 +48,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 warn!(
                     "{} Running for election term {}",
                     self.replication.self_identifier(),
-                    self.replication.term
+                    self.replication.state.term
                 );
 
                 self.run_for_election().await;
@@ -79,7 +79,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 callback.send(self.cluster_nodes());
             },
             | NodeInfo(callback) => {
-                callback.send(self.replication.info());
+                callback.send(self.replication.state());
             },
             | Forget(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {

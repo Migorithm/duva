@@ -5,9 +5,9 @@ use super::LazyOption;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
+use super::replication::Replication;
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
-use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
@@ -64,7 +64,7 @@ mod tests;
 #[derive(Debug)]
 pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: ReplicationState<T>,
+    pub(crate) replication: Replication<T>,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: ClusterActorReceiver,
     pub(crate) self_handler: ClusterActorSender,
@@ -102,11 +102,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
-        init_repl_state: ReplicationState<T>,
+        replication: Replication<T>,
         cache_manager: CacheManager,
     ) -> ClusterActorSender {
         let cluster_actor =
-            ClusterActor::new(init_repl_state, heartbeat_interval, topology_writer, cache_manager);
+            ClusterActor::new(replication, heartbeat_interval, topology_writer, cache_manager);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle());
         actor_handler
@@ -117,7 +117,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     fn new(
-        init_repl_state: ReplicationState<T>,
+        init_repl_state: Replication<T>,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
         cache_manager: CacheManager,
@@ -131,7 +131,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default().add_partitions(vec![(
-            init_repl_state.replid.clone(),
+            init_repl_state.state.replid.clone(),
             init_repl_state.self_identifier(),
         )]);
 
@@ -173,7 +173,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = self.snapshot_topology().await;
 
         let peer = self.members.get_mut(&peer_id).unwrap();
-        if peer.is_follower(&self.replication.replid) && self.replication.is_leader() {
+        if peer.is_follower(&self.replication.state.replid) && self.replication.is_leader() {
             info!("Sending heartbeat to newly added follower: {}", peer_id);
             let hb = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
             let _ = peer.send(hb).await;
@@ -226,7 +226,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         let outbound_stream =
-            OutboundStream { r, w, self_state: self.replication.info(), peer_state: None };
+            OutboundStream { r, w, self_state: self.replication.state(), peer_state: None };
 
         tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
@@ -245,7 +245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             r,
             w,
             host_ip,
-            self_state: self.replication.info(),
+            self_state: self.replication.state(),
             peer_state: Default::default(),
         };
 
@@ -258,7 +258,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn set_repl_id(&mut self, replid: ReplicationId) {
-        self.replication.replid = replid;
+        self.replication.state.replid = replid;
         // Update hash ring with leader's replication ID and identifier
     }
 
@@ -314,13 +314,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         match self.hash_ring.key_ownership(req.entry.all_keys().into_iter()) {
-            | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
+            | Ok(replids) if replids.all_belongs_to(&self.replication.state.replid) => {
                 self.req_consensus(req).await;
             },
             | Ok(replids) => {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
-                let moved_keys = replids.except(&self.replication.replid).join(" ");
+                let moved_keys = replids.except(&self.replication.state.replid).join(" ");
                 req.callback.send(ConsensusClientResponse::Err(format!("Moved {moved_keys}")))
             },
             | Err(err) => {
@@ -334,13 +334,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // * Check if the request has already been processed
         if let Err(err) = self.replication.logger.write_single_entry(
             req.entry,
-            self.replication.term,
+            self.replication.state.term,
             req.session_req.clone(),
         ) {
             req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
         let last_log_index = self.logger().last_log_index;
+        self.replication.state.last_log_index = last_log_index;
 
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
@@ -387,13 +388,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let current_term = self.replication.term;
+        let current_term = self.replication.state.term;
         let mut grant_vote = false;
 
-        if request_vote.term >= self.replication.term {
+        if request_vote.term >= self.replication.state.term {
             // If candidate's term is higher, update own term and step down
-            if request_vote.term > self.replication.term {
-                self.replication.term = request_vote.term;
+            if request_vote.term > self.replication.state.term {
+                self.replication.state.term = request_vote.term;
                 self.step_down().await; // Ensure follower mode
             }
 
@@ -410,13 +411,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // If candidate's term is less than current term, reject
             warn!(
                 "Rejecting vote for {} (term {}). My term is higher ({}).",
-                request_vote.candidate_id, request_vote.term, self.replication.term
+                request_vote.candidate_id, request_vote.term, self.replication.state.term
             );
         }
 
         self.heartbeat_scheduler.reset_election_timeout();
 
-        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
+        let vote = ElectionVote { term: self.replication.state.term, vote_granted: grant_vote };
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             // if not found, revert the change
             self.replication.revert_voting(current_term, &request_vote.candidate_id);
@@ -462,7 +463,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         if self.check_term_outdated(&heartbeat).await {
-            err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.term);
+            err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.state.term);
             return;
         };
         self.reset_election_timeout(heartbeat.term);
@@ -477,18 +478,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         election_vote: ElectionVote,
     ) {
         // If we receive a vote from a future term, we should step down.
-        if election_vote.term > self.replication.term {
+        if election_vote.term > self.replication.state.term {
             warn!("Received a vote from a future term {}, stepping down.", election_vote.term);
-            self.replication.term = election_vote.term;
+            self.replication.state.term = election_vote.term;
             self.step_down().await;
             return;
         }
 
         // A candidate should only process votes from its current term.
-        if election_vote.term < self.replication.term {
+        if election_vote.term < self.replication.state.term {
             warn!(
                 "Received a stale vote with term {}, but current term is {}. Ignoring.",
-                election_vote.term, self.replication.term
+                election_vote.term, self.replication.state.term
             );
             return;
         }
@@ -617,7 +618,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let Some(peer) = self.members.get(&request_to) else {
                 return;
             };
-            if peer.is_replica(&self.replication.replid) {
+            if peer.is_replica(&self.replication.state.replid) {
                 warn!("Cannot rebalance to a replica: {}", request_to);
                 return;
             }
@@ -659,7 +660,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_match_index()))
+            (peer.is_replica(&self.replication.state.replid))
+                .then_some((id, peer.curr_match_index()))
         })
     }
 
@@ -667,9 +669,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let mut replica = self
             .members
             .iter()
-            .filter(|(_, peer_state)| peer_state.is_replica(&self.replication.replid))
+            .filter(|(_, peer_state)| peer_state.is_replica(&self.replication.state.replid))
             .map(|(peer_id, peer_state)| (peer_id.clone(), peer_state.role().clone()))
-            .chain(iter::once((self.replication.self_identifier(), self.replication.role.clone())))
+            .chain(iter::once((
+                self.replication.self_identifier(),
+                self.replication.state.role.clone(),
+            )))
             .collect::<Vec<_>>();
         replica.sort_by_key(|(_, role)| role.clone());
         replica
@@ -684,7 +689,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if self.replication.is_leader() {
             iter.chain(iter::once((
-                self.replication.replid.clone(),
+                self.replication.state.replid.clone(),
                 self.replication.self_identifier(),
             )))
             .collect()
@@ -696,12 +701,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let log_index = peer.curr_match_index();
-            (peer.is_replica(&self.replication.replid)).then_some((peer, log_index))
+            (peer.is_replica(&self.replication.state.replid)).then_some((peer, log_index))
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| peer.is_replica(&self.replication.replid))
+        self.members.get_mut(peer_id).filter(|peer| peer.is_replica(&self.replication.state.replid))
     }
 
     fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
@@ -910,7 +915,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members
             .values()
             .filter_map(|peer| {
-                if peer.is_replica(&self.replication.replid) {
+                if peer.is_replica(&self.replication.state.replid) {
                     Some(peer.curr_match_index())
                 } else {
                     None
@@ -980,7 +985,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 ReplicationAck::reject(
                     self.logger().last_log_index,
                     rej_reason,
-                    self.replication.term,
+                    self.replication.state.term,
                 ),
             )
             .await;
@@ -1011,9 +1016,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             err!("{}", e);
             RejectionReason::FailToWrite
         })?;
+        self.replication.state.last_log_index = log_idx;
 
-        self.send_replication_ack(&rpc.from, ReplicationAck::ack(log_idx, self.replication.term))
-            .await;
+        self.send_replication_ack(
+            &rpc.from,
+            ReplicationAck::ack(log_idx, self.replication.state.term),
+        )
+        .await;
 
         // * The following is to allow for failure of leader and follower elected as new leader.
         // Subscription request with the same session req should be treated as idempotent operation
@@ -1069,9 +1078,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn reset_election_timeout(&mut self, new_term: u64) {
         self.heartbeat_scheduler.reset_election_timeout();
 
-        self.replication.role = ReplicationRole::Follower;
-        if new_term > self.replication.term {
-            self.replication.term = new_term;
+        self.replication.state.role = ReplicationRole::Follower;
+        if new_term > self.replication.state.term {
+            self.replication.state.term = new_term;
         }
     }
 
@@ -1097,20 +1106,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // * send the latest log index
             self.send_replication_ack(
                 &leader_hb.from,
-                ReplicationAck::ack(self.logger().last_log_index, self.replication.term),
+                ReplicationAck::ack(self.logger().last_log_index, self.replication.state.term),
             )
             .await;
         }
     }
 
     async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
-        if heartbeat.term < self.replication.term {
+        if heartbeat.term < self.replication.state.term {
             self.send_replication_ack(
                 &heartbeat.from,
                 ReplicationAck::reject(
                     self.logger().last_log_index,
                     RejectionReason::ReceiverHasHigherTerm,
-                    self.replication.term,
+                    self.replication.state.term,
                 ),
             )
             .await;
@@ -1125,21 +1134,24 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn step_down(&mut self) {
         self.replication.reset_election_votes();
         self.heartbeat_scheduler.turn_follower_mode();
-        self.replication.role = ReplicationRole::Follower;
+        self.replication.state.role = ReplicationRole::Follower;
 
         self.unblock_pending_requests();
     }
 
     async fn become_leader(&mut self) {
-        self.replication.role = ReplicationRole::Leader;
+        self.replication.state.role = ReplicationRole::Leader;
         self.replication.election_votes.votes.clear();
         self.heartbeat_scheduler.turn_leader_mode().await;
         self.hash_ring.update_repl_leader(
-            self.replication.replid.clone(),
+            self.replication.state.replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ =
-            self.replication.logger.write_single_entry(LogEntry::NoOp, self.replication.term, None);
+        let _ = self.replication.logger.write_single_entry(
+            LogEntry::NoOp,
+            self.replication.state.term,
+            None,
+        );
 
         // * force reconciliation
         let logs_to_reconcile =
@@ -1156,7 +1168,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn become_candidate(&mut self) {
         self.block_write_reqs();
-        self.replication.term += 1;
+        self.replication.state.term += 1;
         self.replication.election_votes =
             ElectionVotes::new(self.replicas().count() as u8, self.replication.self_identifier());
     }

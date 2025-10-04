@@ -11,7 +11,7 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
-use domains::cluster_actors::replication::ReplicationState;
+use domains::cluster_actors::replication::Replication;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
@@ -98,7 +98,7 @@ impl StartUpFacade {
         let snapshot_info = Self::initialize_with_snapshot();
         let (r_id, con_idx) = snapshot_info.extract_replication_info();
 
-        let replication_state = ReplicationState::new(
+        let replication_state = Replication::new(
             r_id,
             ENV.role.clone(),
             &ENV.host,
