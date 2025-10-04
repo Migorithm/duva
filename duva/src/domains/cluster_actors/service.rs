@@ -48,7 +48,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 warn!(
                     "{} Running for election term {}",
                     self.replication.self_identifier(),
-                    self.replication.logger.state.term
+                    self.log_state().term
                 );
 
                 self.run_for_election().await;

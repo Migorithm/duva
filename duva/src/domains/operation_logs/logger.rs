@@ -13,8 +13,13 @@ pub(crate) struct ReplicatedLogs<T> {
 }
 
 impl<T> ReplicatedLogs<T> {
-    pub fn new(target: T, last_log_term: u64, state: NodeState) -> Self {
-        Self { target, last_log_term, con_idx: Arc::new(state.last_log_index.into()), state }
+    pub fn new(target: T, state: NodeState) -> Self {
+        Self {
+            target,
+            last_log_term: state.term,
+            con_idx: Arc::new(state.last_log_index.into()),
+            state,
+        }
     }
 }
 

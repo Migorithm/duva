@@ -45,6 +45,19 @@ impl<T: TWriteAheadLog> Replication<T> {
         let Ok(current_time) = time_in_secs() else { return false };
         self.banlist.iter().any(|x| x.p_id == *peer_identifier && current_time - x.ban_time < 60)
     }
+    pub(crate) fn replid(&mut self) -> &ReplicationId {
+        &self.logger.state.replid
+    }
+    pub(crate) fn set_replid(&mut self, replid: ReplicationId) {
+        self.logger.state.replid = replid;
+    }
+
+    pub(crate) fn set_term(&mut self, term: u64) {
+        self.logger.state.term = term;
+    }
+    pub(crate) fn set_role(&mut self, new_role: ReplicationRole) {
+        self.logger.state.role = new_role;
+    }
 
     pub(super) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
         HeartBeat {
@@ -183,7 +196,7 @@ fn test_cloning_replication_state() {
         last_log_index: 0,
         term: 0,
     };
-    let repllogs = ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, state);
+    let repllogs = ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, state);
     let replication_state = Replication::new(1231, repllogs);
     let cloned = replication_state.logger.con_idx.clone();
 

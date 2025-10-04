@@ -104,7 +104,7 @@ impl StartUpFacade {
         let state =
             NodeState { node_id, replid, role: ENV.role.clone(), last_log_index: con_idx, term: 0 };
 
-        let repl_logs = ReplicatedLogs::new(wal, 0, state);
+        let repl_logs = ReplicatedLogs::new(wal, state);
         let replication_state = Replication::new(ENV.port, repl_logs);
 
         let cache_manager =
