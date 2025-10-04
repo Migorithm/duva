@@ -3,13 +3,13 @@ use super::request::HandShakeRequestEnum;
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::cluster_actors::replication::ReplicationRole;
+
+use crate::domains::replications::*;
 
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::ReplicationState;
+
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use bytes::Bytes;

@@ -1,17 +1,15 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
-use futures::{Stream, StreamExt};
-
 use crate::{
     domains::{
         cluster_actors::{ClientMessage, ClusterCommand, ConnectionMessage, LazyOption},
-        peers::peer::ReplicationState,
+        replications::state::ReplicationState,
     },
     prelude::{PeerIdentifier, Topology},
     types::Callback,
+};
+use futures::{Stream, StreamExt};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 pub(crate) struct ClusterActorQueue;

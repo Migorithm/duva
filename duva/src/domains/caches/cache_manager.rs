@@ -5,8 +5,8 @@ use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::operation_logs::LogEntry;
+use crate::domains::replications::ReplicationId;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 

@@ -1,8 +1,8 @@
 use super::{ClientController, request::ClientRequest};
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
+use crate::domains::replications::{ReplicationId, ReplicationRole};
 
 use crate::domains::{
     QueryIO,

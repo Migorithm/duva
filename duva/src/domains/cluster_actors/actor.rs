@@ -5,10 +5,7 @@ use super::LazyOption;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
-use super::replication::Replication;
-use super::replication::ReplicationId;
-use super::replication::ReplicationRole;
-use super::replication::time_in_secs;
+
 use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
@@ -37,7 +34,8 @@ use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
-use crate::domains::peers::peer::ReplicationState;
+
+use crate::domains::replications::*;
 use crate::err;
 use crate::res_err;
 use crate::types::Callback;

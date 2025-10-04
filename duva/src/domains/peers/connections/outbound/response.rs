@@ -1,6 +1,5 @@
+use crate::domains::{QueryIO, replications::*};
 use anyhow::Context;
-
-use crate::domains::{QueryIO, cluster_actors::replication::ReplicationRole};
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionResponse {

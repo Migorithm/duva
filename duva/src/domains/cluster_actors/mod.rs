@@ -12,7 +12,6 @@ pub(crate) use command::*;
 pub mod consensus;
 pub mod hash_ring;
 
-pub mod replication;
 mod service;
 pub(crate) mod topology;
 

@@ -56,9 +56,9 @@ mod peer_messages {
     use crate::{
         domains::{
             caches::cache_objects::CacheEntry,
-            cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
+            cluster_actors::{ConsensusRequest, hash_ring::HashRing},
             operation_logs::WriteOperation,
-            peers::peer::ReplicationState,
+            replications::{ReplicationId, state::ReplicationState},
         },
         types::Callback,
     };

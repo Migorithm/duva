@@ -5,6 +5,7 @@ pub mod operation_logs;
 pub mod error;
 pub mod peers;
 
+pub mod replications;
 pub mod saves;
 pub use error::IoError;
 pub mod interface;

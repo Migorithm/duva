@@ -1,4 +1,4 @@
-use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::replications::ReplicationId;
 use crate::domains::{IoError, cluster_actors::topology::Topology};
 use uuid::Uuid;
 

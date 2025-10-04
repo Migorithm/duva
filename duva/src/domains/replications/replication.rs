@@ -5,7 +5,7 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::ReplicationState;
+use crate::domains::replications::state::ReplicationState;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;
 
@@ -39,7 +39,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.logger.state.node_id.clone()
     }
 
-    pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
         let Ok(current_time) = time_in_secs() else { return false };
         self.banlist.iter().any(|x| x.p_id == *peer_identifier && current_time - x.ban_time < 60)
     }
@@ -57,7 +57,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.logger.state.role = new_role;
     }
 
-    pub(super) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
+    pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
         HeartBeat {
             from: self.self_identifier(),
             term: self.logger.state.term,
@@ -73,12 +73,12 @@ impl<T: TWriteAheadLog> Replication<T> {
         }
     }
 
-    pub(super) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
+    pub(crate) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
         self.election_votes.votes.remove(candidate_id);
         self.logger.state.term = term;
     }
 
-    pub(super) fn vote_for(&mut self, candidate_id: PeerIdentifier) {
+    pub(crate) fn vote_for(&mut self, candidate_id: PeerIdentifier) {
         self.election_votes.votes.insert(candidate_id);
     }
 
@@ -90,7 +90,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.election_votes.votes.contains(&self.self_identifier())
     }
 
-    pub(super) fn is_log_up_to_date(
+    pub(crate) fn is_log_up_to_date(
         &self,
         candidate_last_log_index: u64,
         candidate_last_log_term: u64,

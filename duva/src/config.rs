@@ -2,8 +2,8 @@ use std::sync::LazyLock;
 
 use crate::{
     domains::{
-        cluster_actors::replication::ReplicationRole,
-        peers::{identifier::TPeerAddress, peer::ReplicationState},
+        peers::identifier::TPeerAddress, replications::ReplicationRole,
+        replications::state::ReplicationState,
     },
     env_var,
     prelude::PeerIdentifier,

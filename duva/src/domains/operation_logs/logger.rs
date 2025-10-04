@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::AtomicU64};
 
-use crate::domains::{cluster_actors::SessionRequest, peers::peer::ReplicationState};
+use crate::domains::{cluster_actors::SessionRequest, replications::state::ReplicationState};
 
 use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
 

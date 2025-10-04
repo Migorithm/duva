@@ -1,10 +1,5 @@
-use crate::{
-    domains::{
-        QueryIO,
-        cluster_actors::replication::{ReplicationId, ReplicationRole},
-    },
-    err, from_to, make_smart_pointer,
-};
+use crate::domains::replications::*;
+use crate::{domains::QueryIO, err, from_to, make_smart_pointer};
 use anyhow::Context;
 use bytes::Bytes;
 
