@@ -18,7 +18,7 @@ use crate::domains::cluster_actors::consensus::election::ElectionVotes;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
+use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::LogEntry;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -758,8 +758,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.members
                 .values()
                 .clone()
-                .map(|peer| NodeReplInfo::from_peer_state(peer.state()))
-                .chain(iter::once(NodeReplInfo::from_replication_state(self.replication.info())))
+                .map(|peer| peer.state().clone())
+                .chain(iter::once(self.replication.state().clone()))
                 .collect(),
             self.hash_ring.clone(),
         )

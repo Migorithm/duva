@@ -38,7 +38,7 @@ impl InboundStream {
 
         let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
-        self.peer_state = PeerState { id, replid, last_log_index, role };
+        self.peer_state = PeerState { peer_id: id, replid, last_log_index, role };
 
         Ok(())
     }

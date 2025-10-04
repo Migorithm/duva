@@ -47,7 +47,6 @@ use crate::presentation::clients::stream::ClientStreamWriter;
 pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
-    pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::ConnectionRequest;

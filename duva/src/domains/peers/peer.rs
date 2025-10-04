@@ -31,7 +31,7 @@ impl Peer {
         }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
-        &self.state.id
+        &self.state.peer_id
     }
     pub(crate) fn state(&self) -> &PeerState {
         &self.state
@@ -78,10 +78,10 @@ impl Peer {
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
-    pub(crate) id: PeerIdentifier,
+    pub peer_id: PeerIdentifier,
     pub(crate) last_log_index: u64,
-    pub(crate) replid: ReplicationId,
-    pub(crate) role: ReplicationRole,
+    pub replid: ReplicationId,
+    pub role: ReplicationRole,
 }
 
 impl PeerState {
@@ -95,7 +95,7 @@ impl PeerState {
     }
 
     pub(crate) fn id(&self) -> &PeerIdentifier {
-        &self.id
+        &self.peer_id
     }
 
     pub(crate) fn parse_node_info(line: &str) -> Option<Self> {
@@ -113,7 +113,7 @@ impl PeerState {
         let log_index = log_index.parse().unwrap_or_default();
 
         Some(Self {
-            id: PeerIdentifier(addr.bind_addr().unwrap()),
+            peer_id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
             last_log_index: log_index,
             role: role.to_string().into(),
@@ -171,17 +171,17 @@ impl PeerState {
     }
 
     pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
-        if self.id == *peer_id {
+        if self.peer_id == *peer_id {
             return format!(
                 "{} myself,{} 0 {} {}",
-                self.id, self.replid, self.last_log_index, self.role
+                self.peer_id, self.replid, self.last_log_index, self.role
             );
         }
-        format!("{} {} 0 {} {}", self.id, self.replid, self.last_log_index, self.role)
+        format!("{} {} 0 {} {}", self.peer_id, self.replid, self.last_log_index, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
-        self.id.bind_addr().unwrap() == bind_addr
+        self.peer_id.bind_addr().unwrap() == bind_addr
     }
 }
 

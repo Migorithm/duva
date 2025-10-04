@@ -136,7 +136,7 @@ impl Broker {
             .topology
             .node_infos
             .iter()
-            .filter(|n| n.peer_id != previous_leader && n.repl_id == replication_id)
+            .filter(|n| n.peer_id != previous_leader && n.replid == replication_id)
             .map(|n| n.peer_id.clone())
             .collect();
 
@@ -156,8 +156,7 @@ impl Broker {
             .node_infos
             .iter()
             .filter(|n| {
-                n.repl_role == ReplicationRole::Leader
-                    && !self.node_connections.contains_key(&n.repl_id)
+                n.role == ReplicationRole::Leader && !self.node_connections.contains_key(&n.replid)
             })
             .map(|n| n.peer_id.clone())
             .collect();

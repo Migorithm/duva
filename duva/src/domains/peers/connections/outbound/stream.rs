@@ -62,7 +62,7 @@ impl OutboundStream {
                     | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
                         peer_state.replid = ReplicationId::Key(repl_id);
                         peer_state.last_log_index = offset;
-                        peer_state.id = PeerIdentifier(id);
+                        peer_state.peer_id = PeerIdentifier(id);
                         peer_state.role = role;
                         self.peer_state = Some(peer_state);
 
@@ -92,7 +92,7 @@ impl OutboundStream {
             cluster_handler
                 .send(ConnectionMessage::FollowerSetReplId(
                     connection_info.replid.clone(),
-                    connection_info.id.clone(),
+                    connection_info.peer_id.clone(),
                 ))
                 .await?;
         }

@@ -111,7 +111,7 @@ async fn test_reconnection_on_gossip() {
     // WHEN - try to reconnect
     cluster_actor
         .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
-            id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
+            peer_id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
             last_log_index: 0,
             replid: cluster_actor.replication.replid.clone(),
             role: ReplicationRole::Follower,
@@ -170,7 +170,7 @@ async fn test_update_cluster_members_updates_fields() {
     let initial_role = initial.state().role.clone();
 
     let peer_states = vec![PeerState {
-        id: peer_id.clone(),
+        peer_id: peer_id.clone(),
         last_log_index: 100,
         replid: cluster_actor.replication.replid.clone(),
         role: ReplicationRole::Leader,
