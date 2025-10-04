@@ -168,13 +168,15 @@ impl Helper {
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        let replication = Replication::new(
-            ReplicationId::Key("master".into()),
+        let state = NodeState {
+            node_id: PeerIdentifier::new("127.0.0.1", 8080),
+            replid: ReplicationId::Key("master".into()),
             role,
-            "127.0.0.1",
-            8080,
-            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
-        );
+            last_log_index: 0,
+            term: 0,
+        };
+        let repllogs = ReplicatedLogs::new(MemoryOpLogs::default(), 0, state);
+        let replication = Replication::new(8080, repllogs);
         let (_, cache_manager) = Helper::cache_manager();
         ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }
@@ -195,7 +197,7 @@ impl Helper {
                 cluster_sender.clone(),
                 key.clone(),
             );
-            let term = actor.replication.state.term;
+            let term = actor.replication.logger.state.term;
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -275,7 +277,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (id, peer) = Helper::create_peer(
             self.self_handler.clone(),
             0,
-            &repl_id.unwrap_or_else(|| self.replication.state.replid.clone()),
+            &repl_id.unwrap_or_else(|| self.replication.logger.state.replid.clone()),
             port,
             if is_leader { ReplicationRole::Leader } else { ReplicationRole::Follower },
             buf.clone(),

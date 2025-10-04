@@ -11,7 +11,6 @@ use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub(crate) struct Replication<T> {
-    pub(crate) state: NodeState,
     pub(crate) self_port: u16,
     pub(crate) banlist: Vec<BannedPeer>,
     pub(crate) election_votes: ElectionVotes,
@@ -20,26 +19,10 @@ pub(crate) struct Replication<T> {
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
-    pub(crate) fn new(
-        replid: ReplicationId,
-        role: ReplicationRole,
-        self_host: &str,
-        self_port: u16,
-        logger: ReplicatedLogs<T>,
-    ) -> Self {
-        let node_id = PeerIdentifier::new(self_host, self_port);
+    pub(crate) fn new(self_port: u16, logger: ReplicatedLogs<T>) -> Self {
         Self {
-            state: NodeState {
-                node_id,
-                replid,
-                role,
-                last_log_index: logger.last_log_index,
-                term: 0,
-            },
             election_votes: ElectionVotes::default(),
-
             self_port,
-
             banlist: Default::default(),
             last_applied: 0,
             logger,
@@ -51,11 +34,11 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn state(&self) -> NodeState {
-        self.state.clone()
+        self.logger.state.clone()
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
-        self.state.node_id.clone()
+        self.logger.state.node_id.clone()
     }
 
     pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
@@ -66,14 +49,14 @@ impl<T: TWriteAheadLog> Replication<T> {
     pub(super) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
         HeartBeat {
             from: self.self_identifier(),
-            term: self.state.term,
+            term: self.logger.state.term,
             leader_commit_idx: self
                 .is_leader()
                 .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
-            replid: self.state.replid.clone(),
+            replid: self.logger.state.replid.clone(),
             hop_count,
             ban_list: self.banlist.clone(),
-            prev_log_index: self.logger.last_log_index,
+            prev_log_index: self.logger.state.last_log_index,
             prev_log_term: self.logger.last_log_term,
             ..Default::default()
         }
@@ -81,7 +64,7 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     pub(super) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
         self.election_votes.votes.remove(candidate_id);
-        self.state.term = term;
+        self.logger.state.term = term;
     }
 
     pub(super) fn vote_for(&mut self, candidate_id: PeerIdentifier) {
@@ -89,7 +72,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn is_leader(&self) -> bool {
-        self.state.role == ReplicationRole::Leader
+        self.logger.state.role == ReplicationRole::Leader
     }
 
     pub(crate) fn is_candidate(&self) -> bool {
@@ -106,14 +89,14 @@ impl<T: TWriteAheadLog> Replication<T> {
         }
 
         candidate_last_log_term == self.logger.last_log_term
-            && candidate_last_log_index >= self.logger.last_log_index
+            && candidate_last_log_index >= self.logger.state.last_log_index
     }
 
     pub(crate) fn request_vote(&self) -> RequestVote {
         RequestVote {
-            term: self.state.term,
+            term: self.logger.state.term,
             candidate_id: self.self_identifier(),
-            last_log_index: self.logger.last_log_index,
+            last_log_index: self.logger.state.last_log_index,
             last_log_term: self.logger.last_log_term,
         }
     }
@@ -193,13 +176,15 @@ fn test_cloning_replication_state() {
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 
     //GIVEN
-    let replication_state = Replication::new(
-        ReplicationId::Key("dsd".into()),
-        ReplicationRole::Leader,
-        "127.0.0.1",
-        1231,
-        ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, 0),
-    );
+    let state = NodeState {
+        node_id: PeerIdentifier::new("127.0.0.1", 1231),
+        replid: ReplicationId::Key("dsd".into()),
+        role: ReplicationRole::Leader,
+        last_log_index: 0,
+        term: 0,
+    };
+    let repllogs = ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, state);
+    let replication_state = Replication::new(1231, repllogs);
     let cloned = replication_state.logger.con_idx.clone();
 
     //WHEN

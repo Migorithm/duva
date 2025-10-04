@@ -10,8 +10,8 @@ use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
-use domains::cluster_actors::replication::ReplicationId;
 use domains::cluster_actors::replication::Replication;
+use domains::cluster_actors::replication::ReplicationId;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
@@ -37,11 +37,13 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 use crate::domains::TSerdeRead;
+use crate::domains::peers::peer::NodeState;
 
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::prelude::ConnectionRequest;
+use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::stream::ClientStreamReader;
 use crate::presentation::clients::stream::ClientStreamWriter;
 pub use config::ENV;
@@ -96,17 +98,18 @@ impl StartUpFacade {
 
     pub fn new(wal: impl TWriteAheadLog, writer: File) -> Self {
         let snapshot_info = Self::initialize_with_snapshot();
-        let (r_id, con_idx) = snapshot_info.extract_replication_info();
+        let (replid, con_idx) = snapshot_info.extract_replication_info();
 
-        let replication_state = Replication::new(
-            r_id,
-            ENV.role.clone(),
-            &ENV.host,
-            ENV.port,
-            ReplicatedLogs::new(wal, con_idx, 0),
-        );
+        let node_id = PeerIdentifier::new(&ENV.host, ENV.port);
+        let state =
+            NodeState { node_id, replid, role: ENV.role.clone(), last_log_index: con_idx, term: 0 };
+
+        let repl_logs = ReplicatedLogs::new(wal, 0, state);
+        let replication_state = Replication::new(ENV.port, repl_logs);
+
         let cache_manager =
             CacheManager::run_cache_actors(replication_state.logger.con_idx.clone());
+
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =
