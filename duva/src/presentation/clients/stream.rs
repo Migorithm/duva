@@ -120,7 +120,7 @@ impl ClientStreamWriter {
         cluster_manager: &ClusterActorSender,
         auth_req: ConnectionRequest,
     ) -> anyhow::Result<String> {
-        let replication_state = cluster_manager.route_get_replication_state().await?;
+        let replication_state = cluster_manager.route_get_node_state().await?;
 
         // if the request is not new authentication but the client is already authenticated
         if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {

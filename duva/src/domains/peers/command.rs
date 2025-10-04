@@ -58,7 +58,7 @@ mod peer_messages {
             caches::cache_objects::CacheEntry,
             cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
             operation_logs::WriteOperation,
-            peers::peer::PeerState,
+            peers::peer::NodeState,
         },
         types::Callback,
     };
@@ -114,7 +114,7 @@ mod peer_messages {
         pub(crate) hop_count: u8,
         pub(crate) ban_list: Vec<BannedPeer>,
         pub(crate) append_entries: Vec<WriteOperation>,
-        pub(crate) cluster_nodes: Vec<PeerState>,
+        pub(crate) cluster_nodes: Vec<NodeState>,
         pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
         pub(crate) prev_log_term: u64,  //term of prev_log_index entry
         pub(crate) hashring: Option<Box<HashRing>>,
@@ -128,7 +128,7 @@ mod peer_messages {
             Self { prev_log_index, prev_log_term, ..self }
         }
 
-        pub(crate) fn set_cluster_nodes(self, cluster_nodes: Vec<PeerState>) -> Self {
+        pub(crate) fn set_cluster_nodes(self, cluster_nodes: Vec<NodeState>) -> Self {
             Self { cluster_nodes, ..self }
         }
 

@@ -40,9 +40,9 @@ impl ClientController {
                     .open(&file_path)
                     .await?;
 
-                let repl_info = self.cluster_actor_sender.route_get_replication_state().await?;
+                let repl_info = self.cluster_actor_sender.route_get_node_state().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_idx)
+                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_index)
                     .await?;
 
                 QueryIO::Null
@@ -82,7 +82,7 @@ impl ClientController {
             ),
             | Info => QueryIO::BulkString(
                 self.cluster_actor_sender
-                    .route_get_replication_state()
+                    .route_get_node_state()
                     .await?
                     .vectorize()
                     .join("\r\n")

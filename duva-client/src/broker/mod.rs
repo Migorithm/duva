@@ -134,10 +134,10 @@ impl Broker {
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
         let remaining_replicas: Vec<_> = self
             .topology
-            .node_infos
+            .node_states
             .iter()
-            .filter(|n| n.peer_id != previous_leader && n.replid == replication_id)
-            .map(|n| n.peer_id.clone())
+            .filter(|n| n.node_id != previous_leader && n.replid == replication_id)
+            .map(|n| n.node_id.clone())
             .collect();
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
@@ -153,12 +153,12 @@ impl Broker {
     async fn add_leader_conns_if_not_found(&mut self) {
         let nodes_to_add: Vec<_> = self
             .topology
-            .node_infos
+            .node_states
             .iter()
             .filter(|n| {
                 n.role == ReplicationRole::Leader && !self.node_connections.contains_key(&n.replid)
             })
-            .map(|n| n.peer_id.clone())
+            .map(|n| n.node_id.clone())
             .collect();
 
         for peer_id in nodes_to_add {

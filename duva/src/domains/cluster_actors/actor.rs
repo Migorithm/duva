@@ -38,7 +38,7 @@ use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
-use crate::domains::peers::peer::PeerState;
+use crate::domains::peers::peer::NodeState;
 use crate::err;
 use crate::res_err;
 use crate::types::Callback;
@@ -226,7 +226,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         let outbound_stream =
-            OutboundStream { r, w, self_repl_info: self.replication.info(), peer_state: None };
+            OutboundStream { r, w, self_state: self.replication.info(), peer_state: None };
 
         tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
@@ -245,7 +245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             r,
             w,
             host_ip,
-            self_repl_info: self.replication.info(),
+            self_state: self.replication.info(),
             peer_state: Default::default(),
         };
 
@@ -374,7 +374,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.send_rpc_to_replicas().await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<NodeState> {
         self.members
             .values()
             .map(|p| p.state().clone())
@@ -754,15 +754,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn get_topology(&self) -> Topology {
-        Topology::new(
-            self.members
+        Topology {
+            node_states: self
+                .members
                 .values()
                 .clone()
                 .map(|peer| peer.state().clone())
                 .chain(iter::once(self.replication.state().clone()))
                 .collect(),
-            self.hash_ring.clone(),
-        )
+            hash_ring: self.hash_ring.clone(),
+        }
     }
 
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
@@ -1179,7 +1180,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn join_peer_network_if_absent<C: TAsyncReadWrite>(
         &mut self,
-        cluster_nodes: Vec<PeerState>,
+        cluster_nodes: Vec<NodeState>,
     ) {
         let self_id = self.replication.self_identifier();
 
@@ -1462,7 +1463,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
-    async fn update_cluster_members(&mut self, from: &PeerIdentifier, cluster_nodes: &[PeerState]) {
+    async fn update_cluster_members(&mut self, from: &PeerIdentifier, cluster_nodes: &[NodeState]) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.record_heartbeat();
         }

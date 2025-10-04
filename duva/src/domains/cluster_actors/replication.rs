@@ -5,7 +5,7 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::PeerState;
+use crate::domains::peers::peer::NodeState;
 use std::fmt::Display;
 use std::sync::atomic::Ordering;
 
@@ -48,23 +48,23 @@ impl<T: TWriteAheadLog> ReplicationState<T> {
         self.election_votes = ElectionVotes::default();
     }
 
-    pub(crate) fn info(&self) -> ReplicationInfo {
-        ReplicationInfo {
+    pub(crate) fn info(&self) -> NodeState {
+        NodeState {
             replid: self.replid.clone(),
-            last_log_idx: self.logger.last_log_index,
+            last_log_index: self.logger.last_log_index,
             role: self.role.clone(),
-            self_host: self.self_host.clone(),
-            self_port: self.self_port,
+            node_id: self.self_identifier(),
             term: self.term,
         }
     }
 
-    pub(super) fn state(&self) -> PeerState {
-        PeerState {
-            peer_id: self.self_identifier(),
+    pub(super) fn state(&self) -> NodeState {
+        NodeState {
+            node_id: self.self_identifier(),
             last_log_index: self.logger.last_log_index,
             replid: self.replid.clone(),
             role: self.role.clone(),
+            term: self.term,
         }
     }
 
@@ -199,30 +199,6 @@ impl From<String> for ReplicationRole {
             | "leader" => ReplicationRole::Leader,
             | _ => ReplicationRole::Follower,
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct ReplicationInfo {
-    pub(crate) replid: ReplicationId,
-    pub(crate) last_log_idx: u64,
-    pub(crate) role: ReplicationRole,
-    pub(crate) self_host: String,
-    pub(crate) self_port: u16,
-    pub(crate) term: u64,
-}
-impl ReplicationInfo {
-    pub(crate) fn self_identifier(&self) -> PeerIdentifier {
-        PeerIdentifier::new(&self.self_host, self.self_port)
-    }
-
-    pub(crate) fn vectorize(self) -> Vec<String> {
-        vec![
-            format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.replid),
-            format!("last_log_index:{}", self.last_log_idx),
-            format!("self_identifier:{}", self.self_identifier()),
-        ]
     }
 }
 

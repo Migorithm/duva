@@ -14,13 +14,13 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) phi: PhiAccrualDetector,
-    state: PeerState,
+    state: NodeState,
 }
 
 impl Peer {
     pub(crate) fn new(
         w: impl Into<WriteConnected>,
-        state: PeerState,
+        state: NodeState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
         Self {
@@ -31,9 +31,9 @@ impl Peer {
         }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
-        &self.state.peer_id
+        &self.state.node_id
     }
-    pub(crate) fn state(&self) -> &PeerState {
+    pub(crate) fn state(&self) -> &NodeState {
         &self.state
     }
     pub(crate) fn replid(&self) -> &ReplicationId {
@@ -77,14 +77,15 @@ impl Peer {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub struct PeerState {
-    pub peer_id: PeerIdentifier,
+pub struct NodeState {
+    pub node_id: PeerIdentifier,
     pub(crate) last_log_index: u64,
+    pub(crate) term: u64,
     pub replid: ReplicationId,
     pub role: ReplicationRole,
 }
 
-impl PeerState {
+impl NodeState {
     pub(crate) fn decide_peer_state(self, my_repl_id: &ReplicationId) -> Self {
         let replid = match (&self.replid, my_repl_id) {
             | (ReplicationId::Undecided, _) => my_repl_id.clone(),
@@ -95,7 +96,7 @@ impl PeerState {
     }
 
     pub(crate) fn id(&self) -> &PeerIdentifier {
-        &self.peer_id
+        &self.node_id
     }
 
     pub(crate) fn parse_node_info(line: &str) -> Option<Self> {
@@ -104,19 +105,21 @@ impl PeerState {
             return None;
         }
 
-        let [addr, id_part, _, log_index, role] = parts[..] else {
+        let [addr, id_part, term, log_index, role] = parts[..] else {
             return None;
         };
 
         let repl_id = Self::extract_replid(id_part)?;
 
         let log_index = log_index.parse().unwrap_or_default();
+        let term = term.parse().unwrap_or_default();
 
         Some(Self {
-            peer_id: PeerIdentifier(addr.bind_addr().unwrap()),
+            node_id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
             last_log_index: log_index,
             role: role.to_string().into(),
+            term,
         })
     }
 
@@ -171,17 +174,26 @@ impl PeerState {
     }
 
     pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
-        if self.peer_id == *peer_id {
+        if self.node_id == *peer_id {
             return format!(
                 "{} myself,{} 0 {} {}",
-                self.peer_id, self.replid, self.last_log_index, self.role
+                self.node_id, self.replid, self.last_log_index, self.role
             );
         }
-        format!("{} {} 0 {} {}", self.peer_id, self.replid, self.last_log_index, self.role)
+        format!("{} {} 0 {} {}", self.node_id, self.replid, self.last_log_index, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
-        self.peer_id.bind_addr().unwrap() == bind_addr
+        self.node_id.bind_addr().unwrap() == bind_addr
+    }
+
+    pub(crate) fn vectorize(self) -> Vec<String> {
+        vec![
+            format!("role:{}", self.role),
+            format!("leader_repl_id:{}", self.replid),
+            format!("last_log_index:{}", self.last_log_index),
+            format!("self_identifier:{}", self.node_id),
+        ]
     }
 }
 
@@ -311,7 +323,7 @@ fn test_prioritize_nodes_with_same_replid() {
     write!(temp_file, "{file_content}").expect("Failed to write to temp file");
 
     // Read and prioritize nodes
-    let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
+    let nodes = NodeState::from_file(temp_file.path().to_str().unwrap());
 
     // There should be 4 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 5);

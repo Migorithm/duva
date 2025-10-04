@@ -21,7 +21,7 @@ use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
-use crate::domains::peers::peer::PeerState;
+use crate::domains::peers::peer::NodeState;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
 use crate::{
@@ -101,6 +101,7 @@ impl Helper {
 
         role: ReplicationRole,
         fake_buf: FakeReadWrite,
+        term: u64,
     ) -> (PeerIdentifier, Peer) {
         let key = PeerIdentifier::new("127.0.0.1", port);
 
@@ -110,7 +111,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { peer_id: id, last_log_index: con_idx, replid, role }
+                NodeState { node_id: id, last_log_index: con_idx, replid, role, term }
             },
             kill_switch,
         );
@@ -194,6 +195,7 @@ impl Helper {
                 cluster_sender.clone(),
                 key.clone(),
             );
+            let term = actor.replication.term;
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -204,7 +206,13 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { peer_id: id, last_log_index: follower_con_idx, replid, role }
+                        NodeState {
+                            node_id: id,
+                            last_log_index: follower_con_idx,
+                            replid,
+                            role,
+                            term,
+                        }
                     },
                     kill_switch,
                 ),
@@ -260,7 +268,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn test_add_peer(
         &mut self,
         port: u16,
-
         repl_id: Option<ReplicationId>,
         is_leader: bool,
     ) -> (FakeReadWrite, PeerIdentifier) {
@@ -272,6 +279,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             port,
             if is_leader { ReplicationRole::Leader } else { ReplicationRole::Follower },
             buf.clone(),
+            0,
         );
 
         self.members.insert(id.clone(), peer);

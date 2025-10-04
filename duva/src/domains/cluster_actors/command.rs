@@ -1,12 +1,10 @@
 use crate::domains::QueryIO;
-use crate::domains::cluster_actors::replication::{
-    ReplicationId, ReplicationInfo, ReplicationRole,
-};
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::LogEntry;
 use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
-use crate::domains::peers::peer::{Peer, PeerState};
+use crate::domains::peers::peer::{NodeState, Peer};
 use crate::prelude::PeerIdentifier;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
@@ -54,11 +52,11 @@ impl From<ConnectionMessage> for ClusterCommand {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientMessage {
     GetPeers(Callback<Vec<PeerIdentifier>>),
-    ReplicationInfo(Callback<ReplicationInfo>),
+    NodeInfo(Callback<NodeState>),
     Forget(PeerIdentifier, Callback<Option<()>>),
     ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
-    ClusterNodes(Callback<Vec<PeerState>>),
+    ClusterNodes(Callback<Vec<NodeState>>),
     GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
