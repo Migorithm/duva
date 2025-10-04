@@ -155,7 +155,7 @@ impl StartUpFacade {
             if let Err(err) =
                 self.cluster_actor_sender.route_connect_to_server(node.id().clone()).await
             {
-                error!("{err}");
+                err!("{}", err);
             }
         }
 

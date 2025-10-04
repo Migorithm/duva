@@ -77,7 +77,7 @@ impl InboundStream {
             self.self_state.replid.clone(),
             self.self_state.last_log_index,
             self.self_state.role.clone(),
-            self.self_state.term.clone(),
+            self.self_state.term,
         );
 
         self.w

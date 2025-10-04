@@ -66,10 +66,10 @@ impl Environment {
         pre_connected_nodes: &[NodeState],
     ) -> ReplicationRole {
         if replicaof.is_none() && pre_connected_nodes.is_empty() {
-            ReplicationRole::Leader
-        } else {
-            ReplicationRole::Follower
+            return ReplicationRole::Leader;
         }
+
+        ReplicationRole::Follower
     }
 
     pub async fn open_topology_file(tpp: String) -> std::fs::File {
