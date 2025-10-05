@@ -668,7 +668,7 @@ mod test {
         // GIVEN
         let me = PeerIdentifier::new("127.0.0.1", 6035);
         let leader = ReplicationId::Undecided;
-        let banned_list = vec![
+        let banlist = vec![
             BannedPeer { p_id: PeerIdentifier("localhost:28889".into()), ban_time: 3553 },
             BannedPeer { p_id: PeerIdentifier("localhost:22888".into()), ban_time: 3556 },
         ];
@@ -680,7 +680,7 @@ mod test {
             leader_commit_idx: Some(5),
             replid: leader.clone(),
             hop_count: 2,
-            ban_list: banned_list,
+            banlist,
             append_entries: vec![
                 WriteOperation {
                     entry: LogEntry::Set {
@@ -867,7 +867,7 @@ mod test {
             leader_commit_idx: Some(5),
             replid: ReplicationId::Key(Uuid::now_v7().to_string()),
             hop_count: 2,
-            ban_list: vec![],
+            banlist: vec![],
             append_entries: vec![],
             cluster_nodes: vec![],
             hashring: Some(Box::new(ring)),

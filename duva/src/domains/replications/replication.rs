@@ -1,6 +1,5 @@
 use super::*;
 use crate::domains::cluster_actors::SessionRequest;
-use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
@@ -15,20 +14,13 @@ use std::sync::atomic::Ordering;
 #[derive(Debug)]
 pub(crate) struct Replication<T> {
     pub(crate) self_port: u16,
-    // TODO move this to cluster actor
-    banlist: Vec<BannedPeer>,
     election_votes: ElectionVotes,
     logger: ReplicatedLogs<T>,
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
     pub(crate) fn new(self_port: u16, logger: ReplicatedLogs<T>) -> Self {
-        Self {
-            election_votes: ElectionVotes::default(),
-            self_port,
-            banlist: Default::default(),
-            logger,
-        }
+        Self { election_votes: ElectionVotes::default(), self_port, logger }
     }
 
     pub(crate) fn reset_election_votes(&mut self) {
@@ -57,10 +49,6 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.logger.state.node_id.clone()
     }
 
-    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        let Ok(current_time) = time_in_secs() else { return false };
-        self.banlist.iter().any(|x| x.p_id == *peer_identifier && current_time - x.ban_time < 60)
-    }
     pub(crate) fn replid(&mut self) -> &ReplicationId {
         &self.logger.state.replid
     }
@@ -84,7 +72,7 @@ impl<T: TWriteAheadLog> Replication<T> {
                 .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
             replid: self.logger.state.replid.clone(),
             hop_count,
-            ban_list: self.banlist.clone(),
+            banlist: Vec::new(),
             prev_log_index: self.logger.state.last_log_index,
             prev_log_term: self.logger.last_log_term,
             ..Default::default()
@@ -128,36 +116,6 @@ impl<T: TWriteAheadLog> Replication<T> {
             last_log_index: self.logger.state.last_log_index,
             last_log_term: self.logger.last_log_term,
         }
-    }
-
-    pub(crate) fn remove_from_banlist(&mut self, peer_id: &PeerIdentifier) {
-        if let Some(pos) = self.banlist.iter().position(|x| x.p_id == *peer_id) {
-            self.banlist.swap_remove(pos);
-        };
-    }
-
-    pub(crate) fn ban(&mut self, banned_peer: BannedPeer) {
-        self.banlist.push(banned_peer);
-    }
-
-    pub(crate) fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) -> Vec<PeerIdentifier> {
-        for banned_peer in ban_list {
-            let ban_list = &mut self.banlist;
-
-            if let Some(pos) = ban_list.iter().position(|x| x.p_id == banned_peer.p_id) {
-                if banned_peer.ban_time > ban_list[pos].ban_time {
-                    ban_list[pos] = banned_peer;
-                }
-            } else {
-                ban_list.push(banned_peer);
-            }
-        }
-
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
-
-        // remanings after applying banlist
-        self.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>()
     }
 
     pub(crate) fn is_votable(&self, candidate_id: &PeerIdentifier) -> bool {

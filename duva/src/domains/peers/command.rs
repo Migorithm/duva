@@ -112,7 +112,7 @@ mod peer_messages {
         pub(crate) leader_commit_idx: Option<u64>,
         pub(crate) replid: ReplicationId,
         pub(crate) hop_count: u8,
-        pub(crate) ban_list: Vec<BannedPeer>,
+        pub(crate) banlist: Vec<BannedPeer>,
         pub(crate) append_entries: Vec<WriteOperation>,
         pub(crate) cluster_nodes: Vec<ReplicationState>,
         pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
@@ -134,6 +134,10 @@ mod peer_messages {
 
         pub(crate) fn set_hashring(&self, ring: HashRing) -> Self {
             Self { hashring: Some(Box::new(ring)), ..self.clone() }
+        }
+
+        pub(crate) fn set_banlist(self, banlist: Vec<BannedPeer>) -> Self {
+            Self { banlist, ..self }
         }
     }
 

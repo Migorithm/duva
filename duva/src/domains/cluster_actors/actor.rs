@@ -31,6 +31,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
 
+use crate::domains::replications::replication::time_in_secs;
 use crate::domains::replications::*;
 use crate::err;
 use crate::res_err;
@@ -73,6 +74,7 @@ pub struct ClusterActor<T> {
     pub(crate) hash_ring: HashRing,
     pending_reqs: Option<PendingRequests>,
     cluster_join_sync: ClusterJoinSync,
+    banlist: Vec<BannedPeer>,
 }
 
 #[derive(Debug, Default)]
@@ -143,7 +145,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cluster_join_sync: ClusterJoinSync::default(),
             pending_reqs: None,
             cache_manager,
+            banlist: Vec::new(),
         }
+    }
+
+    fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+        let current_time = time_in_secs().unwrap();
+        self.banlist.iter().any(|x| x.p_id == *peer_identifier && current_time - x.ban_time < 60)
+    }
+
+    fn remove_from_banlist(&mut self, peer_id: &PeerIdentifier) {
+        if let Some(pos) = self.banlist.iter().position(|x| x.p_id == *peer_id) {
+            self.banlist.swap_remove(pos);
+        };
     }
 
     #[instrument(level = tracing::Level::INFO, skip(self, peer, optional_callback),fields(peer_id = %peer.id()))]
@@ -154,7 +168,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         let peer_id = peer.id().clone();
 
-        self.replication.remove_from_banlist(&peer_id);
+        self.remove_from_banlist(&peer_id);
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -169,6 +183,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if peer.is_follower(self.replication.replid()) && self.replication.is_leader() {
             info!("Sending heartbeat to newly added follower: {}", peer_id);
             let hb = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
+
             let _ = peer.send(hb).await;
         }
 
@@ -255,8 +270,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.remove_idle_peers().await;
 
         let hop_count = Self::hop_count(FANOUT, self.members.len());
-        let hb =
-            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes());
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count)
+            .set_cluster_nodes(self.cluster_nodes())
+            .set_banlist(self.banlist.clone());
         self.send_heartbeat(hb).await;
     }
 
@@ -265,13 +283,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
         let res = self.remove_peer(&peer_addr).await;
-        self.replication.ban(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
+        self.banlist.push(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
         Ok(res)
     }
 
     // #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
     pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
-        if self.replication.in_ban_list(&heartbeat.from) {
+        if self.in_ban_list(&heartbeat.from) {
             err!("The given peer is in the ban list {}", heartbeat.from);
             return;
         }
@@ -283,13 +301,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn apply_banlist(&mut self, heartbeat: &mut HeartBeat) {
-        let remaining = self.replication.apply_banlist(std::mem::take(&mut heartbeat.ban_list));
-        for banned_peer_id in remaining {
-            warn!(
-                "applying ban list! {} removes {}...",
-                self.replication.self_identifier(),
-                banned_peer_id
-            );
+        if heartbeat.banlist.is_empty() {
+            return;
+        }
+
+        for banned_peer in std::mem::take(&mut heartbeat.banlist) {
+            if let Some(pos) = self.banlist.iter().position(|x| x.p_id == banned_peer.p_id) {
+                if banned_peer.ban_time > self.banlist[pos].ban_time {
+                    self.banlist[pos] = banned_peer;
+                }
+            } else {
+                self.banlist.push(banned_peer);
+            }
+        }
+
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
+
+        // remove remainings after applying banlist
+        let selfid = self.replication.self_identifier();
+        for banned_peer_id in self.banlist.iter().map(|p| p.p_id.clone()).collect::<Vec<_>>() {
+            warn!("applying ban list! {} removes {}...", selfid, banned_peer_id);
             self.remove_peer(&banned_peer_id).await;
         }
     }
@@ -805,8 +837,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
         hop_count -= 1;
 
-        let hb =
-            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes());
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count)
+            .set_cluster_nodes(self.cluster_nodes())
+            .set_banlist(self.banlist.clone());
+
         self.send_heartbeat(hb).await;
     }
 
@@ -1004,6 +1040,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.on_election_timeout(term);
     }
 
+    // TODO move this to replication
     async fn replicate_state(&mut self, leader_hb: HeartBeat) {
         let old_con_idx = self.replication.curr_con_idx();
         let leader_commit_idx =
@@ -1125,7 +1162,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.cluster_join_sync.known_peers.entry(node_id.clone()).or_insert(false);
 
             // Skip if already connected or banned
-            if self.members.contains_key(node_id) || self.replication.in_ban_list(node_id) {
+            if self.members.contains_key(node_id) || self.in_ban_list(node_id) {
                 continue;
             }
 
