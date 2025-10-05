@@ -31,7 +31,7 @@ async fn test_cluster_nodes() {
 
     // WHEN
     let res = cluster_actor.cluster_nodes();
-    let repl_id = cluster_actor.replication.replid.clone();
+    let repl_id = cluster_actor.log_state().replid.clone();
     assert_eq!(res.len(), 6);
 
     let file_content = format!(
@@ -47,7 +47,7 @@ async fn test_cluster_nodes() {
 
     let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
     write!(temp_file, "{file_content}").expect("Failed to write to temp file");
-    let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
+    let nodes = ReplicationState::from_file(temp_file.path().to_str().unwrap());
 
     for value in nodes {
         assert!(res.contains(&value));
@@ -61,9 +61,9 @@ async fn test_store_current_topology() {
     let path = "test_store_current_topology.tp";
     cluster_actor.topology_writer = std::fs::File::create(path).unwrap();
 
-    let repl_id = cluster_actor.replication.replid.clone();
+    let repl_id = cluster_actor.log_state().replid.clone();
     let self_id = cluster_actor.replication.self_identifier();
-    let con_idx = cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed);
+    let con_idx = cluster_actor.replication.curr_con_idx();
 
     // WHEN
     cluster_actor.snapshot_topology().await.unwrap();
@@ -86,7 +86,7 @@ async fn test_reconnection_on_gossip() {
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
     let bind_addr = listener.local_addr().unwrap();
 
-    let mut replication_state = cluster_actor.replication.info();
+    let mut replication_state = cluster_actor.replication.state();
     replication_state.role = ReplicationRole::Follower;
 
     let (tx, _rx) = Callback::create();
@@ -99,7 +99,7 @@ async fn test_reconnection_on_gossip() {
             r: read.into(),
             w: write.into(),
             host_ip: ip,
-            self_repl_info: replication_state,
+            self_state: replication_state,
             peer_state: Default::default(),
         };
 
@@ -110,11 +110,12 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
-            id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
+        .join_peer_network_if_absent::<TcpStream>(vec![ReplicationState {
+            node_id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
             last_log_index: 0,
-            replid: cluster_actor.replication.replid.clone(),
+            replid: cluster_actor.log_state().replid.clone(),
             role: ReplicationRole::Follower,
+            term: cluster_actor.log_state().term,
         }])
         .await;
 
@@ -169,11 +170,12 @@ async fn test_update_cluster_members_updates_fields() {
     let initial_last_seen = initial.phi.last_seen();
     let initial_role = initial.state().role.clone();
 
-    let peer_states = vec![PeerState {
-        id: peer_id.clone(),
+    let peer_states = vec![ReplicationState {
+        node_id: peer_id.clone(),
         last_log_index: 100,
-        replid: cluster_actor.replication.replid.clone(),
+        replid: cluster_actor.log_state().replid.clone(),
         role: ReplicationRole::Leader,
+        term: cluster_actor.log_state().term,
     }];
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     // WHEN
@@ -237,10 +239,11 @@ async fn test_add_peer_for_follower_send_heartbeat() {
     let (_, peer) = Helper::create_peer(
         cluster_actor.self_handler.clone(),
         0,
-        &cluster_actor.replication.replid.clone(),
+        &cluster_actor.log_state().replid.clone(),
         6380,
         ReplicationRole::Follower,
         buf.clone(),
+        cluster_actor.log_state().term,
     );
     let (tx, rx) = Callback::<anyhow::Result<()>>::create();
 

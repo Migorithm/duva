@@ -1,33 +1,39 @@
-use std::sync::{Arc, atomic::AtomicU64};
-
-use crate::domains::cluster_actors::SessionRequest;
-
-use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
+use super::*;
+use crate::domains::{cluster_actors::SessionRequest, replications::state::ReplicationState};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[derive(Debug)]
 pub(crate) struct ReplicatedLogs<T> {
-    pub(crate) target: T,
-    pub(crate) last_log_index: u64,
-    pub(crate) last_log_term: u64,
-    pub(crate) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
-}
-
-impl<T> ReplicatedLogs<T> {
-    pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
-        Self { target, last_log_index, last_log_term, con_idx: Arc::new(last_log_index.into()) }
-    }
+    pub(super) target: T,
+    pub(super) last_log_term: u64,
+    pub(super) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
+    pub(super) state: ReplicationState,
+    pub(super) last_applied: u64,
 }
 
 impl<T: TWriteAheadLog> ReplicatedLogs<T> {
+    pub fn new(target: T, state: ReplicationState) -> Self {
+        Self {
+            target,
+            last_log_term: state.term,
+            con_idx: Arc::new(state.last_log_index.into()),
+            state,
+            last_applied: 0,
+        }
+    }
+
     pub(crate) fn list_append_log_entries(
         &self,
         low_watermark: Option<u64>,
     ) -> Vec<WriteOperation> {
         let Some(low_watermark) = low_watermark else {
-            return self.from(self.last_log_index);
+            return self.from(self.state.last_log_index);
         };
 
-        let mut logs = Vec::with_capacity((self.last_log_index - low_watermark) as usize);
+        let mut logs = Vec::with_capacity((self.state.last_log_index - low_watermark) as usize);
         logs.extend(self.from(low_watermark));
 
         logs
@@ -41,7 +47,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     ) -> anyhow::Result<()> {
         let op = WriteOperation {
             entry,
-            log_index: (self.last_log_index + 1),
+            log_index: (self.state.last_log_index + 1),
             term: current_term,
             session_req,
         };
@@ -59,7 +65,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         // Filter and append entries in a single operation
         self.update_metadata(&entries);
         self.target.write_many(entries)?;
-        Ok(self.last_log_index)
+        Ok(self.state.last_log_index)
     }
 
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
@@ -67,7 +73,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, self.last_log_index)
+        self.target.range(start_exclusive, self.state.last_log_index)
     }
 
     pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
@@ -87,12 +93,13 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             return;
         }
         let last_entry = new_entries.last().unwrap();
-        self.last_log_index = last_entry.log_index;
+        self.state.last_log_index = last_entry.log_index;
         self.last_log_term = last_entry.term;
     }
 
     pub(crate) fn reset(&mut self) {
-        self.last_log_index = 0;
+        self.con_idx.store(0, Ordering::Release);
+        self.state.last_log_index = 0;
         self.last_log_term = 0;
         self.truncate_after(0);
     }

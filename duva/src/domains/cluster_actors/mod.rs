@@ -1,6 +1,6 @@
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
-use consensus::LogConsensusTracker;
+
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use std::collections::BTreeMap;
@@ -9,12 +9,8 @@ pub mod actor;
 mod command;
 pub(crate) mod queue;
 pub(crate) use command::*;
-pub mod consensus;
-pub mod hash_ring;
 
-pub mod replication;
+pub mod hash_ring;
 mod service;
 pub(crate) mod topology;
-
-pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;

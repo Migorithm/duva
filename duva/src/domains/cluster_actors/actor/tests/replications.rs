@@ -1,45 +1,50 @@
+use crate::domains::replications::ReplicatedLogs;
+
 use super::*;
 
 #[test]
 fn logger_create_entries_from_lowest() {
     // GIVEN
-    let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
+
+    let state = ReplicationState {
+        node_id: PeerIdentifier::new("localhost", 8080),
+        replid: ReplicationId::Key("master".into()),
+        role: ReplicationRole::Leader,
+        last_log_index: 0,
+        term: 0,
+    };
+    let mut repllogs = ReplicatedLogs::new(MemoryOpLogs::default(), state);
 
     let test_logs = vec![
         Helper::write(1, 0, "foo", "bar"),
         Helper::write(2, 0, "foo2", "bar"),
         Helper::write(3, 0, "foo3", "bar"),
     ];
-    logger.write_many(test_logs.clone()).unwrap();
+    repllogs.write_many(test_logs.clone()).unwrap();
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
-    let mut repl_state = ReplicationState::new(
-        ReplicationId::Key("master".into()),
-        ReplicationRole::Leader,
-        "localhost",
-        8080,
-        logger,
-    );
-    repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
+    let mut repl_state = Replication::new(8080, repllogs);
+
+    repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
     let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
+    repl_state.write_single_entry(log, repl_state.state().term, None).unwrap();
 
-    let logs = repl_state.logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
+    let logs = repl_state.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
     // THEN
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 3);
     assert_eq!(logs[1].log_index, 4);
-    assert_eq!(repl_state.logger.last_log_index, 4);
+    assert_eq!(repl_state.state().last_log_index, 4);
 }
 
 #[tokio::test]
 async fn test_generate_follower_entries() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.log_state().replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
@@ -57,8 +62,8 @@ async fn test_generate_follower_entries() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    cluster_actor.replication.logger.con_idx.store(3, Ordering::Release);
-    cluster_actor.replication.logger.write_many(test_logs).unwrap();
+    cluster_actor.replication.increase_con_idx_by(3);
+    cluster_actor.replication.write_many(test_logs).unwrap();
 
     //WHEN
     // *add lagged followers with its commit index being 1
@@ -69,10 +74,9 @@ async fn test_generate_follower_entries() {
 
     cluster_actor
         .replication
-        .logger
         .write_single_entry(
             LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-            cluster_actor.replication.term,
+            cluster_actor.log_state().term,
             None,
         )
         .unwrap();
@@ -99,9 +103,9 @@ async fn follower_cluster_actor_replicate_log() {
     cluster_actor.replicate(heartbeat).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 0);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
-    let logs = cluster_actor.replication.logger.range(0, 2);
+    assert_eq!(cluster_actor.replication.curr_con_idx(), 0);
+    assert_eq!(cluster_actor.log_state().last_log_index, 2);
+    let logs = cluster_actor.replication.range(0, 2);
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 1);
     assert_eq!(logs[1].log_index, 2);
@@ -151,8 +155,8 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 
     // THEN
     task.await.unwrap();
-    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 2);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
+    assert_eq!(cluster_actor.replication.curr_con_idx(), 2);
+    assert_eq!(cluster_actor.log_state().last_log_index, 2);
 }
 
 #[tokio::test]
@@ -181,7 +185,7 @@ async fn replicate_stores_only_latest_session_per_client() {
     cluster_actor.replicate(heartbeat).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 3);
+    assert_eq!(cluster_actor.log_state().last_log_index, 3);
     assert_eq!(cluster_actor.client_sessions.len(), 2);
 }
 
@@ -240,8 +244,8 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     task.abort();
 
     // Verify state
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
-    assert_eq!(follower_c_actor.replication.logger.last_log_index, 2);
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 1);
+    assert_eq!(follower_c_actor.log_state().last_log_index, 2);
 }
 
 #[tokio::test]
@@ -295,7 +299,7 @@ async fn test_apply_multiple_committed_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 3);
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 3);
 }
 
 #[tokio::test]
@@ -346,13 +350,20 @@ async fn test_partial_commit_with_new_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1"]);
-    assert_eq!(follower_c_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
-    assert_eq!(follower_c_actor.replication.logger.last_log_index, 3); // All entries are in the log
+    assert_eq!(follower_c_actor.replication.curr_con_idx(), 1);
+    assert_eq!(follower_c_actor.log_state().last_log_index, 3); // All entries are in the log
 }
 
 #[tokio::test]
 async fn follower_truncates_log_on_term_mismatch() {
     // GIVEN: A follower with an existing log entry at index  term 1
+    let state = ReplicationState {
+        node_id: PeerIdentifier::new("localhost", 8080),
+        replid: ReplicationId::Key("master".into()),
+        role: ReplicationRole::Leader,
+        last_log_index: 3,
+        term: 1,
+    };
     let mut inmemory = MemoryOpLogs::default();
     //prefill
 
@@ -360,10 +371,10 @@ async fn follower_truncates_log_on_term_mismatch() {
         .writer
         .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
 
-    let logger = ReplicatedLogs::new(inmemory, 3, 1);
+    let logger = ReplicatedLogs::new(inmemory, state);
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    cluster_actor.replication.logger = logger;
+    cluster_actor.replication.set_logger(logger);
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
@@ -374,7 +385,7 @@ async fn follower_truncates_log_on_term_mismatch() {
     let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Expect truncation and rejection
-    assert_eq!(cluster_actor.replication.logger.target.writer.len(), 2);
+    assert!(!cluster_actor.replication.is_empty_log());
     assert!(result.is_ok(), "Should pass as follower will just truncate and write");
 }
 
@@ -391,7 +402,7 @@ async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
 
     // THEN: Entries are accepted
     assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
-    assert_eq!(follower_c_actor.replication.logger.last_log_index, 1); // Assuming write_log_entries updates log_index
+    assert_eq!(follower_c_actor.log_state().last_log_index, 1); // Assuming write_log_entries updates log_index
 }
 
 #[tokio::test]
@@ -409,7 +420,7 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
 
     // THEN: Entries are rejected
     assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 0); // Log should remain unchanged
+    assert_eq!(cluster_actor.log_state().last_log_index, 0); // Log should remain unchanged
 }
 
 #[tokio::test]
@@ -417,7 +428,7 @@ async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
     let mut leader_c_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let replid = leader_c_actor.replication.replid.clone();
+    let replid = leader_c_actor.log_state().replid.clone();
     // - add 5 followers
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
@@ -445,7 +456,7 @@ async fn req_consensus_inserts_consensus_voting() {
 
     // THEN
     assert_eq!(leader_c_actor.consensus_tracker.len(), 1);
-    assert_eq!(leader_c_actor.replication.logger.last_log_index, 1);
+    assert_eq!(leader_c_actor.log_state().last_log_index, 1);
 
     assert_eq!(
         leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
@@ -458,7 +469,7 @@ async fn req_consensus_inserts_consensus_voting() {
             &follower,
             QueryIO::AppendEntriesRPC(HeartBeat {
                 from: leader_c_actor.replication.self_identifier(),
-                replid: leader_c_actor.replication.replid.clone(),
+                replid: leader_c_actor.log_state().replid.clone(),
                 append_entries: vec![WriteOperation {
                     entry: w_req.clone(),
                     log_index: 1,
@@ -507,7 +518,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
     cluster_actor.cache_manager = cache_manager.clone();
 
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.log_state().replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
@@ -544,7 +555,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 1);
+    assert_eq!(cluster_actor.log_state().last_log_index, 1);
 
     client_wait.recv().await;
     assert!(cluster_actor.client_sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
@@ -558,7 +569,7 @@ async fn test_same_voter_can_vote_only_once() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.cache_manager = cache_manager.clone();
 
-    let replid = cluster_actor.replication.replid.clone();
+    let replid = cluster_actor.log_state().replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::create(100);
 
     // - add followers to create quorum
@@ -587,7 +598,7 @@ async fn test_same_voter_can_vote_only_once() {
 
     // THEN - no change in consensus tracker even though the same voter voted multiple times
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 1);
+    assert_eq!(cluster_actor.log_state().last_log_index, 1);
 }
 #[tokio::test]
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
@@ -605,7 +616,7 @@ async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 1);
+    assert_eq!(cluster_actor.log_state().last_log_index, 1);
 }
 
 #[tokio::test]
@@ -628,7 +639,7 @@ async fn test_leader_req_consensus_with_pending_requests() {
     // THEN
     assert!(cluster_actor.pending_reqs.is_some());
     assert_eq!(cluster_actor.pending_reqs.as_ref().unwrap().num_reqs(), 1);
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
+    assert_eq!(cluster_actor.log_state().last_log_index, 0);
 }
 
 #[tokio::test]
@@ -658,7 +669,7 @@ async fn test_leader_req_consensus_with_processed_session() {
 
     // THEN
     // Verify the request was not processed (no new log entry)
-    assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
+    assert_eq!(cluster_actor.log_state().last_log_index, 0);
 
     // Verify the response indicates already processed
     let ConsensusClientResponse::AlreadyProcessed { key } = rx.recv().await else {

@@ -3,8 +3,8 @@ use crate::domains::cluster_actors::ClusterActor;
 use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
-use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::peers::PeerMessage;
+use crate::domains::replications::TWriteAheadLog;
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
 use tokio::net::TcpStream;
@@ -48,7 +48,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 warn!(
                     "{} Running for election term {}",
                     self.replication.self_identifier(),
-                    self.replication.term
+                    self.log_state().term
                 );
 
                 self.run_for_election().await;
@@ -78,8 +78,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ClusterNodes(callback) => {
                 callback.send(self.cluster_nodes());
             },
-            | ReplicationInfo(callback) => {
-                callback.send(self.replication.info());
+            | ReplicationState(callback) => {
+                callback.send(self.replication.state());
             },
             | Forget(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {

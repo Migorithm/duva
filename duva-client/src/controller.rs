@@ -4,8 +4,8 @@ use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
-use duva::domains::operation_logs::operation::LogEntry;
 use duva::domains::query_io::QueryIO;
+use duva::domains::replications::LogEntry;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
 use duva::prelude::bytes::Bytes;

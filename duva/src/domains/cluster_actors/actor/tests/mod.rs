@@ -6,22 +6,20 @@ mod replications;
 use super::actor::ClusterActorSender;
 use super::*;
 use crate::CacheManager;
+use crate::Replication;
 use crate::ReplicationId;
-use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::cluster_actors::replication::ReplicationRole;
-use crate::domains::operation_logs::LogEntry;
-use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::replications::ReplicatedLogs;
+
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
-use crate::domains::peers::peer::PeerState;
+
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
 use crate::{
@@ -101,6 +99,7 @@ impl Helper {
 
         role: ReplicationRole,
         fake_buf: FakeReadWrite,
+        term: u64,
     ) -> (PeerIdentifier, Peer) {
         let key = PeerIdentifier::new("127.0.0.1", port);
 
@@ -110,7 +109,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { id, last_log_index: con_idx, replid, role }
+                ReplicationState { node_id: id, last_log_index: con_idx, replid, role, term }
             },
             kill_switch,
         );
@@ -151,7 +150,7 @@ impl Helper {
             prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
-            ban_list: vec![],
+            banlist: vec![],
             from: PeerIdentifier::new("localhost", 8080),
             replid: ReplicationId::Key("localhost".to_string()),
             hop_count: 0,
@@ -167,13 +166,15 @@ impl Helper {
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        let replication = ReplicationState::new(
-            ReplicationId::Key("master".into()),
+        let state = ReplicationState {
+            node_id: PeerIdentifier::new("127.0.0.1", 8080),
+            replid: ReplicationId::Key("master".into()),
             role,
-            "127.0.0.1",
-            8080,
-            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
-        );
+            last_log_index: 0,
+            term: 0,
+        };
+        let repllogs = ReplicatedLogs::new(MemoryOpLogs::default(), state);
+        let replication = Replication::new(8080, repllogs);
         let (_, cache_manager) = Helper::cache_manager();
         ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }
@@ -194,6 +195,7 @@ impl Helper {
                 cluster_sender.clone(),
                 key.clone(),
             );
+            let term = actor.log_state().term;
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -204,7 +206,13 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { id, last_log_index: follower_con_idx, replid, role }
+                        ReplicationState {
+                            node_id: id,
+                            last_log_index: follower_con_idx,
+                            replid,
+                            role,
+                            term,
+                        }
                     },
                     kill_switch,
                 ),
@@ -260,7 +268,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn test_add_peer(
         &mut self,
         port: u16,
-
         repl_id: Option<ReplicationId>,
         is_leader: bool,
     ) -> (FakeReadWrite, PeerIdentifier) {
@@ -268,10 +275,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (id, peer) = Helper::create_peer(
             self.self_handler.clone(),
             0,
-            &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
+            &repl_id.unwrap_or_else(|| self.log_state().replid.clone()),
             port,
             if is_leader { ReplicationRole::Leader } else { ReplicationRole::Follower },
             buf.clone(),
+            0,
         );
 
         self.members.insert(id.clone(), peer);

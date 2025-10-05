@@ -6,7 +6,7 @@ use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::{
     ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
 };
-use crate::domains::operation_logs::LogEntry;
+use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;
@@ -40,9 +40,13 @@ impl ClientController {
                     .open(&file_path)
                     .await?;
 
-                let repl_info = self.cluster_actor_sender.route_get_replication_state().await?;
+                let repl_state = self.cluster_actor_sender.route_get_node_state().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.last_log_idx)
+                    .route_save(
+                        SaveTarget::File(file),
+                        repl_state.replid,
+                        repl_state.last_log_index,
+                    )
                     .await?;
 
                 QueryIO::Null
@@ -82,7 +86,7 @@ impl ClientController {
             ),
             | Info => QueryIO::BulkString(
                 self.cluster_actor_sender
-                    .route_get_replication_state()
+                    .route_get_node_state()
                     .await?
                     .vectorize()
                     .join("\r\n")

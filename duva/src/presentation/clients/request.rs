@@ -1,7 +1,7 @@
 use crate::domains::{
     cluster_actors::{LazyOption, SessionRequest},
-    operation_logs::LogEntry,
     peers::identifier::{PeerIdentifier, TPeerAddress},
+    replications::LogEntry,
 };
 use anyhow::Context;
 use chrono::Utc;

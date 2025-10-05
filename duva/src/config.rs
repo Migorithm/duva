@@ -2,8 +2,8 @@ use std::sync::LazyLock;
 
 use crate::{
     domains::{
-        cluster_actors::replication::ReplicationRole,
-        peers::{identifier::TPeerAddress, peer::PeerState},
+        peers::identifier::TPeerAddress, replications::ReplicationRole,
+        replications::state::ReplicationState,
     },
     env_var,
     prelude::PeerIdentifier,
@@ -12,7 +12,7 @@ use std::fs::OpenOptions;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
-    pub stored_peer_states: Vec<PeerState>,
+    pub repl_states: Vec<ReplicationState>,
     pub(crate) role: ReplicationRole,
     pub dir: String,
     pub dbfilename: String,
@@ -43,8 +43,8 @@ impl Environment {
         );
 
         let replicaof = replicaof.map(|s| PeerIdentifier(s.bind_addr().unwrap()));
-        let stored_peer_states = PeerState::from_file(&tpp);
-        let role = Self::determine_role(replicaof.as_ref(), &stored_peer_states);
+        let repl_states = ReplicationState::from_file(&tpp);
+        let role = Self::determine_role(replicaof.as_ref(), &repl_states);
 
         Self {
             role,
@@ -56,20 +56,20 @@ impl Environment {
             hf_mills: hf,
             append_only,
             tpp,
-            stored_peer_states,
+            repl_states,
             log_level,
         }
     }
 
     fn determine_role(
         replicaof: Option<&PeerIdentifier>,
-        pre_connected_peers: &[PeerState],
+        pre_connected_nodes: &[ReplicationState],
     ) -> ReplicationRole {
-        if replicaof.is_none() && pre_connected_peers.is_empty() {
-            ReplicationRole::Leader
-        } else {
-            ReplicationRole::Follower
+        if replicaof.is_none() && pre_connected_nodes.is_empty() {
+            return ReplicationRole::Leader;
         }
+
+        ReplicationRole::Follower
     }
 
     pub async fn open_topology_file(tpp: String) -> std::fs::File {

@@ -1,5 +1,5 @@
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
-use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::replications::ReplicationId;
 use crate::domains::saves::endec::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,

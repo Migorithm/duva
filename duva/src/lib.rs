@@ -4,15 +4,22 @@ pub mod domains;
 pub mod macros;
 pub mod presentation;
 mod types;
+use crate::domains::TSerdeRead;
+use crate::domains::cluster_actors::queue::ClusterActorSender;
+use crate::domains::replications::logger::ReplicatedLogs;
+use crate::domains::replications::*;
 use anyhow::Result;
 pub use config::Environment;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
-use domains::cluster_actors::replication::ReplicationId;
-use domains::cluster_actors::replication::ReplicationState;
-use domains::operation_logs::interfaces::TWriteAheadLog;
+
+use crate::prelude::ConnectionRequest;
+use crate::prelude::PeerIdentifier;
+use crate::presentation::clients::stream::ClientStreamReader;
+use crate::presentation::clients::stream::ClientStreamWriter;
+pub use config::ENV;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use opentelemetry::KeyValue;
@@ -21,7 +28,6 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use presentation::clients::ClientController;
-
 use std::fs::File;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -31,23 +37,11 @@ use tracing::info;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
-use tracing_subscriber::util::SubscriberInitExt;
-
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use uuid::Uuid;
-
-use crate::domains::TSerdeRead;
-
-use crate::domains::cluster_actors::queue::ClusterActorSender;
-
-use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::prelude::ConnectionRequest;
-use crate::presentation::clients::stream::ClientStreamReader;
-use crate::presentation::clients::stream::ClientStreamWriter;
-pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
-    pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::ConnectionRequest;
@@ -76,7 +70,7 @@ impl StartUpFacade {
         // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
         let repl_id_from_topp = if ENV.seed_server.is_none() {
             ReplicationId::Key(
-                ENV.stored_peer_states
+                ENV.repl_states
                     .iter()
                     .find(|p| p.is_self(ENV.bind_addr().as_str()))
                     .map(|p| p.replid.to_string())
@@ -97,17 +91,22 @@ impl StartUpFacade {
 
     pub fn new(wal: impl TWriteAheadLog, writer: File) -> Self {
         let snapshot_info = Self::initialize_with_snapshot();
-        let (r_id, con_idx) = snapshot_info.extract_replication_info();
+        let (replid, con_idx) = snapshot_info.extract_replication_info();
 
-        let replication_state = ReplicationState::new(
-            r_id,
-            ENV.role.clone(),
-            &ENV.host,
-            ENV.port,
-            ReplicatedLogs::new(wal, con_idx, 0),
-        );
-        let cache_manager =
-            CacheManager::run_cache_actors(replication_state.logger.con_idx.clone());
+        let node_id = PeerIdentifier::new(&ENV.host, ENV.port);
+        let state = ReplicationState {
+            node_id,
+            replid,
+            role: ENV.role.clone(),
+            last_log_index: con_idx,
+            term: 0,
+        };
+
+        let repl_logs = ReplicatedLogs::new(wal, state);
+        let replication_state = Replication::new(ENV.port, repl_logs);
+
+        let cache_manager = CacheManager::run_cache_actors(replication_state.clone_con_idx());
+
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =
@@ -152,11 +151,11 @@ impl StartUpFacade {
             return self.cluster_actor_sender.route_connect_to_server(seed.clone()).await;
         }
 
-        for peer in ENV.stored_peer_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
+        for node in ENV.repl_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
             if let Err(err) =
-                self.cluster_actor_sender.route_connect_to_server(peer.id().clone()).await
+                self.cluster_actor_sender.route_connect_to_server(node.id().clone()).await
             {
-                error!("{err}");
+                err!("{}", err);
             }
         }
 

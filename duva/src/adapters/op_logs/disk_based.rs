@@ -1,8 +1,8 @@
-use crate::domains::operation_logs::LogEntry;
-use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::query_io::serialized_len_with_bincode;
 use crate::domains::query_io::{SERDE_CONFIG, WRITE_OP_PREFIX};
+use crate::domains::replications::LogEntry;
+use crate::domains::replications::WriteOperation;
+use crate::domains::replications::interfaces::TWriteAheadLog;
 use anyhow::Result;
 use bytes::Bytes;
 use std::fs::{File, OpenOptions};
@@ -534,7 +534,7 @@ impl TWriteAheadLog for FileOpLogs {
 
 #[cfg(test)]
 mod tests {
-    use crate::domains::operation_logs::LogEntry;
+    use crate::domains::replications::LogEntry;
 
     use super::*;
     use anyhow::Result;

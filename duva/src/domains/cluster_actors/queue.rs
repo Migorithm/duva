@@ -1,20 +1,15 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
-use futures::{Stream, StreamExt};
-
 use crate::{
     domains::{
-        cluster_actors::{
-            ClientMessage, ClusterCommand, ConnectionMessage, LazyOption,
-            replication::ReplicationInfo,
-        },
-        peers::peer::PeerState,
+        cluster_actors::{ClientMessage, ClusterCommand, ConnectionMessage, LazyOption},
+        replications::state::ReplicationState,
     },
     prelude::{PeerIdentifier, Topology},
     types::Callback,
+};
+use futures::{Stream, StreamExt};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 pub(crate) struct ClusterActorQueue;
@@ -82,9 +77,9 @@ impl ClusterActorSender {
         Ok(())
     }
 
-    pub(crate) async fn route_get_replication_state(&self) -> anyhow::Result<ReplicationInfo> {
+    pub(crate) async fn route_get_node_state(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ReplicationInfo(tx)).await?;
+        self.send(ClientMessage::ReplicationState(tx)).await?;
         Ok(rx.recv().await)
     }
 
@@ -139,7 +134,7 @@ impl ClusterActorSender {
         rx.recv().await
     }
 
-    pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<PeerState>> {
+    pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<ReplicationState>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ClusterNodes(tx)).await?;
         Ok(rx.recv().await)
