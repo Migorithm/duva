@@ -84,7 +84,19 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.logger.state.term = term;
     }
 
-    pub(crate) fn vote_for(&mut self, candidate_id: PeerIdentifier) {
+    pub(crate) fn grant_vote(&mut self, request_vote: &RequestVote) -> bool {
+        // Check if log is up-to-date and if not already voted in this term or voted for this candidate
+        if self.is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
+            && self.is_votable(&request_vote.candidate_id)
+        {
+            self.vote_for(request_vote.candidate_id.clone());
+            return true;
+        }
+
+        false
+    }
+
+    fn vote_for(&mut self, candidate_id: PeerIdentifier) {
         self.election_votes.votes.insert(candidate_id);
     }
 

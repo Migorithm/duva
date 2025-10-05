@@ -408,57 +408,41 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .chain(std::iter::once(self.replication.state()))
             .collect()
     }
-    #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
+    // #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
+        self.heartbeat_scheduler.reset_election_timeout();
 
         let current_term = self.log_state().term;
         let mut grant_vote = false;
 
-        if request_vote.term >= self.log_state().term {
+        if request_vote.term >= current_term {
             // If candidate's term is higher, update own term and step down
-            if request_vote.term > self.log_state().term {
+            if request_vote.term > current_term {
                 self.replication.set_term(request_vote.term);
                 self.step_down().await; // Ensure follower mode
             }
-
-            // Check if log is up-to-date and if not already voted in this term or voted for this candidate
-            if self
-                .replication
-                .is_log_up_to_date(request_vote.last_log_index, request_vote.last_log_term)
-                && self.replication.is_votable(&request_vote.candidate_id)
-            {
-                self.replication.vote_for(request_vote.candidate_id.clone());
-                grant_vote = true;
-            }
+            grant_vote = self.replication.grant_vote(&request_vote);
         } else {
             // If candidate's term is less than current term, reject
             warn!(
                 "Rejecting vote for {} (term {}). My term is higher ({}).",
-                request_vote.candidate_id,
-                request_vote.term,
-                self.log_state().term
+                request_vote.candidate_id, request_vote.term, current_term
             );
         }
 
-        self.heartbeat_scheduler.reset_election_timeout();
-
         let vote = ElectionVote { term: self.log_state().term, vote_granted: grant_vote };
-        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
-            // if not found, revert the change
-            self.replication.revert_voting(current_term, &request_vote.candidate_id);
-            return;
+        match self.find_replica_mut(&request_vote.candidate_id) {
+            | Some(peer) => {
+                let _ = peer.send(vote).await;
+            },
+            | None => {
+                self.replication.revert_voting(current_term, &request_vote.candidate_id);
+                return;
+            },
         };
-        let _ = peer.send(vote).await;
-
-        info!(
-            "{} votes for {} with term {} and granted: {grant_vote}",
-            self.replication.self_identifier(),
-            request_vote.candidate_id,
-            request_vote.term
-        );
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, from,repl_res), fields(peer_id = %from))]
