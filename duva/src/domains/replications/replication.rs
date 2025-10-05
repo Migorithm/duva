@@ -165,6 +165,7 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     pub(crate) fn reset_log(&mut self) {
         self.logger.reset();
+        self.set_replid(ReplicationId::Undecided)
     }
 
     pub(crate) fn list_append_log_entries(

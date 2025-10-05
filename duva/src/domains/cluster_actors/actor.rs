@@ -563,7 +563,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         self.cache_manager.drop_cache().await;
         self.replication.reset_log();
-        self.replication.set_replid(ReplicationId::Undecided);
+
         self.step_down().await;
         self.connect_to_server::<C>(peer_addr, Some(callback)).await;
     }
@@ -1040,17 +1040,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.on_election_timeout(term);
     }
 
-    // TODO move this to replication
-    async fn replicate_state(&mut self, leader_hb: HeartBeat) {
+    async fn replicate_state(&mut self, leader_hb: HeartBeat) -> Option<ReplicationAck> {
         let old_con_idx = self.replication.curr_con_idx();
         let leader_commit_idx =
             leader_hb.leader_commit_idx.expect("Leader must send leader commit index");
         if leader_commit_idx > old_con_idx {
             let logs = self.replication.range(old_con_idx, leader_commit_idx);
+            self.replication.increase_con_idx_by(logs.len() as u64);
 
             for log in logs {
-                self.replication.increase_con_idx_by(1);
-
                 if let Err(e) = self.commit_entry(log.entry, log.log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
@@ -1067,6 +1065,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             )
             .await;
         }
+
+        None
     }
 
     async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
@@ -1111,8 +1111,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let logs_to_reconcile = self
             .replication
             .range(self.replication.last_applied(), self.log_state().last_log_index);
+
+        self.replication.increase_con_idx_by(logs_to_reconcile.len() as u64);
         for op in logs_to_reconcile {
-            self.replication.increase_con_idx_by(1);
             if let Err(e) = self.commit_entry(op.entry, op.log_index).await {
                 error!("failed to apply log: {e}, perhaps post validation failed?")
             }
