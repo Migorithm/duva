@@ -139,14 +139,14 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
     let task = tokio::spawn(async move {
         while let Some(message) = receiver.recv().await {
             match message {
-                | CacheCommand::Set { cache_entry } => {
+                CacheCommand::Set { cache_entry } => {
                     let (key, value) = cache_entry.destructure();
                     assert_eq!(value, "bar");
                     if key == "foo2" {
                         break;
                     }
                 },
-                | _ => continue,
+                _ => continue,
             }
         }
     });
@@ -214,7 +214,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
 
         while let Some(message) = rx.recv().await {
             match message {
-                | CacheCommand::Set { cache_entry } => {
+                CacheCommand::Set { cache_entry } => {
                     let (key, value) = cache_entry.destructure();
                     if key == "foo" {
                         received_foo = true;
@@ -224,7 +224,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
                         panic!("foo2 should not be applied yet");
                     }
                 },
-                | _ => continue,
+                _ => continue,
             }
         }
 

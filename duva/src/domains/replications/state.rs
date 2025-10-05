@@ -18,9 +18,9 @@ pub struct ReplicationState {
 impl ReplicationState {
     pub(crate) fn decide_peer_state(self, my_repl_id: &ReplicationId) -> Self {
         let replid = match (&self.replid, my_repl_id) {
-            | (ReplicationId::Undecided, _) => my_repl_id.clone(),
-            | (_, ReplicationId::Undecided) => self.replid.clone(),
-            | _ => self.replid.clone(),
+            (ReplicationId::Undecided, _) => my_repl_id.clone(),
+            (_, ReplicationId::Undecided) => self.replid.clone(),
+            _ => self.replid.clone(),
         };
         Self { replid, ..self }
     }

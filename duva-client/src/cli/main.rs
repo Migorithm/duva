@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::debug!(command = %cmd, args = ?args, "Processing command");
 
         match extract_action(cmd, &args) {
-            | Ok(action) => {
+            Ok(action) => {
                 let (tx, rx) = oneshot::channel();
                 let _ = controller
                     .broker_tx
@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
                 controller.print_res(kind, query_io);
                 tracing::debug!(command = %cmd, "Command completed successfully");
             },
-            | Err(e) => {
+            Err(e) => {
                 println!("{e}");
 
                 // Log command parsing/execution errors

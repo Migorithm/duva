@@ -19,7 +19,7 @@ impl ServerStreamReader {
 
             loop {
                 match self.0.read_values().await {
-                    | Ok(query_ios) => {
+                    Ok(query_ios) => {
                         for query_io in query_ios {
                             if controller_sender
                                 .send(BrokerMessage::FromServer(replication_id.clone(), query_io))
@@ -30,7 +30,7 @@ impl ServerStreamReader {
                             }
                         }
                     },
-                    | Err(e) => {
+                    Err(e) => {
                         let message = BrokerMessage::FromServerError(replication_id.clone(), e);
                         if controller_sender.send(message).await.is_err() {
                             break;

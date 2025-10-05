@@ -62,11 +62,11 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
 
         while !remaining_buffer.is_empty() {
             match deserialize(remaining_buffer.clone()) {
-                | Ok((query_io, consumed)) => {
+                Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
                     remaining_buffer = remaining_buffer.split_off(consumed);
                 },
-                | Err(e) => {
+                Err(e) => {
                     return Err(IoError::Custom(format!("Parsing error: {e:?}")));
                 },
             }
@@ -109,13 +109,13 @@ impl TAsyncReadWrite for TcpStream {
 
 fn io_error_from_kind(kind: ErrorKind) -> IoError {
     match kind {
-        | ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
-        | ErrorKind::ConnectionReset => IoError::ConnectionReset,
-        | ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
-        | ErrorKind::NotConnected => IoError::NotConnected,
-        | ErrorKind::BrokenPipe => IoError::BrokenPipe,
-        | ErrorKind::TimedOut => IoError::TimedOut,
-        | _ => {
+        ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+        ErrorKind::ConnectionReset => IoError::ConnectionReset,
+        ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+        ErrorKind::NotConnected => IoError::NotConnected,
+        ErrorKind::BrokenPipe => IoError::BrokenPipe,
+        ErrorKind::TimedOut => IoError::TimedOut,
+        _ => {
             eprintln!("unknown error: {kind:?}");
             IoError::Custom(format!("unknown error: {kind:?}"))
         },

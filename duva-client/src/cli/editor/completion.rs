@@ -115,7 +115,7 @@ impl Completer for DuvaHinter {
 
         let command = previous_words[0].to_lowercase();
         match command.as_str() {
-            | "cluster" => {
+            "cluster" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for cluster that start with current_prefix
                     let subcommands = ["info", "nodes", "forget", "meet", "reshard"];
@@ -133,7 +133,7 @@ impl Completer for DuvaHinter {
                     }
                 }
             },
-            | "info" => {
+            "info" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for info that start with current_prefix
                     let subcommands = ["replication", "section"];
@@ -145,48 +145,48 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
-            | "echo" => {
+            "echo" => {
                 suggest_by_pos!(["value"]);
             },
-            | "set" => {
+            "set" => {
                 suggest_by_pos!(["key", "value", "px expr"]);
             },
 
-            | "lset" => {
+            "lset" => {
                 suggest_by_pos!(["key", "index", "value"]);
             },
 
-            | "incrby" => {
+            "incrby" => {
                 suggest_by_pos!(["key", "increment"]);
             },
 
-            | "decrby" => {
+            "decrby" => {
                 suggest_by_pos!(["key", "decrement"]);
             },
-            | "exists" | "del" | "mget" => {
+            "exists" | "del" | "mget" => {
                 suggest_by_pos!(["key"], repeat_last);
             },
-            | "lpush" | "lpushx" | "rpush" | "rpushx" => {
+            "lpush" | "lpushx" | "rpush" | "rpushx" => {
                 suggest_by_pos!(["key", "value"], repeat_last);
             },
-            | "lpop" | "rpop" => {
+            "lpop" | "rpop" => {
                 suggest_by_pos!(["key", "count"]);
             },
 
-            | "get" | "incr" | "decr" | "ttl" | "llen" => {
+            "get" | "incr" | "decr" | "ttl" | "llen" => {
                 suggest_by_pos!(["key"]);
             },
-            | "keys" => {
+            "keys" => {
                 suggest_by_pos!(["pattern"]);
             },
-            | "replicaof" => {
+            "replicaof" => {
                 suggest_by_pos!(["host port"]);
             },
-            | "lrange" | "ltrim" => {
+            "lrange" | "ltrim" => {
                 suggest_by_pos!(["key", "start", "end"]);
             },
 
-            | _ => {},
+            _ => {},
         }
 
         Ok((start, candidates))

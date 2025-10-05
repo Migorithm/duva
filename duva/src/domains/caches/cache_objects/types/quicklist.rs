@@ -205,10 +205,10 @@ impl QuickListNode {
         let current_data = std::mem::take(&mut self.data);
 
         self.data = match current_data {
-            | NodeData::Compressed(bytes) => {
+            NodeData::Compressed(bytes) => {
                 let max_size = match fill_factor {
-                    | FillFactor::Size(kb) => kb * 1024 + 1024,
-                    | FillFactor::Count(_) => 65536,
+                    FillFactor::Size(kb) => kb * 1024 + 1024,
+                    FillFactor::Count(_) => 65536,
                 };
 
                 let decompressed = lzf::decompress(&bytes, max_size).unwrap_or_default();
@@ -221,7 +221,7 @@ impl QuickListNode {
                 self.entry_count = ziplist.entry_count();
                 NodeData::Uncompressed(ziplist)
             },
-            | uncompressed => uncompressed,
+            uncompressed => uncompressed,
         };
 
         let NodeData::Uncompressed(ziplist) = &mut self.data else {
@@ -235,7 +235,7 @@ impl QuickListNode {
         let current_data = std::mem::take(&mut self.data);
 
         self.data = match current_data {
-            | NodeData::Uncompressed(ziplist) if ziplist.len() > 64 => {
+            NodeData::Uncompressed(ziplist) if ziplist.len() > 64 => {
                 let compressed = lzf::compress(&ziplist.data).unwrap_or_default();
                 // Only compress if we save at least 25% space
                 if compressed.len() < ziplist.len().saturating_mul(3) / 4 {
@@ -244,21 +244,21 @@ impl QuickListNode {
                     NodeData::Uncompressed(ziplist)
                 }
             },
-            | other => other,
+            other => other,
         };
     }
     fn byte_size(&self) -> usize {
         match &self.data {
-            | NodeData::Uncompressed(ziplist) => ziplist.len(),
-            | NodeData::Compressed(bytes) => bytes.len(),
+            NodeData::Uncompressed(ziplist) => ziplist.len(),
+            NodeData::Compressed(bytes) => bytes.len(),
         }
     }
 
     fn is_full(&mut self, new_value_size: usize, fill_factor: &FillFactor) -> bool {
         self.ensure_decompressed(fill_factor);
         match fill_factor {
-            | FillFactor::Count(max_entries) => self.entry_count >= *max_entries,
-            | FillFactor::Size(kb) => {
+            FillFactor::Count(max_entries) => self.entry_count >= *max_entries,
+            FillFactor::Size(kb) => {
                 let max_bytes = kb * 1024;
                 self.byte_size() + new_value_size + 4 > max_bytes
             },

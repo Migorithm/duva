@@ -18,7 +18,7 @@ impl ServerStreamWriter {
         tokio::spawn(async move {
             while let Some(sendable) = rx.recv().await {
                 match sendable {
-                    | MsgToServer::Command(cmd) => {
+                    MsgToServer::Command(cmd) => {
                         if let Err(e) = self.write_all(&cmd).await {
                             println!("{e}");
 
@@ -30,7 +30,7 @@ impl ServerStreamWriter {
                             );
                         };
                     },
-                    | MsgToServer::Stop => break,
+                    MsgToServer::Stop => break,
                 }
             }
         });

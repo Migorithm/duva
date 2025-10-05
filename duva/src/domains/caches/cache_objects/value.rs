@@ -38,9 +38,9 @@ impl CacheValue {
 
     pub(crate) fn len(&self) -> usize {
         match &self.value {
-            | TypedValue::Null => 0,
-            | TypedValue::String(b) => b.len(),
-            | TypedValue::List(list) => list.llen(),
+            TypedValue::Null => 0,
+            TypedValue::String(b) => b.len(),
+            TypedValue::List(list) => list.llen(),
         }
     }
 }
@@ -90,9 +90,9 @@ impl From<&str> for TypedValue {
 impl TypedValue {
     pub(crate) fn as_str(&self) -> anyhow::Result<&Bytes> {
         match self {
-            | TypedValue::String(b) => Ok(b),
-            | TypedValue::List(_) => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
-            | TypedValue::Null => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            TypedValue::String(b) => Ok(b),
+            TypedValue::List(_) => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            TypedValue::Null => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 }

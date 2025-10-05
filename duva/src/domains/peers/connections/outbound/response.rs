@@ -12,10 +12,10 @@ impl TryFrom<String> for ConnectionResponse {
     type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_str() {
-            | "pong" => Ok(ConnectionResponse::Pong),
-            | "ok" => Ok(ConnectionResponse::Ok),
+            "pong" => Ok(ConnectionResponse::Pong),
+            "ok" => Ok(ConnectionResponse::Ok),
 
-            | var if var.starts_with("fullresync") => {
+            var if var.starts_with("fullresync") => {
                 let [_, id, repl_id, offset, role] = var
                     .split_whitespace()
                     .take(5)
@@ -34,7 +34,7 @@ impl TryFrom<String> for ConnectionResponse {
                 })
             },
 
-            | invalid_value => {
+            invalid_value => {
                 eprintln!("Invalid command,{invalid_value}");
                 Err(anyhow::anyhow!("Invalid command"))
             },
@@ -46,8 +46,8 @@ impl TryFrom<QueryIO> for ConnectionResponse {
     type Error = anyhow::Error;
     fn try_from(value: QueryIO) -> Result<Self, Self::Error> {
         match value {
-            | QueryIO::SimpleString(value) => Ok(String::from_utf8(value.into())?.try_into()?),
-            | _ => {
+            QueryIO::SimpleString(value) => Ok(String::from_utf8(value.into())?.try_into()?),
+            _ => {
                 eprintln!("Invalid command");
                 Err(anyhow::anyhow!("Invalid command"))
             },

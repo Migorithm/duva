@@ -36,7 +36,7 @@ impl SaveActor {
     }
     pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> anyhow::Result<bool> {
         match cmd {
-            | SaveCommand::LocalShardSize { table_size, expiry_size } => {
+            SaveCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
@@ -50,10 +50,10 @@ impl SaveActor {
                     self.encode_chunk_queue().await?;
                 }
             },
-            | SaveCommand::SaveChunk(chunk) => {
+            SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
             },
-            | SaveCommand::StopSentinel => {
+            SaveCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;
@@ -97,8 +97,8 @@ pub enum SaveTarget {
 impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
-            | SaveTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
-            | SaveTarget::InMemory(v) => {
+            SaveTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
+            SaveTarget::InMemory(v) => {
                 v.extend_from_slice(buf);
                 Ok(())
             },

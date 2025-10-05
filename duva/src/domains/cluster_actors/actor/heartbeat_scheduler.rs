@@ -111,29 +111,29 @@ impl HeartBeatScheduler {
 
     pub(crate) async fn turn_leader_mode(&mut self) {
         let controller = match self.controller.take() {
-            | Some(SchedulerMode::Follower(sender)) => {
+            Some(SchedulerMode::Follower(sender)) => {
                 let _ = sender.send(ElectionTimeOutCommand::Stop).await;
                 Some(SchedulerMode::Leader(Self::send_append_entries_rpc(
                     HEARTBEAT_INTERVAL,
                     self.cluster_handler.clone(),
                 )))
             },
-            | Some(SchedulerMode::Leader(sender)) => Some(SchedulerMode::Leader(sender)),
-            | None => None,
+            Some(SchedulerMode::Leader(sender)) => Some(SchedulerMode::Leader(sender)),
+            None => None,
         };
         self.controller = controller;
     }
 
     pub(crate) fn turn_follower_mode(&mut self) {
         let controller = match self.controller.take() {
-            | Some(SchedulerMode::Leader(sender)) => {
+            Some(SchedulerMode::Leader(sender)) => {
                 sender.send(());
                 Some(SchedulerMode::Follower(Self::start_election_timer(
                     self.cluster_handler.clone(),
                 )))
             },
-            | Some(SchedulerMode::Follower(sender)) => Some(SchedulerMode::Follower(sender)),
-            | None => None,
+            Some(SchedulerMode::Follower(sender)) => Some(SchedulerMode::Follower(sender)),
+            None => None,
         };
         self.controller = controller;
     }
@@ -171,9 +171,9 @@ mod tests {
         let (scheduler, _) = setup_scheduler(true).await;
 
         match scheduler.controller {
-            | Some(SchedulerMode::Leader(_)) => assert!(true),
-            | Some(SchedulerMode::Follower(_)) => assert!(false, "Expected Leader mode"),
-            | None => assert!(false, "Expected Leader mode"),
+            Some(SchedulerMode::Leader(_)) => assert!(true),
+            Some(SchedulerMode::Follower(_)) => assert!(false, "Expected Leader mode"),
+            None => assert!(false, "Expected Leader mode"),
         }
     }
 
@@ -182,9 +182,9 @@ mod tests {
         let (scheduler, _) = setup_scheduler(false).await;
 
         match scheduler.controller {
-            | Some(SchedulerMode::Follower(_)) => assert!(true),
-            | Some(SchedulerMode::Leader(_)) => assert!(false, "Expected Follower mode"),
-            | None => todo!(),
+            Some(SchedulerMode::Follower(_)) => assert!(true),
+            Some(SchedulerMode::Leader(_)) => assert!(false, "Expected Follower mode"),
+            None => todo!(),
         }
     }
 

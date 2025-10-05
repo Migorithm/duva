@@ -96,9 +96,9 @@ impl FromStr for LazyOption {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            | "lazy" => Ok(LazyOption::Lazy),
-            | "eager" => Ok(LazyOption::Eager),
-            | _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
+            "lazy" => Ok(LazyOption::Lazy),
+            "eager" => Ok(LazyOption::Eager),
+            _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
         }
     }
 }

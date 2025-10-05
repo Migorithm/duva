@@ -64,11 +64,11 @@ impl Broker {
         let mut queue = CommandQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
+                BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
                     self.update_topology(topology).await;
                 },
 
-                | BrokerMessage::FromServer(repl_id, query_io) => {
+                BrokerMessage::FromServer(repl_id, query_io) => {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
@@ -78,7 +78,7 @@ impl Broker {
                     queue.finalize_or_requeue(query_io, context);
                 },
 
-                | BrokerMessage::FromServerError(repl_id, e) => {
+                BrokerMessage::FromServerError(repl_id, e) => {
                     error!("Replication {repl_id} returns error {e}!");
                     if e.should_break() {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
@@ -91,7 +91,7 @@ impl Broker {
                     }
                 },
 
-                | BrokerMessage::ToServer(mut context) => {
+                BrokerMessage::ToServer(mut context) => {
                     if let Ok(result_count) =
                         self.dispatch_command_to_server(context.client_action.clone()).await
                     {
@@ -207,18 +207,16 @@ impl Broker {
         let routing_rule = (&action).into();
 
         let result_cnt = match routing_rule {
-            | RoutingRule::Any => self.random_route(action).await?,
-            | RoutingRule::Selective(entries) => {
+            RoutingRule::Any => self.random_route(action).await?,
+            RoutingRule::Selective(entries) => {
                 match self.topology.hash_ring.key_ownership(entries.iter().map(|e| e.key.as_str()))
                 {
-                    | Ok(node_mappings) => {
-                        self.route_command_by_keys(action, node_mappings).await?
-                    },
-                    | Err(_not_found) => self.random_route(action).await?,
+                    Ok(node_mappings) => self.route_command_by_keys(action, node_mappings).await?,
+                    Err(_not_found) => self.random_route(action).await?,
                 }
             },
-            | RoutingRule::BroadCast => self.node_connections.send_all(action).await?,
-            | RoutingRule::Info => self.route_info(action).await?,
+            RoutingRule::BroadCast => self.node_connections.send_all(action).await?,
+            RoutingRule::Info => self.route_info(action).await?,
         };
 
         Ok(result_cnt)
@@ -239,16 +237,16 @@ impl Broker {
                 routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
 
             let new_action = match client_action {
-                | ClientAction::NonMutating(NonMutatingAction::MGet { .. }) => {
+                ClientAction::NonMutating(NonMutatingAction::MGet { .. }) => {
                     NonMutatingAction::MGet { keys: grouped_keys }.into()
                 },
-                | ClientAction::NonMutating(NonMutatingAction::Exists { .. }) => {
+                ClientAction::NonMutating(NonMutatingAction::Exists { .. }) => {
                     NonMutatingAction::Exists { keys: grouped_keys }.into()
                 },
-                | ClientAction::Mutating(LogEntry::Delete { .. }) => {
+                ClientAction::Mutating(LogEntry::Delete { .. }) => {
                     LogEntry::Delete { keys: grouped_keys }.into()
                 },
-                | _ => client_action.clone(),
+                _ => client_action.clone(),
             };
             self.node_connections.send_to(node_id, new_action)
         }))
@@ -276,15 +274,15 @@ impl Broker {
             // ! otherwise, server will not be able to process the next command
             match res {
                 // * Current rule: s:value-idx:index_num
-                | QueryIO::SimpleString(v) => {
+                QueryIO::SimpleString(v) => {
                     let s = String::from_utf8_lossy(v);
                     connection.request_id = IndexedValueCodec::decode_index(s)
                         .filter(|&id| id > connection.request_id)
                         .unwrap_or(connection.request_id);
                 },
                 //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-                | QueryIO::Err(_) => connection.request_id += 1,
-                | _ => {},
+                QueryIO::Err(_) => connection.request_id += 1,
+                _ => {},
             }
         } else {
             tracing::warn!(

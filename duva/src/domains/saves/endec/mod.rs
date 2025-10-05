@@ -102,10 +102,10 @@ pub enum StoredDuration {
 impl StoredDuration {
     pub fn to_datetime(&self) -> DateTime<Utc> {
         match self {
-            | StoredDuration::Seconds(secs) => {
+            StoredDuration::Seconds(secs) => {
                 DateTime::<Utc>::from_timestamp(*secs as i64, 0).expect("Invalid timestamp")
             },
-            | StoredDuration::Milliseconds(millis) => {
+            StoredDuration::Milliseconds(millis) => {
                 DateTime::from_timestamp_millis(*millis).expect("Invalid timestamp")
             },
         }
