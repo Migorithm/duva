@@ -55,19 +55,19 @@ impl ClientStreamReader {
 
             for req in requests {
                 match req {
-                    | Err(err) => {
+                    Err(err) => {
                         let _ = stream_writer_sender.send(QueryIO::Err(err.into())).await;
                         break;
                     },
-                    | Ok(ClientRequest { action, session_req }) => {
+                    Ok(ClientRequest { action, session_req }) => {
                         info!(?action, "Processing request");
 
                         // * processing part
                         let result = match action {
-                            | ClientAction::NonMutating(non_mutating_action) => {
+                            ClientAction::NonMutating(non_mutating_action) => {
                                 handler.handle_non_mutating(non_mutating_action).await
                             },
-                            | ClientAction::Mutating(log_entry) => {
+                            ClientAction::Mutating(log_entry) => {
                                 handler.handle_mutating(session_req, log_entry).await
                             },
                         };

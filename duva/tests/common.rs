@@ -168,8 +168,8 @@ impl TestProcessChild {
 
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
-                | Some(_) => return Ok(()),
-                | None => sleep(Duration::from_millis(100)),
+                Some(_) => return Ok(()),
+                None => sleep(Duration::from_millis(100)),
             }
         }
 
@@ -307,11 +307,11 @@ impl Client {
             if self.send(command.as_ref()).is_ok() {
                 // wait for a single response line (bounded)
                 match self.reader_rx.recv_timeout(self.read_timeout) {
-                    | Ok(s) => return s,
-                    | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    Ok(s) => return s,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                         // retry send/read a few times
                     },
-                    | Err(_) => {
+                    Err(_) => {
                         // channel disconnected, child probably exited
                         return String::new();
                     },
@@ -351,9 +351,9 @@ impl Client {
         while cnt > 0 {
             cnt -= 1;
             match self.reader_rx.recv_timeout(self.read_timeout) {
-                | Ok(line) => res.push(line),
-                | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break, // stop collecting on timeout
-                | Err(_) => break,                                          // disconnected
+                Ok(line) => res.push(line),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break, // stop collecting on timeout
+                Err(_) => break,                                          // disconnected
             }
         }
         res
@@ -378,12 +378,12 @@ fn spawn_stdout_reader_thread(stdout: ChildStdout, tx: std::sync::mpsc::Sender<S
             line.clear();
             // read_line will block until a newline is read or EOF
             match reader.read_line(&mut line) {
-                | Ok(0) => break, // EOF
-                | Ok(_) => {
+                Ok(0) => break, // EOF
+                Ok(_) => {
                     // trim newline and send; ignore send error (receiver gone)
                     let _ = tx.send(line.trim_end_matches(&['\r', '\n'][..]).to_string());
                 },
-                | Err(_) => break,
+                Err(_) => break,
             }
         }
     });

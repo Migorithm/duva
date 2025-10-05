@@ -35,28 +35,28 @@ impl OutboundStream {
             trace!(?res, "Received handshake response");
             for query in res {
                 match ConnectionResponse::try_from(query)? {
-                    | ConnectionResponse::Pong => {
+                    ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.w.write(msg).await?
                     },
-                    | ConnectionResponse::Ok => {
+                    ConnectionResponse::Ok => {
                         ok_count += 1;
                         let msg = {
                             match ok_count {
-                                | 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
+                                1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
-                                | 2 => Ok(write_array!(
+                                2 => Ok(write_array!(
                                     "PSYNC",
                                     self.self_state.replid.clone(),
                                     self.self_state.last_log_index.to_string(),
                                     self.self_state.role.clone()
                                 )),
-                                | _ => Err(anyhow::anyhow!("Unexpected OK count")),
+                                _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
                         self.w.write(msg).await?
                     },
-                    | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
+                    ConnectionResponse::FullResync { id, repl_id, offset, role } => {
                         peer_state.replid = ReplicationId::Key(repl_id);
                         peer_state.last_log_index = offset;
                         peer_state.node_id = PeerIdentifier(id);

@@ -176,12 +176,11 @@ async fn test_start_rebalance_schedules_migration_batches() {
     let batch = tokio::time::timeout(Duration::from_millis(1000), async {
         loop {
             match rx.recv().await {
-                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
-                    b,
-                    _,
-                ))) => return b,
-                | Some(_) => continue, // Skip other message types
-                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
+                Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(b, _))) => {
+                    return b;
+                },
+                Some(_) => continue, // Skip other message types
+                None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
             }
         }
     })

@@ -16,7 +16,7 @@ from_to!(Vec<QueryIO>, QueryArguments);
 impl HandShakeRequest {
     pub(crate) fn new(query_io: QueryIO) -> anyhow::Result<Self> {
         match query_io {
-            | QueryIO::Array(value_array) => {
+            QueryIO::Array(value_array) => {
                 let mut iter = value_array.into_iter();
 
                 Ok(Self {
@@ -28,7 +28,7 @@ impl HandShakeRequest {
                     args: iter.collect::<Vec<_>>().into(),
                 })
             },
-            | _ => Err(anyhow::anyhow!("Unexpected command format")),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
 
@@ -48,13 +48,13 @@ impl HandShakeRequest {
         }
 
         match self.args.as_mut_slice() {
-            | [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
+            [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
                 if key.as_ref() == b"listening-port" =>
             {
                 let value = std::str::from_utf8(port)?.parse()?;
                 Ok(value)
             },
-            | _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
+            _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
         }
     }
 
@@ -69,12 +69,12 @@ impl HandShakeRequest {
             .args
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
-                | (QueryIO::BulkString(capa), QueryIO::BulkString(value))
+                (QueryIO::BulkString(capa), QueryIO::BulkString(value))
                     if capa.as_ref() == b"capa" =>
                 {
                     Some((capa.clone(), value.clone()))
                 },
-                | _ => None,
+                _ => None,
             })
             .collect();
 
@@ -114,11 +114,11 @@ impl TryFrom<String> for HandShakeRequestEnum {
     type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_str() {
-            | "ping" => Ok(HandShakeRequestEnum::Ping),
-            | "replconf" => Ok(HandShakeRequestEnum::ReplConf),
-            | "psync" => Ok(HandShakeRequestEnum::Psync),
+            "ping" => Ok(HandShakeRequestEnum::Ping),
+            "replconf" => Ok(HandShakeRequestEnum::ReplConf),
+            "psync" => Ok(HandShakeRequestEnum::Psync),
 
-            | invalid_value => {
+            invalid_value => {
                 err!("Invalid command, {}", invalid_value);
                 Err(anyhow::anyhow!("Invalid command"))
             },

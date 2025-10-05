@@ -4,4 +4,3 @@ match_block_trailing_comma = true
 use_small_heuristics = "Max"
 remove_nested_parens = true
 use_field_init_shorthand = true
-match_arm_leading_pipes = "Always"

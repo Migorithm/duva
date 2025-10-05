@@ -36,71 +36,71 @@ impl CacheActor {
     async fn handle(mut self, mut recv: Receiver<CacheCommand>) -> anyhow::Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
-                | CacheCommand::Set { cache_entry } => {
+                CacheCommand::Set { cache_entry } => {
                     self.set(cache_entry).await;
                 },
-                | CacheCommand::Get { key, callback } => {
+                CacheCommand::Get { key, callback } => {
                     self.get(&key, callback);
                 },
-                | CacheCommand::IndexGet { key, read_idx, callback } => {
+                CacheCommand::IndexGet { key, read_idx, callback } => {
                     self.index_get(&key, read_idx, callback);
                 },
-                | CacheCommand::Keys { pattern, callback } => {
+                CacheCommand::Keys { pattern, callback } => {
                     self.keys(pattern, callback);
                 },
-                | CacheCommand::Delete { key, callback } => {
+                CacheCommand::Delete { key, callback } => {
                     self.delete(key, callback);
                 },
-                | CacheCommand::Exists { key, callback } => {
+                CacheCommand::Exists { key, callback } => {
                     self.exists(key, callback);
                 },
-                | CacheCommand::Save { outbox } => {
+                CacheCommand::Save { outbox } => {
                     self.save(outbox).await?;
                 },
-                | CacheCommand::Ping => {
+                CacheCommand::Ping => {
                     self.flushout_readqueue();
                 },
-                | CacheCommand::Drop { callback } => {
+                CacheCommand::Drop { callback } => {
                     self.cache.clear();
                     callback.send(());
                 },
-                | CacheCommand::Append { key, value, callback } => {
+                CacheCommand::Append { key, value, callback } => {
                     callback.send(self.append(key, value));
                 },
-                | CacheCommand::NumericDetla { key, delta, callback } => {
+                CacheCommand::NumericDetla { key, delta, callback } => {
                     callback.send(self.numeric_delta(key, delta));
                 },
-                | CacheCommand::LPush { key, values, callback } => {
+                CacheCommand::LPush { key, values, callback } => {
                     callback.send(self.lpush(key, values));
                 },
-                | CacheCommand::LPushX { key, values, callback } => {
+                CacheCommand::LPushX { key, values, callback } => {
                     callback.send(self.lpushx(key, values));
                 },
-                | CacheCommand::LPop { key, count, callback } => {
+                CacheCommand::LPop { key, count, callback } => {
                     callback.send(self.pop(key, count, true));
                 },
-                | CacheCommand::RPush { key, values, callback } => {
+                CacheCommand::RPush { key, values, callback } => {
                     callback.send(self.rpush(key, values));
                 },
-                | CacheCommand::RPushX { key, values, callback } => {
+                CacheCommand::RPushX { key, values, callback } => {
                     callback.send(self.rpushx(key, values));
                 },
-                | CacheCommand::RPop { key, count, callback } => {
+                CacheCommand::RPop { key, count, callback } => {
                     callback.send(self.pop(key, count, false));
                 },
-                | CacheCommand::LLen { key, callback } => {
+                CacheCommand::LLen { key, callback } => {
                     callback.send(self.llen(key));
                 },
-                | CacheCommand::LRange { key, start, end, callback } => {
+                CacheCommand::LRange { key, start, end, callback } => {
                     callback.send(self.lrange(key, start, end));
                 },
-                | CacheCommand::LTrim { key, start, end, callback } => {
+                CacheCommand::LTrim { key, start, end, callback } => {
                     callback.send(self.ltrim(key, start, end));
                 },
-                | CacheCommand::LIndex { key, index, callback } => {
+                CacheCommand::LIndex { key, index, callback } => {
                     callback.send(self.lindex(key, index));
                 },
-                | CacheCommand::LSet { key, index, value, callback } => {
+                CacheCommand::LSet { key, index, value, callback } => {
                     callback.send(self.lset(key, index, value));
                 },
             }
@@ -265,8 +265,8 @@ impl CacheActor {
             return Ok(0);
         };
         match value {
-            | TypedValue::List(list) => Ok(list.llen()),
-            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            TypedValue::List(list) => Ok(list.llen()),
+            _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 
@@ -280,12 +280,12 @@ impl CacheActor {
             return Ok(vec![]);
         };
         match value {
-            | TypedValue::List(list) => Ok(list
+            TypedValue::List(list) => Ok(list
                 .lrange(start, end)
                 .into_iter()
                 .flat_map(|v| String::from_utf8(v.to_vec()))
                 .collect()),
-            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 
@@ -294,11 +294,11 @@ impl CacheActor {
             return Ok(());
         };
         match value {
-            | TypedValue::List(list) => {
+            TypedValue::List(list) => {
                 list.ltrim(start, end);
                 Ok(())
             },
-            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 
@@ -307,12 +307,12 @@ impl CacheActor {
             return Ok(CacheValue::new(TypedValue::Null));
         };
         match value {
-            | TypedValue::List(list) => Ok(list
+            TypedValue::List(list) => Ok(list
                 .lindex(index)
                 .map(|v| CacheValue::new(TypedValue::String(v.into())))
                 .unwrap_or_default()),
 
-            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 

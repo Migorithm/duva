@@ -32,7 +32,7 @@ impl<T> ClientController<T> {
         use NonMutatingAction::*;
 
         match kind {
-            | NonMutating(
+            NonMutating(
                 Ping
                 | Get { .. }
                 | LIndex { .. }
@@ -44,13 +44,13 @@ impl<T> ClientController<T> {
                 | ReplicaOf { .. }
                 | ClusterInfo,
             ) => match query_io {
-                | QueryIO::Null => Response::Null,
-                | QueryIO::SimpleString(value) => Response::String(value),
-                | QueryIO::BulkString(value) => Response::String(value),
-                | QueryIO::Err(value) => Response::Error(value),
-                | _err => Response::FormatError,
+                QueryIO::Null => Response::Null,
+                QueryIO::SimpleString(value) => Response::String(value),
+                QueryIO::BulkString(value) => Response::String(value),
+                QueryIO::Err(value) => Response::Error(value),
+                _err => Response::FormatError,
             },
-            | Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
+            Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
                 if let QueryIO::Err(value) = query_io {
                     return Response::Error(value);
                 }
@@ -59,14 +59,12 @@ impl<T> ClientController<T> {
                     return Response::FormatError;
                 };
                 match str::from_utf8(&value) {
-                    | Ok(int) => Response::Integer(int.to_string().into()),
-                    | Err(_) => {
-                        Response::Error("ERR value is not an integer or out of range".into())
-                    },
+                    Ok(int) => Response::Integer(int.to_string().into()),
+                    Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
                 }
             },
 
-            | NonMutating(Ttl { .. })
+            NonMutating(Ttl { .. })
             | Mutating(
                 LogEntry::IncrBy { .. }
                 | LogEntry::DecrBy { .. }
@@ -75,39 +73,39 @@ impl<T> ClientController<T> {
                 | LogEntry::LPushX { .. }
                 | LogEntry::RPushX { .. },
             ) => match query_io {
-                | QueryIO::SimpleString(value) => {
+                QueryIO::SimpleString(value) => {
                     let s = String::from_utf8_lossy(&value);
                     let s: Option<i64> = IndexedValueCodec::decode_value(s);
                     Response::Integer(s.unwrap().to_string().into())
                 },
-                | QueryIO::Err(value) => Response::Error(value),
+                QueryIO::Err(value) => Response::Error(value),
 
-                | _ => Response::FormatError,
+                _ => Response::FormatError,
             },
-            | NonMutating(Save) => {
+            NonMutating(Save) => {
                 let QueryIO::Null = query_io else {
                     return Response::FormatError;
                 };
                 Response::Null
             },
-            | Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
+            Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
                 match query_io {
-                    | QueryIO::SimpleString(_) => Response::String("OK".into()),
-                    | QueryIO::Err(value) => Response::Error(value),
-                    | _ => Response::FormatError,
+                    QueryIO::SimpleString(_) => Response::String("OK".into()),
+                    QueryIO::Err(value) => Response::Error(value),
+                    _ => Response::FormatError,
                 }
             },
-            | NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
-                | QueryIO::Null => Response::String("OK".into()),
-                | QueryIO::Err(value) => Response::Error(value),
-                | _ => Response::FormatError,
+            NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
+                QueryIO::Null => Response::String("OK".into()),
+                QueryIO::Err(value) => Response::Error(value),
+                _ => Response::FormatError,
             },
-            | Mutating(LogEntry::Append { .. }) => match query_io {
-                | QueryIO::SimpleString(value) => Response::String(value),
-                | QueryIO::Err(value) => Response::Error(value),
-                | _ => Response::FormatError,
+            Mutating(LogEntry::Append { .. }) => match query_io {
+                QueryIO::SimpleString(value) => Response::String(value),
+                QueryIO::Err(value) => Response::Error(value),
+                _ => Response::FormatError,
             },
-            | Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
+            Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
             | NonMutating(Keys { .. } | MGet { .. } | LRange { .. }) => {
                 if let QueryIO::Null = query_io {
                     return Response::Null;
@@ -127,8 +125,8 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            | NonMutating(Role | ClusterNodes) => match query_io {
-                | QueryIO::Array(value) => {
+            NonMutating(Role | ClusterNodes) => match query_io {
+                QueryIO::Array(value) => {
                     let mut nodes = Vec::new();
                     for item in value {
                         let QueryIO::BulkString(value) = item else {
@@ -138,12 +136,12 @@ impl<T> ClientController<T> {
                     }
                     Response::Array(nodes)
                 },
-                | QueryIO::Err(value) => Response::Error(value),
-                | _ => Response::FormatError,
+                QueryIO::Err(value) => Response::Error(value),
+                _ => Response::FormatError,
             },
 
-            | ClientAction::Mutating(LogEntry::MSet { .. }) => unimplemented!(),
-            | ClientAction::Mutating(LogEntry::NoOp) => unreachable!(),
+            ClientAction::Mutating(LogEntry::MSet { .. }) => unimplemented!(),
+            ClientAction::Mutating(LogEntry::NoOp) => unreachable!(),
         }
     }
 
@@ -172,18 +170,18 @@ enum Response {
 impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            | Response::Null => write!(f, "(nil)"),
-            | Response::FormatError => write!(f, "Unexpected response format"),
-            | Response::String(value) => {
+            Response::Null => write!(f, "(nil)"),
+            Response::FormatError => write!(f, "Unexpected response format"),
+            Response::String(value) => {
                 write!(f, "{}", String::from_utf8_lossy(value).into_owned())
             },
-            | Response::Integer(value) => {
+            Response::Integer(value) => {
                 write!(f, "(integer) {}", String::from_utf8_lossy(value).parse::<i64>().unwrap())
             },
-            | Response::Error(value) => {
+            Response::Error(value) => {
                 write!(f, "(error) {}", String::from_utf8_lossy(value).into_owned())
             },
-            | Response::Array(responses) => {
+            Response::Array(responses) => {
                 if responses.is_empty() {
                     return write!(f, "(empty array)");
                 }

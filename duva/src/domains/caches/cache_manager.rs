@@ -76,63 +76,63 @@ impl CacheManager {
         use LogEntry::*;
 
         let res = match log_entry {
-            | Set { key, value, expires_at } => {
+            Set { key, value, expires_at } => {
                 let mut entry = CacheEntry::new(key, value.as_str());
                 if let Some(expires_at) = expires_at {
                     entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
                 }
                 QueryIO::SimpleString(self.route_set(entry, log_index).await?.into())
             },
-            | Append { key, value } => {
+            Append { key, value } => {
                 QueryIO::SimpleString(self.route_append(key, value).await?.to_string().into())
             },
-            | Delete { keys } => {
+            Delete { keys } => {
                 QueryIO::SimpleString(self.route_delete(keys).await?.to_string().into())
             },
-            | IncrBy { key, delta: value } => {
+            IncrBy { key, delta: value } => {
                 QueryIO::SimpleString(self.route_numeric_delta(key, value, log_index).await?.into())
             },
-            | DecrBy { key, delta: value } => QueryIO::SimpleString(
+            DecrBy { key, delta: value } => QueryIO::SimpleString(
                 self.route_numeric_delta(key, -value, log_index).await?.into(),
             ),
-            | LPush { key, value } => {
+            LPush { key, value } => {
                 QueryIO::SimpleString(self.route_lpush(key, value, log_index).await?.into())
             },
-            | LPushX { key, value } => {
+            LPushX { key, value } => {
                 QueryIO::SimpleString(self.route_lpushx(key, value, log_index).await?.into())
             },
-            | LPop { key, count } => {
+            LPop { key, count } => {
                 let values = self.route_lpop(key, count).await?;
                 if values.is_empty() {
                     return Ok(QueryIO::Null);
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
-            | RPush { key, value } => {
+            RPush { key, value } => {
                 QueryIO::SimpleString(self.route_rpush(key, value, log_index).await?.into())
             },
-            | RPushX { key, value } => {
+            RPushX { key, value } => {
                 QueryIO::SimpleString(self.route_rpushx(key, value, log_index).await?.into())
             },
-            | RPop { key, count } => {
+            RPop { key, count } => {
                 let values = self.route_rpop(key, count).await?;
                 if values.is_empty() {
                     return Ok(QueryIO::Null);
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
-            | LTrim { key, start, end } => {
+            LTrim { key, start, end } => {
                 QueryIO::SimpleString(self.route_ltrim(key, start, end, log_index).await?.into())
             },
-            | LSet { key, index, value } => {
+            LSet { key, index, value } => {
                 QueryIO::SimpleString(self.route_lset(key, index, value, log_index).await?.into())
             },
 
-            | MSet { entries } => {
+            MSet { entries } => {
                 self.route_mset(entries).await;
                 QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
             },
-            | NoOp => QueryIO::Null,
+            NoOp => QueryIO::Null,
         };
 
         Ok(res)

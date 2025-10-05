@@ -345,16 +345,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         match self.hash_ring.key_ownership(req.entry.all_keys().into_iter()) {
-            | Ok(replids) if replids.all_belongs_to(&self.log_state().replid) => {
+            Ok(replids) if replids.all_belongs_to(&self.log_state().replid) => {
                 self.req_consensus(req).await;
             },
-            | Ok(replids) => {
+            Ok(replids) => {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
                 let moved_keys = replids.except(&self.log_state().replid).join(" ");
                 req.callback.send(ConsensusClientResponse::Err(format!("Moved {moved_keys}")))
             },
-            | Err(err) => {
+            Err(err) => {
                 err!("{}", err);
                 req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             },
@@ -435,10 +435,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let vote = ElectionVote { term: self.log_state().term, vote_granted: grant_vote };
         match self.find_replica_mut(&request_vote.candidate_id) {
-            | Some(peer) => {
+            Some(peer) => {
                 let _ = peer.send(vote).await;
             },
-            | None => {
+            None => {
                 self.replication.revert_voting(current_term, &request_vote.candidate_id);
                 return;
             },
@@ -1119,11 +1119,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         info!("vote cannot be granted {:?}", reason);
         match reason {
-            | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
-            | RejectionReason::LogInconsistency => {
+            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
+            RejectionReason::LogInconsistency => {
                 info!("Log inconsistency, reverting match index");
             },
-            | RejectionReason::FailToWrite => {
+            RejectionReason::FailToWrite => {
                 info!("Follower failed to write log for technical reason, resend..");
             },
         }

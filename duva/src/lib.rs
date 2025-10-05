@@ -172,7 +172,7 @@ impl StartUpFacade {
         info!("listening peer connection on {}...", peer_bind_addr);
         loop {
             match peer_listener.accept().await {
-                | Ok((peer_stream, socket_addr)) => {
+                Ok((peer_stream, socket_addr)) => {
                     let (read, write) = peer_stream.into_split();
                     let host_ip = socket_addr.ip().to_string();
                     if ca_sender
@@ -188,7 +188,7 @@ impl StartUpFacade {
                     }
                 },
 
-                | Err(err) => {
+                Err(err) => {
                     error!("Failed to accept peer connection: {:?}", err);
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
@@ -212,7 +212,7 @@ impl StartUpFacade {
             self.cluster_actor_sender.wait_for_acceptance().await;
 
             match request {
-                | ConnectionRequest { .. } => {
+                ConnectionRequest { .. } => {
                     let Ok(client_id) =
                         writer.send_conn_res(&self.cluster_actor_sender, request).await
                     else {

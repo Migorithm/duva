@@ -114,8 +114,8 @@ impl Segment {
 
         let operations = LogEntry::deserialize(Bytes::copy_from_slice(&buf))?;
         let (start_index, end_index) = match (operations.first(), operations.last()) {
-            | (Some(first), Some(last)) => (first.log_index, last.log_index),
-            | _ => (0, 0),
+            (Some(first), Some(last)) => (first.log_index, last.log_index),
+            _ => (0, 0),
         };
 
         let mut current_offset = 0;
@@ -142,8 +142,8 @@ impl Segment {
         // Use binary search for better performance on large segments
         let truncate_pos =
             match self.lookups.binary_search_by_key(&log_index, |lookup| lookup.log_index) {
-                | Ok(pos) => pos + 1, // Keep the found entry
-                | Err(pos) => pos,    // Insert position is where we truncate
+                Ok(pos) => pos + 1, // Keep the found entry
+                Err(pos) => pos,    // Insert position is where we truncate
             };
 
         if truncate_pos == 0 {
@@ -200,15 +200,15 @@ impl FileOpLogs {
 
     fn validate_folder(path: &Path) -> Result<(), anyhow::Error> {
         match std::fs::metadata(path) {
-            | Ok(metadata) => {
+            Ok(metadata) => {
                 if !metadata.is_dir() {
                     return Err(anyhow::anyhow!("Path is not a directory"));
                 }
             },
-            | Err(e) if e.kind() == ErrorKind::NotFound => {
+            Err(e) if e.kind() == ErrorKind::NotFound => {
                 std::fs::create_dir_all(path)?;
             },
-            | Err(e) => return Err(e.into()),
+            Err(e) => return Err(e.into()),
         }
         Ok(())
     }
@@ -373,8 +373,8 @@ impl TWriteAheadLog for FileOpLogs {
             let end_pos = match segment.lookups[start_pos..]
                 .binary_search_by_key(&end_inclusive, |lookup| lookup.log_index)
             {
-                | Ok(relative_pos) => start_pos + relative_pos + 1,
-                | Err(relative_pos) => start_pos + relative_pos,
+                Ok(relative_pos) => start_pos + relative_pos + 1,
+                Err(relative_pos) => start_pos + relative_pos,
             };
 
             if start_pos >= end_pos {

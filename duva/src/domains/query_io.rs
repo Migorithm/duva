@@ -72,8 +72,8 @@ pub enum QueryIO {
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
         match self {
-            | QueryIO::Null => NULL_PREFIX.to_string().into(),
-            | QueryIO::SimpleString(s) => {
+            QueryIO::Null => NULL_PREFIX.to_string().into(),
+            QueryIO::SimpleString(s) => {
                 let mut buffer =
                     BytesMut::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
                 buffer.extend_from_slice(&[SIMPLE_STRING_PREFIX as u8]);
@@ -81,7 +81,7 @@ impl QueryIO {
                 buffer.extend_from_slice(b"\r\n");
                 buffer.freeze()
             },
-            | QueryIO::BulkString(s) => {
+            QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
                 byte_mut.extend_from_slice(s.len().to_string().as_bytes());
@@ -90,7 +90,7 @@ impl QueryIO {
                 byte_mut.extend_from_slice(b"\r\n");
                 byte_mut.freeze()
             },
-            | QueryIO::File(f) => {
+            QueryIO::File(f) => {
                 let file_len = f.len() * 2;
                 let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
 
@@ -102,7 +102,7 @@ impl QueryIO {
 
                 hex_file.into()
             },
-            | QueryIO::Array(array) => {
+            QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
                     // Rough estimate of needed capacity
                     array.len() * 32 + 1 + array.len(),
@@ -115,44 +115,44 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-            | QueryIO::SessionRequest { request_id, action } => {
+            QueryIO::SessionRequest { request_id, action } => {
                 let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
                 let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
                 buffer.extend_from_slice(format!("!{request_id}\r\n").as_bytes());
                 buffer.extend_from_slice(&value);
                 buffer.freeze()
             },
-            | QueryIO::Err(e) => {
+            QueryIO::Err(e) => {
                 let mut buffer = BytesMut::with_capacity(ERR_PREFIX.len_utf8() + e.len() + 2);
                 buffer.extend_from_slice(&[ERR_PREFIX as u8]);
                 buffer.extend_from_slice(&e);
                 buffer.extend_from_slice(b"\r\n");
                 buffer.freeze()
             },
-            | QueryIO::AppendEntriesRPC(heartbeat) => {
+            QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
-            | QueryIO::WriteOperation(write_operation) => {
+            QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(WRITE_OP_PREFIX, &write_operation)
             },
-            | QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
-            | QueryIO::RequestVote(request_vote) => {
+            QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
+            QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
             },
-            | QueryIO::RequestVoteReply(request_vote_reply) => {
+            QueryIO::RequestVoteReply(request_vote_reply) => {
                 serialize_with_bincode(REQUEST_VOTE_REPLY_PREFIX, &request_vote_reply)
             },
-            | QueryIO::ClusterHeartBeat(heart_beat_message) => {
+            QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
-            | QueryIO::TopologyChange(topology) => {
+            QueryIO::TopologyChange(topology) => {
                 serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &topology)
             },
-            | QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
-            | QueryIO::MigrateBatch(migrate_batch) => {
+            QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
+            QueryIO::MigrateBatch(migrate_batch) => {
                 serialize_with_bincode(MIGRATE_BATCH_PREFIX, &migrate_batch)
             },
-            | QueryIO::MigrationBatchAck(migration_batch_ack) => {
+            QueryIO::MigrationBatchAck(migration_batch_ack) => {
                 serialize_with_bincode(MIGRATION_BATCH_ACK_PREFIX, &migration_batch_ack)
             },
         }
@@ -163,11 +163,11 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            | QueryIO::BulkString(s) => {
+            QueryIO::BulkString(s) => {
                 let string_value = String::from_utf8(s.to_vec())?;
                 Ok(string_value.parse::<T>()?)
             },
-            | _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
+            _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
 
@@ -189,20 +189,20 @@ impl QueryIO {
 
     pub fn merge(self, other: QueryIO) -> Result<QueryIO> {
         match (self, other) {
-            | (QueryIO::Array(mut a), QueryIO::Array(b)) => {
+            (QueryIO::Array(mut a), QueryIO::Array(b)) => {
                 a.extend(b);
                 Ok(QueryIO::Array(a))
             },
-            | (QueryIO::Null, a) | (a, QueryIO::Null) => Ok(a),
-            | (QueryIO::Array(mut a), b) => {
+            (QueryIO::Null, a) | (a, QueryIO::Null) => Ok(a),
+            (QueryIO::Array(mut a), b) => {
                 a.push(b);
                 Ok(QueryIO::Array(a))
             },
-            | (a, QueryIO::Array(mut b)) => {
+            (a, QueryIO::Array(mut b)) => {
                 b.push(a);
                 Ok(QueryIO::Array(b))
             },
-            | _ => Err(anyhow!("Only Arrays can be merged")),
+            _ => Err(anyhow!("Only Arrays can be merged")),
         }
     }
 }
@@ -227,10 +227,10 @@ impl From<Vec<String>> for QueryIO {
 impl From<CacheValue> for QueryIO {
     fn from(v: CacheValue) -> Self {
         match v {
-            | CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
-            | CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s.into()),
+            CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
+            CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s.into()),
             // TODO rendering full list at once is not supported yet
-            | CacheValue { value: TypedValue::List(_b), .. } => {
+            CacheValue { value: TypedValue::List(_b), .. } => {
                 panic!("List is not supported");
             },
         }
@@ -240,8 +240,8 @@ impl From<CacheValue> for QueryIO {
 impl From<Option<String>> for QueryIO {
     fn from(v: Option<String>) -> Self {
         match v {
-            | Some(v) => QueryIO::BulkString(v.into()),
-            | None => QueryIO::Null,
+            Some(v) => QueryIO::BulkString(v.into()),
+            None => QueryIO::Null,
         }
     }
 }
@@ -255,44 +255,44 @@ impl From<QueryIO> for Bytes {
 pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
     let buffer: Bytes = buffer.into();
     match buffer[0] as char {
-        | SIMPLE_STRING_PREFIX => {
+        SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::SimpleString(bytes), len))
         },
-        | ARRAY_PREFIX => parse_array(buffer),
-        | SESSION_REQUEST_PREFIX => parse_session_request(buffer),
-        | BULK_STRING_PREFIX => {
+        ARRAY_PREFIX => parse_array(buffer),
+        SESSION_REQUEST_PREFIX => parse_session_request(buffer),
+        BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(bytes), len))
         },
-        | FILE_PREFIX => {
+        FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        | ERR_PREFIX => {
+        ERR_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::Err(bytes), len))
         },
-        | NULL_PREFIX => Ok((QueryIO::Null, 1)),
+        NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
-        | APPEND_ENTRY_RPC_PREFIX => {
+        APPEND_ENTRY_RPC_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::AppendEntriesRPC(heartbeat), len))
         },
-        | CLUSTER_HEARTBEAT_PREFIX => {
+        CLUSTER_HEARTBEAT_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::ClusterHeartBeat(heartbeat), len))
         },
-        | WRITE_OP_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        | ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
-        | REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
-        | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
-        | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
-        | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
-        | MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
-        | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
+        WRITE_OP_PREFIX => parse_custom_type::<WriteOperation>(buffer),
+        ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
+        REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
+        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
+        TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
+        START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
+        MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
+        MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
 
-        | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
+        _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
 

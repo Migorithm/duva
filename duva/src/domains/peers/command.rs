@@ -27,15 +27,15 @@ impl TryFrom<QueryIO> for PeerMessage {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            | QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
-            | QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            | QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
-            | QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
-            | QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
-            | QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
-            | QueryIO::MigrateBatch(batch) => Ok(PeerMessage::ReceiveBatch(batch)),
-            | QueryIO::MigrationBatchAck(ack) => Ok(PeerMessage::MigrationBatchAck(ack)),
-            | _ => Err(anyhow::anyhow!("Invalid data")),
+            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
+            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
+            QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
+            QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
+            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
+            QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
+            QueryIO::MigrateBatch(batch) => Ok(PeerMessage::ReceiveBatch(batch)),
+            QueryIO::MigrationBatchAck(ack) => Ok(PeerMessage::MigrationBatchAck(ack)),
+            _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }
 }

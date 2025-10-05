@@ -65,71 +65,71 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
     let require_non_empty_args = || (!args.is_empty()).then_some(()).ok_or_else(wrong_args_error);
 
     let entry: ClientAction = match cmd.as_str() {
-        | "SET" => {
+        "SET" => {
             let expires_at = match args.len() {
-                | 2 => None,
-                | 4 if args[2].eq_ignore_ascii_case("PX") => Some(extract_expiry(args[3])?),
-                | _ => return Err(wrong_args_error()),
+                2 => None,
+                4 if args[2].eq_ignore_ascii_case("PX") => Some(extract_expiry(args[3])?),
+                _ => return Err(wrong_args_error()),
             };
             LogEntry::Set { key: args[0].to_string(), value: args[1].to_string(), expires_at }
                 .into()
         },
-        | "DEL" => {
+        "DEL" => {
             require_non_empty_args()?;
             LogEntry::Delete { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
-        | "APPEND" => {
+        "APPEND" => {
             require_exact_args(2)?;
             LogEntry::Append { key: args[0].to_string(), value: args[1].to_string() }.into()
         },
-        | "INCR" => {
+        "INCR" => {
             require_exact_args(1)?;
             LogEntry::IncrBy { key: args[0].to_string(), delta: 1 }.into()
         },
-        | "DECR" => {
+        "DECR" => {
             require_exact_args(1)?;
             LogEntry::DecrBy { key: args[0].to_string(), delta: 1 }.into()
         },
-        | "INCRBY" => {
+        "INCRBY" => {
             require_exact_args(2)?;
             LogEntry::IncrBy { key: args[0].to_string(), delta: args[1].parse()? }.into()
         },
-        | "DECRBY" => {
+        "DECRBY" => {
             require_exact_args(2)?;
             LogEntry::DecrBy { key: args[0].to_string(), delta: args[1].parse()? }.into()
         },
-        | "LPUSH" | "RPUSH" => {
+        "LPUSH" | "RPUSH" => {
             if args.len() < 2 {
                 return Err(wrong_args_error());
             }
             let key = args[0].to_string();
             let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
             match cmd.as_str() {
-                | "LPUSH" => LogEntry::LPush { key, value: values }.into(),
-                | _ => LogEntry::RPush { key, value: values }.into(),
+                "LPUSH" => LogEntry::LPush { key, value: values }.into(),
+                _ => LogEntry::RPush { key, value: values }.into(),
             }
         },
-        | "LPUSHX" | "RPUSHX" => {
+        "LPUSHX" | "RPUSHX" => {
             if args.len() < 2 {
                 return Err(wrong_args_error());
             }
             let key = args[0].to_string();
             let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
             match cmd.as_str() {
-                | "LPUSHX" => LogEntry::LPushX { key, value: values }.into(),
-                | _ => LogEntry::RPushX { key, value: values }.into(),
+                "LPUSHX" => LogEntry::LPushX { key, value: values }.into(),
+                _ => LogEntry::RPushX { key, value: values }.into(),
             }
         },
-        | "LPOP" | "RPOP" => {
+        "LPOP" | "RPOP" => {
             require_non_empty_args()?;
             let key = args[0].to_string();
             let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
             match cmd.as_str() {
-                | "LPOP" => LogEntry::LPop { key, count }.into(),
-                | _ => LogEntry::RPop { key, count }.into(),
+                "LPOP" => LogEntry::LPop { key, count }.into(),
+                _ => LogEntry::RPop { key, count }.into(),
             }
         },
-        | "LTRIM" => {
+        "LTRIM" => {
             require_exact_args(3)?;
             LogEntry::LTrim {
                 key: args[0].to_string(),
@@ -138,7 +138,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
             .into()
         },
-        | "LSET" => {
+        "LSET" => {
             require_exact_args(3)?;
             LogEntry::LSet {
                 key: args[0].to_string(),
@@ -148,43 +148,41 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             .into()
         },
 
-        | "GET" => match args.len() {
-            | 1 => NonMutatingAction::Get { key: args[0].to_string() }.into(),
-            | 2 => {
-                NonMutatingAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? }
-                    .into()
-            },
-            | _ => return Err(wrong_args_error()),
+        "GET" => match args.len() {
+            1 => NonMutatingAction::Get { key: args[0].to_string() }.into(),
+            2 => NonMutatingAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? }
+                .into(),
+            _ => return Err(wrong_args_error()),
         },
 
-        | "KEYS" => {
+        "KEYS" => {
             require_exact_args(1)?;
             let pattern = if args[0] == "*" { None } else { Some(args[0].to_string()) };
             NonMutatingAction::Keys { pattern }.into()
         },
-        | "EXISTS" => {
+        "EXISTS" => {
             require_non_empty_args()?;
             NonMutatingAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
-        | "PING" => {
+        "PING" => {
             require_exact_args(0)?;
             NonMutatingAction::Ping.into()
         },
-        | "ECHO" => {
+        "ECHO" => {
             require_exact_args(1)?;
             NonMutatingAction::Echo(args[0].to_string()).into()
         },
-        | "INFO" => {
+        "INFO" => {
             require_non_empty_args()?;
             NonMutatingAction::Info.into()
         },
 
-        | "CLUSTER" => {
+        "CLUSTER" => {
             require_non_empty_args()?;
             match args[0].to_uppercase().as_str() {
-                | "NODES" => NonMutatingAction::ClusterNodes.into(),
-                | "INFO" => NonMutatingAction::ClusterInfo.into(),
-                | "FORGET" => {
+                "NODES" => NonMutatingAction::ClusterNodes.into(),
+                "INFO" => NonMutatingAction::ClusterInfo.into(),
+                "FORGET" => {
                     if args.len() != 2 {
                         return Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster forget' command"
@@ -192,7 +190,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     }
                     NonMutatingAction::ClusterForget(PeerIdentifier(args[1].bind_addr()?)).into()
                 },
-                | "MEET" => {
+                "MEET" => {
                     if args.len() == 2 {
                         NonMutatingAction::ClusterMeet(
                             PeerIdentifier(args[1].bind_addr()?),
@@ -216,46 +214,46 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                         ));
                     }
                 },
-                | "RESHARD" => NonMutatingAction::ClusterReshard.into(),
-                | _ => {
+                "RESHARD" => NonMutatingAction::ClusterReshard.into(),
+                _ => {
                     return Err(anyhow::anyhow!("(error) ERR unknown subcommand"));
                 },
             }
         },
-        | "REPLICAOF" => {
+        "REPLICAOF" => {
             require_exact_args(2)?;
             NonMutatingAction::ReplicaOf(PeerIdentifier::new(args[0], args[1].parse()?)).into()
         },
-        | "ROLE" => {
+        "ROLE" => {
             require_exact_args(0)?;
             NonMutatingAction::Role.into()
         },
-        | "CONFIG" => {
+        "CONFIG" => {
             require_exact_args(2)?;
             NonMutatingAction::Config { key: args[0].to_string(), value: args[1].to_string() }
                 .into()
         },
-        | "SAVE" => {
+        "SAVE" => {
             require_exact_args(0)?;
             NonMutatingAction::Save.into()
         },
 
-        | "TTL" => {
+        "TTL" => {
             require_exact_args(1)?;
             NonMutatingAction::Ttl { key: args[0].to_string() }.into()
         },
 
-        | "MGET" => {
+        "MGET" => {
             require_non_empty_args()?;
             NonMutatingAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
 
-        | "LLEN" => {
+        "LLEN" => {
             require_exact_args(1)?;
             NonMutatingAction::LLen { key: args[0].to_string() }.into()
         },
 
-        | "LRANGE" => {
+        "LRANGE" => {
             require_exact_args(3)?;
             NonMutatingAction::LRange {
                 key: args[0].to_string(),
@@ -264,14 +262,14 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
             .into()
         },
-        | "LINDEX" => {
+        "LINDEX" => {
             require_exact_args(2)?;
             NonMutatingAction::LIndex { key: args[0].to_string(), index: args[1].parse::<isize>()? }
                 .into()
         },
 
         // Add other commands as needed
-        | unknown_cmd => {
+        unknown_cmd => {
             return Err(anyhow::anyhow!(
                 "(error) ERR unknown command '{unknown_cmd}', with args beginning with {}",
                 args.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(" ")

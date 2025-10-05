@@ -55,7 +55,7 @@ impl LogEntry {
         use LogEntry::*;
 
         match self {
-            | Set { key, .. }
+            Set { key, .. }
             | Append { key, .. }
             | IncrBy { key, .. }
             | DecrBy { key, .. }
@@ -67,9 +67,9 @@ impl LogEntry {
             | LSet { key, .. }
             | RPop { key, .. }
             | RPushX { key, .. } => vec![key],
-            | Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
-            | MSet { entries } => entries.iter().map(|e| e.key()).collect(),
-            | NoOp => vec![],
+            Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
+            MSet { entries } => entries.iter().map(|e| e.key()).collect(),
+            NoOp => vec![],
         }
     }
 }

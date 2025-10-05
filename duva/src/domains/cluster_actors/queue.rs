@@ -39,10 +39,10 @@ impl ClusterActorSender {
         let command = cmd.into();
 
         match command {
-            | ClusterCommand::Scheduler(_) | ClusterCommand::Peer(_) => {
+            ClusterCommand::Scheduler(_) | ClusterCommand::Peer(_) => {
                 self.priority_send.send(command).await
             },
-            | ClusterCommand::ConnectionReq(_) | ClusterCommand::Client(_) => {
+            ClusterCommand::ConnectionReq(_) | ClusterCommand::Client(_) => {
                 self.normal_send.send(command).await
             },
         }
