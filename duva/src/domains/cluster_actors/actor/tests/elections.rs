@@ -1,9 +1,5 @@
 use super::*;
 
-use crate::domains::peers::command::ElectionVote;
-use crate::domains::peers::command::RequestVote;
-use crate::domains::replications::ElectionVotes;
-
 #[tokio::test]
 async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes() {
     // GIVEN: A follower actor with a couple of replica peers

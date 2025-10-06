@@ -5,7 +5,6 @@ use super::LazyOption;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
-
 use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
@@ -17,14 +16,11 @@ use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
-use crate::domains::peers::command::ElectionVote;
+
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::PendingMigrationTask;
 use crate::domains::peers::command::PendingRequests;
 use crate::domains::peers::command::QueuedKeysToMigrate;
-use crate::domains::peers::command::RejectionReason;
-use crate::domains::peers::command::ReplicationAck;
-use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;

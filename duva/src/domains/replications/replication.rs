@@ -1,9 +1,6 @@
 use super::*;
 use crate::domains::cluster_actors::SessionRequest;
 use crate::domains::peers::command::HeartBeat;
-use crate::domains::peers::command::RejectionReason;
-use crate::domains::peers::command::ReplicationAck;
-use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::err;
 use std::fmt::Display;
@@ -265,42 +262,6 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs())
-}
-
-#[derive(
-    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash,
-)]
-pub enum ReplicationId {
-    #[default]
-    Undecided,
-    Key(String),
-}
-
-impl Display for ReplicationId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReplicationId::Undecided => write!(f, "?"),
-            ReplicationId::Key(key) => write!(f, "{key}"),
-        }
-    }
-}
-
-impl From<ReplicationId> for String {
-    fn from(value: ReplicationId) -> Self {
-        match value {
-            ReplicationId::Undecided => "?".to_string(),
-            ReplicationId::Key(key) => key,
-        }
-    }
-}
-
-impl From<String> for ReplicationId {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "?" => ReplicationId::Undecided,
-            _ => ReplicationId::Key(value),
-        }
-    }
 }
 
 #[derive(
