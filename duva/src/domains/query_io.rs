@@ -1,9 +1,9 @@
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::topology::Topology;
-use crate::domains::peers::command::{
-    BatchEntries, BatchId, ElectionVote, HeartBeat, ReplicationAck, RequestVote,
-};
+use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
+
 use crate::domains::replications::WriteOperation;
+
 use crate::domains::replications::*;
 use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result, anyhow};

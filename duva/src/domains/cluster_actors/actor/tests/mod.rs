@@ -16,7 +16,7 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::replications::ReplicatedLogs;
 
 use crate::domains::peers::command::HeartBeat;
-use crate::domains::peers::command::ReplicationAck;
+
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 

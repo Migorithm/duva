@@ -1,5 +1,5 @@
 use crate::{
-    domains::{QueryIO, cluster_actors::ClusterCommand},
+    domains::{QueryIO, cluster_actors::ClusterCommand, replications::messages::*},
     prelude::PeerIdentifier,
 };
 
@@ -62,48 +62,6 @@ mod peer_messages {
         },
         types::Callback,
     };
-
-    #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct RequestVote {
-        pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
-        pub(crate) candidate_id: PeerIdentifier,
-        pub(crate) last_log_index: u64,
-        pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won't win the election.
-    }
-
-    #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct ElectionVote {
-        pub(crate) term: u64,
-        pub(crate) vote_granted: bool,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
-    pub struct ReplicationAck {
-        pub(crate) log_idx: u64,
-        pub(crate) term: u64,
-        pub(crate) rej_reason: Option<RejectionReason>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
-    pub(crate) enum RejectionReason {
-        ReceiverHasHigherTerm,
-        LogInconsistency,
-        FailToWrite,
-    }
-
-    impl ReplicationAck {
-        pub(crate) fn ack(log_idx: u64, curr_term: u64) -> Self {
-            Self { log_idx, term: curr_term, rej_reason: None }
-        }
-
-        pub(crate) fn reject(log_idx: u64, reason: RejectionReason, curr_term: u64) -> Self {
-            Self { log_idx, term: curr_term, rej_reason: Some(reason) }
-        }
-
-        pub(crate) fn is_granted(&self) -> bool {
-            self.rej_reason.is_none()
-        }
-    }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default)]
     pub struct HeartBeat {
