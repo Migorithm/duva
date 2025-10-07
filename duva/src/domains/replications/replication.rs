@@ -83,7 +83,7 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     pub(crate) fn revert_voting(&mut self, term: u64, candidate_id: &PeerIdentifier) {
         self.election_votes.votes.remove(candidate_id);
-        self.logger.state.term = term;
+        self.set_term(term);
     }
 
     pub(crate) fn grant_vote(&mut self, request_vote: &RequestVote) -> bool {

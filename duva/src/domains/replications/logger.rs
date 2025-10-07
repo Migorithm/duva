@@ -33,10 +33,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             return self.from(self.state.last_log_index);
         };
 
-        let mut logs = Vec::with_capacity((self.state.last_log_index - low_watermark) as usize);
-        logs.extend(self.from(low_watermark));
-
-        logs
+        self.from(low_watermark)
     }
 
     pub(crate) fn write_single_entry(
@@ -62,7 +59,10 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     // FOLLOWER side operation
     pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
-        // Filter and append entries in a single operation
+        if entries.is_empty() {
+            return Ok(self.state.last_log_index);
+        }
+
         self.update_metadata(&entries);
         self.target.write_many(entries)?;
         Ok(self.state.last_log_index)
@@ -89,12 +89,10 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     fn update_metadata(&mut self, new_entries: &[WriteOperation]) {
-        if new_entries.is_empty() {
-            return;
+        if let Some(last_entry) = new_entries.last() {
+            self.state.last_log_index = last_entry.log_index;
+            self.last_log_term = last_entry.term;
         }
-        let last_entry = new_entries.last().unwrap();
-        self.state.last_log_index = last_entry.log_index;
-        self.last_log_term = last_entry.term;
     }
 
     pub(crate) fn reset(&mut self) {
