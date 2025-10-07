@@ -109,7 +109,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn log_state(&self) -> &ReplicationState {
-        self.replication.log_state()
+        self.replication.state()
     }
 
     fn new(
