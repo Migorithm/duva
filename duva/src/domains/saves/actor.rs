@@ -5,8 +5,8 @@ use super::{
         encode_metadata,
     },
 };
-use crate::domains::saves::snapshot::Metadata;
-use crate::domains::{IoError, caches::cache_objects::CacheEntry, replications::ReplicationId};
+use crate::domains::{IoError, caches::cache_objects::CacheEntry};
+use crate::domains::{replications::ReplicationId, saves::snapshot::Metadata};
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 

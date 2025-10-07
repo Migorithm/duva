@@ -16,6 +16,10 @@ use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
+use crate::domains::replications::messages::ElectionVote;
+use crate::domains::replications::messages::RejectionReason;
+use crate::domains::replications::messages::ReplicationAck;
+use crate::domains::replications::messages::RequestVote;
 
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::PendingMigrationTask;
@@ -105,7 +109,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn log_state(&self) -> &ReplicationState {
-        self.replication.get_state()
+        self.replication.state()
     }
 
     fn new(
@@ -123,7 +127,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default().add_partitions(vec![(
-            init_repl_state.state().replid.clone(),
+            init_repl_state.clone_state().replid.clone(),
             init_repl_state.self_identifier(),
         )]);
 
@@ -230,7 +234,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         let outbound_stream =
-            OutboundStream { r, w, self_state: self.replication.state(), peer_state: None };
+            OutboundStream { r, w, self_state: self.replication.clone_state(), peer_state: None };
 
         tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
@@ -249,7 +253,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             r,
             w,
             host_ip,
-            self_state: self.replication.state(),
+            self_state: self.replication.clone_state(),
             peer_state: Default::default(),
         };
 
@@ -401,7 +405,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members
             .values()
             .map(|p| p.state().clone())
-            .chain(std::iter::once(self.replication.state()))
+            .chain(std::iter::once(self.replication.clone_state()))
             .collect()
     }
     // #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
@@ -436,7 +440,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             None => {
                 self.replication.revert_voting(current_term, &request_vote.candidate_id);
-                return;
             },
         };
     }
@@ -769,7 +772,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 .values()
                 .clone()
                 .map(|peer| peer.state().clone())
-                .chain(iter::once(self.replication.state()))
+                .chain(iter::once(self.replication.clone_state()))
                 .collect(),
             hash_ring: self.hash_ring.clone(),
         }

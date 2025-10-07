@@ -13,7 +13,6 @@ use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::replications::ReplicatedLogs;
 
 use crate::domains::peers::command::HeartBeat;
 
@@ -173,8 +172,7 @@ impl Helper {
             last_log_index: 0,
             term: 0,
         };
-        let repllogs = ReplicatedLogs::new(MemoryOpLogs::default(), state);
-        let replication = Replication::new(8080, repllogs);
+        let replication = Replication::new(8080, MemoryOpLogs::default(), state);
         let (_, cache_manager) = Helper::cache_manager();
         ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }
