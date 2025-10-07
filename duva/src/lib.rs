@@ -6,7 +6,6 @@ pub mod presentation;
 mod types;
 use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::replications::logger::ReplicatedLogs;
 use crate::domains::replications::*;
 use anyhow::Result;
 pub use config::Environment;
@@ -102,8 +101,7 @@ impl StartUpFacade {
             term: 0,
         };
 
-        let repl_logs = ReplicatedLogs::new(wal, state);
-        let replication_state = Replication::new(ENV.port, repl_logs);
+        let replication_state = Replication::new(ENV.port, wal, state);
 
         let cache_manager = CacheManager::run_cache_actors(replication_state.clone_con_idx());
 

@@ -1,4 +1,3 @@
-use crate::domains::replications::ReplicatedLogs;
 
 use super::*;
 
@@ -13,18 +12,17 @@ fn logger_create_entries_from_lowest() {
         last_log_index: 0,
         term: 0,
     };
-    let mut repllogs = ReplicatedLogs::new(MemoryOpLogs::default(), state);
-
     let test_logs = vec![
         Helper::write(1, 0, "foo", "bar"),
         Helper::write(2, 0, "foo2", "bar"),
         Helper::write(3, 0, "foo3", "bar"),
     ];
-    repllogs.write_many(test_logs.clone()).unwrap();
+
+    let mut repl_state = Replication::new(8080, MemoryOpLogs::default(), state);
+    repl_state.write_many(test_logs.clone()).unwrap();
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
-    let mut repl_state = Replication::new(8080, repllogs);
 
     repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
@@ -371,10 +369,9 @@ async fn follower_truncates_log_on_term_mismatch() {
         .writer
         .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
 
-    let logger = ReplicatedLogs::new(inmemory, state);
-
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    cluster_actor.replication.set_logger(logger);
+    cluster_actor.replication.set_target(inmemory);
+    cluster_actor.replication.set_state(state);
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)

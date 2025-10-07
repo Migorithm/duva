@@ -15,12 +15,24 @@ use std::sync::atomic::Ordering;
 pub(crate) struct Replication<T> {
     pub(crate) self_port: u16,
     election_votes: ElectionVotes,
-    logger: ReplicatedLogs<T>,
+    target: T,
+    state: ReplicationState,
+    last_log_term: u64,
+    con_idx: Arc<AtomicU64>,
+    last_applied: u64,
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
-    pub(crate) fn new(self_port: u16, logger: ReplicatedLogs<T>) -> Self {
-        Self { election_votes: ElectionVotes::default(), self_port, logger }
+    pub(crate) fn new(self_port: u16, target: T, state: ReplicationState) -> Self {
+        Self {
+            election_votes: ElectionVotes::default(),
+            self_port,
+            target,
+            last_log_term: state.term,
+            con_idx: Arc::new(state.last_log_index.into()),
+            state,
+            last_applied: 0,
+        }
     }
 
     pub(crate) fn reset_election_votes(&mut self) {
@@ -29,38 +41,38 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn last_applied(&self) -> u64 {
-        self.logger.last_applied
+        self.last_applied
     }
     pub(crate) fn last_applied_mut(&mut self) -> &mut u64 {
-        &mut self.logger.last_applied
+        &mut self.last_applied
     }
 
     pub(crate) fn clone_state(&self) -> ReplicationState {
-        self.logger.state.clone()
+        self.state.clone()
     }
     pub(crate) fn log_state(&self) -> &ReplicationState {
-        &self.logger.state
+        &self.state
     }
     pub(crate) fn is_empty_log(&self) -> bool {
-        self.logger.is_empty()
+        self.target.is_empty()
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
-        self.logger.state.node_id.clone()
+        self.state.node_id.clone()
     }
 
     pub(crate) fn replid(&mut self) -> &ReplicationId {
-        &self.logger.state.replid
+        &self.state.replid
     }
     pub(crate) fn set_replid(&mut self, replid: ReplicationId) {
-        self.logger.state.replid = replid;
+        self.state.replid = replid;
     }
 
     pub(crate) fn set_term(&mut self, term: u64) {
-        self.logger.state.term = term;
+        self.state.term = term;
     }
     pub(crate) fn set_role(&mut self, new_role: ReplicationRole) {
-        self.logger.state.role = new_role;
+        self.state.role = new_role;
     }
 
     pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
@@ -71,12 +83,12 @@ impl<T: TWriteAheadLog> Replication<T> {
             term: state.term,
             leader_commit_idx: self
                 .is_leader()
-                .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
+                .then_some(self.con_idx.load(Ordering::Relaxed)),
             replid: state.replid.clone(),
             hop_count,
             banlist: Vec::new(),
             prev_log_index: state.last_log_index,
-            prev_log_term: self.logger.last_log_term,
+            prev_log_term: self.last_log_term,
             ..Default::default()
         }
     }
@@ -103,11 +115,11 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn is_leader(&self) -> bool {
-        self.logger.state.role == ReplicationRole::Leader
+        self.state.role == ReplicationRole::Leader
     }
 
     pub(crate) fn is_candidate(&self) -> bool {
-        self.election_votes.votes.contains(&self.logger.state.node_id)
+        self.election_votes.votes.contains(&self.state.node_id)
     }
 
     pub(crate) fn is_log_up_to_date(
@@ -115,21 +127,20 @@ impl<T: TWriteAheadLog> Replication<T> {
         candidate_last_log_index: u64,
         candidate_last_log_term: u64,
     ) -> bool {
-        if candidate_last_log_term > self.logger.last_log_term {
+        if candidate_last_log_term > self.last_log_term {
             return true;
         }
 
-        candidate_last_log_term == self.logger.last_log_term
-            && candidate_last_log_index >= self.logger.state.last_log_index
+        candidate_last_log_term == self.last_log_term
+            && candidate_last_log_index >= self.state.last_log_index
     }
 
     pub(crate) fn request_vote(&self) -> RequestVote {
-        let state = &self.logger.state;
         RequestVote {
-            term: state.term,
-            candidate_id: state.node_id.clone(),
-            last_log_index: state.last_log_index,
-            last_log_term: self.logger.last_log_term,
+            term: self.state.term,
+            candidate_id: self.state.node_id.clone(),
+            last_log_index: self.state.last_log_index,
+            last_log_term: self.last_log_term,
         }
     }
 
@@ -149,7 +160,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
     pub(crate) fn initiate_vote(&mut self, replica_count: usize) {
         self.election_votes =
-            ElectionVotes::new(replica_count as u8, self.logger.state.node_id.clone());
+            ElectionVotes::new(replica_count as u8, self.state.node_id.clone());
     }
 
     pub(crate) fn write_single_entry(
@@ -158,29 +169,47 @@ impl<T: TWriteAheadLog> Replication<T> {
         current_term: u64,
         session_req: Option<SessionRequest>,
     ) -> anyhow::Result<()> {
-        self.logger.write_single_entry(entry, current_term, session_req)
+        let op = WriteOperation {
+            entry,
+            log_index: (self.state.last_log_index + 1),
+            term: current_term,
+            session_req,
+        };
+
+        self.write_many(vec![op])?;
+        self.last_log_term = current_term;
+        Ok(())
     }
 
     pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
-        self.logger.write_many(entries)
+        if entries.is_empty() {
+            return Ok(self.state.last_log_index);
+        }
+
+        self.update_metadata(&entries);
+        self.target.write_many(entries)?;
+        Ok(self.state.last_log_index)
     }
 
     pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
-        self.logger.read_at(at)
+        self.target.read_at(at)
     }
 
     pub(crate) fn increase_con_idx_by(&self, by: u64) {
-        self.logger.con_idx.fetch_add(by, Ordering::Relaxed);
+        self.con_idx.fetch_add(by, Ordering::Relaxed);
     }
     pub(crate) fn curr_con_idx(&self) -> u64 {
-        self.logger.con_idx.load(Ordering::Relaxed)
+        self.con_idx.load(Ordering::Relaxed)
     }
     pub(crate) fn clone_con_idx(&self) -> Arc<AtomicU64> {
-        self.logger.con_idx.clone()
+        self.con_idx.clone()
     }
 
     pub(crate) fn reset_log(&mut self) {
-        self.logger.reset();
+        self.con_idx.store(0, Ordering::Release);
+        self.state.last_log_index = 0;
+        self.last_log_term = 0;
+        self.target.truncate_after(0);
         self.set_replid(ReplicationId::Undecided)
     }
 
@@ -188,14 +217,15 @@ impl<T: TWriteAheadLog> Replication<T> {
         &self,
         low_watermark: Option<u64>,
     ) -> Vec<WriteOperation> {
-        self.logger.list_append_log_entries(low_watermark)
+        let start_exclusive = low_watermark.unwrap_or(self.state.last_log_index);
+        self.target.range(start_exclusive, self.state.last_log_index)
     }
     pub(crate) fn truncate_after(&mut self, log_index: u64) {
-        self.logger.truncate_after(log_index);
+        self.target.truncate_after(log_index);
     }
 
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
-        self.logger.range(start_exclusive, end_inclusive)
+        self.target.range(start_exclusive, end_inclusive)
     }
 
     pub(crate) fn replicate_log_entries(
@@ -207,7 +237,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     ) -> Result<ReplicationAck, RejectionReason> {
         let mut entries = Vec::with_capacity(operations.len());
 
-        let last_log_index = self.logger.state.last_log_index;
+        let last_log_index = self.state.last_log_index;
         for mut log in operations {
             if log.log_index > last_log_index {
                 if let Some(session_req) = log.session_req.take() {
@@ -239,7 +269,14 @@ impl<T: TWriteAheadLog> Replication<T> {
             RejectionReason::FailToWrite
         })?;
 
-        Ok(ReplicationAck::ack(log_idx, self.logger.state.term))
+        Ok(ReplicationAck::ack(log_idx, self.state.term))
+    }
+
+    fn update_metadata(&mut self, new_entries: &[WriteOperation]) {
+        if let Some(last_entry) = new_entries.last() {
+            self.state.last_log_index = last_entry.log_index;
+            self.last_log_term = last_entry.term;
+        }
     }
 
     #[cfg(test)]
@@ -248,18 +285,23 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     #[cfg(test)]
-    pub fn set_logger(&mut self, logger: ReplicatedLogs<T>) {
-        self.logger = logger;
+    pub fn set_target(&mut self, target: T) {
+        self.target = target;
+    }
+
+    #[cfg(test)]
+    pub fn set_state(&mut self, state: ReplicationState) {
+        self.state = state;
     }
 
     #[cfg(test)]
     pub(crate) fn last_log_term(&self) -> u64 {
-        self.logger.last_log_term
+        self.last_log_term
     }
 
     pub(crate) fn on_election_timeout(&mut self, term: u64) {
         self.set_role(ReplicationRole::Follower);
-        if term > self.logger.state.term {
+        if term > self.state.term {
             self.set_term(term);
         }
     }
@@ -346,12 +388,12 @@ fn test_cloning_replication_state() {
         last_log_index: 0,
         term: 0,
     };
-    let repllogs = ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, state);
-    let replication_state = Replication::new(1231, repllogs);
-    let cloned = replication_state.logger.con_idx.clone();
+    let target = MemoryOpLogs { writer: vec![] };
+    let replication_state = Replication::new(1231, target, state);
+    let cloned = replication_state.con_idx.clone();
 
     //WHEN
-    replication_state.logger.con_idx.store(5, Ordering::Release);
+    replication_state.con_idx.store(5, Ordering::Release);
 
     //THEN
     assert_eq!(cloned.load(Ordering::Relaxed), 5);
