@@ -440,7 +440,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             None => {
                 self.replication.revert_voting(current_term, &request_vote.candidate_id);
-                return;
             },
         };
     }
