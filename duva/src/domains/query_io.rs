@@ -1,9 +1,10 @@
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::topology::Topology;
-use crate::domains::peers::command::{
-    BatchEntries, BatchId, ElectionVote, HeartBeat, ReplicationAck, RequestVote,
-};
+use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
+
 use crate::domains::replications::WriteOperation;
+use crate::domains::replications::messages::{ElectionVote, ReplicationAck, RequestVote};
+
 use crate::domains::replications::*;
 use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result, anyhow};
@@ -496,7 +497,7 @@ mod test {
     use super::*;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::cluster_actors::hash_ring::HashRing;
-    use crate::domains::replications::{ReplicationId, ReplicationRole};
+    use crate::domains::replications::ReplicationRole;
 
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;

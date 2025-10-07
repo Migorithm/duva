@@ -1,5 +1,4 @@
-use crate::domains::replications::ReplicationId;
-use crate::domains::{IoError, cluster_actors::topology::Topology};
+use crate::domains::{IoError, cluster_actors::topology::Topology, replications::ReplicationId};
 use uuid::Uuid;
 
 // TODO make the following enum and make it explicit about why it wants to connect

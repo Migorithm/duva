@@ -8,7 +8,9 @@ pub(crate) use consensus::log::*;
 pub(crate) use interfaces::*;
 pub use operation::LogEntry;
 pub use operation::WriteOperation;
-pub use replication::ReplicationId;
+pub(crate) mod messages;
+
+pub use messages::ReplicationId;
 pub use replication::ReplicationRole;
 pub(crate) use replication::*;
 pub(crate) use state::*;
