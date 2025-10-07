@@ -29,7 +29,7 @@ fn logger_create_entries_from_lowest() {
     repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
     let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    repl_state.write_single_entry(log, repl_state.state().term, None).unwrap();
+    repl_state.write_single_entry(log, repl_state.clone_state().term, None).unwrap();
 
     let logs = repl_state.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
@@ -37,7 +37,7 @@ fn logger_create_entries_from_lowest() {
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 3);
     assert_eq!(logs[1].log_index, 4);
-    assert_eq!(repl_state.state().last_log_index, 4);
+    assert_eq!(repl_state.clone_state().last_log_index, 4);
 }
 
 #[tokio::test]

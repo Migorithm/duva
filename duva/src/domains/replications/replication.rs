@@ -35,10 +35,10 @@ impl<T: TWriteAheadLog> Replication<T> {
         &mut self.logger.last_applied
     }
 
-    pub(crate) fn state(&self) -> ReplicationState {
+    pub(crate) fn clone_state(&self) -> ReplicationState {
         self.logger.state.clone()
     }
-    pub(crate) fn get_state(&self) -> &ReplicationState {
+    pub(crate) fn log_state(&self) -> &ReplicationState {
         &self.logger.state
     }
     pub(crate) fn is_empty_log(&self) -> bool {
@@ -64,16 +64,18 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
+        let state = self.log_state();
+
         HeartBeat {
-            from: self.self_identifier(),
-            term: self.logger.state.term,
+            from: state.node_id.clone(),
+            term: state.term,
             leader_commit_idx: self
                 .is_leader()
                 .then_some(self.logger.con_idx.load(Ordering::Relaxed)),
-            replid: self.logger.state.replid.clone(),
+            replid: state.replid.clone(),
             hop_count,
             banlist: Vec::new(),
-            prev_log_index: self.logger.state.last_log_index,
+            prev_log_index: state.last_log_index,
             prev_log_term: self.logger.last_log_term,
             ..Default::default()
         }
@@ -105,7 +107,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn is_candidate(&self) -> bool {
-        self.election_votes.votes.contains(&self.self_identifier())
+        self.election_votes.votes.contains(&self.logger.state.node_id)
     }
 
     pub(crate) fn is_log_up_to_date(
@@ -122,10 +124,11 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn request_vote(&self) -> RequestVote {
+        let state = &self.logger.state;
         RequestVote {
-            term: self.logger.state.term,
-            candidate_id: self.self_identifier(),
-            last_log_index: self.logger.state.last_log_index,
+            term: state.term,
+            candidate_id: state.node_id.clone(),
+            last_log_index: state.last_log_index,
             last_log_term: self.logger.last_log_term,
         }
     }
@@ -145,7 +148,8 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.election_votes.votes.clear();
     }
     pub(crate) fn initiate_vote(&mut self, replica_count: usize) {
-        self.election_votes = ElectionVotes::new(replica_count as u8, self.self_identifier());
+        self.election_votes =
+            ElectionVotes::new(replica_count as u8, self.logger.state.node_id.clone());
     }
 
     pub(crate) fn write_single_entry(
@@ -203,8 +207,9 @@ impl<T: TWriteAheadLog> Replication<T> {
     ) -> Result<ReplicationAck, RejectionReason> {
         let mut entries = Vec::with_capacity(operations.len());
 
+        let last_log_index = self.logger.state.last_log_index;
         for mut log in operations {
-            if log.log_index > self.logger.state.last_log_index {
+            if log.log_index > last_log_index {
                 if let Some(session_req) = log.session_req.take() {
                     session_reqs.push(session_req);
                 }

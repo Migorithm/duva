@@ -86,7 +86,7 @@ async fn test_reconnection_on_gossip() {
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
     let bind_addr = listener.local_addr().unwrap();
 
-    let mut replication_state = cluster_actor.replication.state();
+    let mut replication_state = cluster_actor.replication.clone_state();
     replication_state.role = ReplicationRole::Follower;
 
     let (tx, _rx) = Callback::create();
