@@ -11,7 +11,6 @@ use anyhow::{Context, Result, anyhow};
 
 use bincode::enc::write::SizeWriter;
 use bytes::{Bytes, BytesMut};
-use std::fmt::Write;
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
@@ -93,24 +92,44 @@ impl QueryIO {
             },
             QueryIO::File(f) => {
                 let file_len = f.len() * 2;
-                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
+                let header_len = FILE_PREFIX.len_utf8() + file_len.to_string().len() + 2;
+                let mut buffer = BytesMut::with_capacity(header_len + file_len);
 
-                // * To avoid the overhead of using format! macro by creating intermediate string, use write!
-                let _ = write!(&mut hex_file, "{FILE_PREFIX}{file_len}\r\n");
-                f.into_iter().for_each(|byte| {
-                    let _ = write!(hex_file, "{byte:02x}");
-                });
+                // Write header directly to buffer
+                buffer.extend_from_slice(FILE_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
+                buffer.extend_from_slice(file_len.to_string().as_bytes());
+                buffer.extend_from_slice(b"\r\n");
 
-                hex_file.into()
+                // Write hex bytes directly to buffer without format!
+                for byte in f.iter() {
+                    let high = (byte >> 4) & 0x0f;
+                    let low = byte & 0x0f;
+                    buffer.extend_from_slice(&[if high < 10 {
+                        b'0' + high
+                    } else {
+                        b'a' + high - 10
+                    }]);
+                    buffer.extend_from_slice(&[if low < 10 {
+                        b'0' + low
+                    } else {
+                        b'a' + low - 10
+                    }]);
+                }
+
+                buffer.freeze()
             },
             QueryIO::Array(array) => {
-                let mut buffer = BytesMut::with_capacity(
-                    // Rough estimate of needed capacity
-                    array.len() * 32 + 1 + array.len(),
-                );
+                // Better capacity estimation: header + sum of item sizes
+                let header_size = 1 + array.len().to_string().len() + 2; // prefix + len + \r\n
+                let estimated_item_size =
+                    array.iter().map(|item| estimate_serialized_size(item)).sum::<usize>();
+                let mut buffer = BytesMut::with_capacity(header_size + estimated_item_size);
 
-                // extend single buffer
-                buffer.extend_from_slice(format!("*{}\r\n", array.len()).as_bytes());
+                // Write array header directly
+                buffer.extend_from_slice(&[ARRAY_PREFIX as u8]);
+                buffer.extend_from_slice(array.len().to_string().as_bytes());
+                buffer.extend_from_slice(b"\r\n");
+
                 for item in array {
                     buffer.extend_from_slice(&item.serialize());
                 }
@@ -119,7 +138,9 @@ impl QueryIO {
             QueryIO::SessionRequest { request_id, action } => {
                 let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
                 let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
-                buffer.extend_from_slice(format!("!{request_id}\r\n").as_bytes());
+                buffer.extend_from_slice(&[SESSION_REQUEST_PREFIX as u8]);
+                buffer.extend_from_slice(request_id.to_string().as_bytes());
+                buffer.extend_from_slice(b"\r\n");
                 buffer.extend_from_slice(&value);
                 buffer.freeze()
             },
@@ -215,6 +236,29 @@ pub(crate) fn serialized_len_with_bincode<T: bincode::Encode>(prefix: char, arg:
     prefix_len + size_writer.bytes_written
 }
 
+fn estimate_serialized_size(query: &QueryIO) -> usize {
+    match query {
+        QueryIO::Null => 1,
+        QueryIO::SimpleString(s) => 1 + s.len() + 2,
+        QueryIO::BulkString(s) => 1 + s.len().to_string().len() + 2 + s.len() + 2,
+        QueryIO::Array(array) => {
+            let header = 1 + array.len().to_string().len() + 2;
+            let items: usize = array.iter().map(estimate_serialized_size).sum();
+            header + items
+        },
+        QueryIO::File(f) => {
+            let file_len = f.len() * 2;
+            1 + file_len.to_string().len() + 2 + file_len
+        },
+        QueryIO::Err(e) => 1 + e.len() + 2,
+        QueryIO::SessionRequest { request_id, .. } => {
+            1 + request_id.to_string().len() + 2 + 64 // rough estimate for action
+        },
+        // For custom types, use a reasonable default
+        _ => 128,
+    }
+}
+
 impl From<String> for QueryIO {
     fn from(value: String) -> Self {
         QueryIO::BulkString(value.into())
@@ -255,7 +299,15 @@ impl From<QueryIO> for Bytes {
 
 pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
     let buffer: Bytes = buffer.into();
-    match buffer[0] as char {
+    if buffer.is_empty() {
+        return Err(anyhow::anyhow!("Empty buffer"));
+    }
+    let prefix = buffer[0] as char;
+    deserialize_by_prefix(buffer, prefix)
+}
+
+fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)> {
+    match prefix {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::SimpleString(bytes), len))
@@ -275,7 +327,6 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
             Ok((QueryIO::Err(bytes), len))
         },
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
-
         APPEND_ENTRY_RPC_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::AppendEntriesRPC(heartbeat), len))
@@ -292,8 +343,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
         MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
-
-        _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
+        _ => Err(anyhow::anyhow!("Unknown value type with prefix: {:?}", prefix)),
     }
 }
 
@@ -382,35 +432,51 @@ fn parse_bulk_string(buffer: Bytes) -> Result<(Bytes, usize)> {
 
 fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
     let (line, mut len) = read_until_crlf_exclusive(&buffer.slice(1..))
-        .ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        .ok_or(anyhow::anyhow!("Invalid file header"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
-    let content_len: usize = line.parse()?;
+    let content_len: usize = line.parse().context("Invalid file content length")?;
+
+    if len + content_len > buffer.len() {
+        return Err(anyhow::anyhow!("Incomplete file data"));
+    }
 
     let file_content = &buffer.slice(len..(len + content_len));
 
-    let file = file_content
-        .chunks(2)
-        .flat_map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
-        .collect::<Result<Bytes, _>>()?;
+    // Ensure content length is even for hex pairs
+    if content_len % 2 != 0 {
+        return Err(anyhow::anyhow!("Invalid hex data: odd number of characters"));
+    }
 
-    Ok((file, len + content_len))
+    let mut file_bytes = Vec::with_capacity(content_len / 2);
+    for chunk in file_content.chunks_exact(2) {
+        let hex_str = std::str::from_utf8(chunk).context("Invalid UTF-8 in hex data")?;
+        let byte = u8::from_str_radix(hex_str, 16).context("Invalid hex character")?;
+        file_bytes.push(byte);
+    }
+
+    Ok((Bytes::from(file_bytes), len + content_len))
 }
 
 /// None if crlf not found.
 #[inline]
 pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize)> {
-    memchr::memmem::find(buffer, b"\r\n")
-        .map(|i| (String::from_utf8_lossy(&buffer.slice(0..i)).to_string(), i + 2))
+    memchr::memmem::find(buffer, b"\r\n").map(|i| {
+        // Directly convert to String if valid UTF-8, otherwise use lossy conversion
+        let slice = &buffer[0..i];
+        let string = match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => String::from_utf8_lossy(slice).to_string(),
+        };
+        (string, i + 2)
+    })
 }
 
 fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
-    let prefix_len = prefix.len_utf8();
-
-    // Allocate buffer with reasoanble initial capacity
-    let estimated_data_size = 64;
-    let mut buffer = BytesMut::with_capacity(prefix_len + estimated_data_size);
+    // Use size estimation for better performance
+    let estimated_size = serialized_len_with_bincode(prefix, arg);
+    let mut buffer = BytesMut::with_capacity(estimated_size);
 
     buffer.extend_from_slice(prefix.encode_utf8(&mut [0; 4]).as_bytes());
 
