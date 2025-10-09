@@ -45,6 +45,7 @@ use std::fs::File;
 use std::io::Seek;
 use std::io::Write;
 use std::iter;
+use tokio::time::Duration;
 
 use tokio::net::TcpStream;
 use tracing::error;
@@ -346,7 +347,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match self.hash_ring.key_ownership(req.entry.all_keys().into_iter()) {
             Ok(replids) if replids.all_belongs_to(&self.log_state().replid) => {
-                self.req_consensus(req).await;
+                self.req_consensus(req, 10.into()).await;
             },
             Ok(replids) => {
                 // To notify client's of what keys have been moved.
@@ -361,8 +362,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn req_consensus(&mut self, req: ConsensusRequest) {
-        // * Check if the request has already been processed
+    async fn req_consensus(&mut self, req: ConsensusRequest, send_in_mills: Option<u64>) {
         if let Err(err) = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
@@ -386,7 +386,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             last_log_index,
             LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
         );
-        self.send_rpc_to_replicas().await;
+
+        if let Some(send_in_mills) = send_in_mills {
+            tokio::spawn({
+                let sender = self.self_handler.clone();
+                async move {
+                    tokio::time::sleep(Duration::from_millis(send_in_mills)).await;
+                    sender.send(SchedulerMessage::SendAppendEntriesRPC).await
+                }
+            });
+            return;
+        };
+
+        self.send_rpc().await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
@@ -1314,11 +1326,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (callback, rx) = Callback::create();
 
-        self.req_consensus(ConsensusRequest {
-            entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
-            callback,
-            session_req: None,
-        })
+        self.req_consensus(
+            ConsensusRequest {
+                entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
+                callback,
+                session_req: None,
+            },
+            None,
+        )
         .await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
@@ -1357,7 +1372,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             callback,
             session_req: None,
         };
-        self.req_consensus(w_req).await;
+        self.req_consensus(w_req, None).await;
         // ! background synchronization is required.
         tokio::spawn({
             let handler = self.self_handler.clone();

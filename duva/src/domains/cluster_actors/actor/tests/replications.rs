@@ -448,7 +448,7 @@ async fn req_consensus_inserts_consensus_voting() {
     };
 
     // WHEN
-    leader_c_actor.req_consensus(consensus_request).await;
+    leader_c_actor.req_consensus(consensus_request, None).await;
 
     // THEN
     assert_eq!(leader_c_actor.consensus_tracker.len(), 1);
@@ -458,7 +458,6 @@ async fn req_consensus_inserts_consensus_voting() {
         leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
         session_request
     );
-
     // check on follower_buffs
     for follower in follower_buffs {
         assert_expected_queryio(
@@ -533,7 +532,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let consensus_request =
         Helper::consensus_request(client_request_sender, Some(client_request.clone()));
 
-    cluster_actor.req_consensus(consensus_request).await;
+    cluster_actor.req_consensus(consensus_request, None).await;
 
     // WHEN
     let follower_res = ReplicationAck { log_idx: 1, term: 0, rej_reason: None };
@@ -582,7 +581,7 @@ async fn test_same_voter_can_vote_only_once() {
 
     let consensus_request = Helper::consensus_request(client_request_sender, None);
 
-    cluster_actor.req_consensus(consensus_request).await;
+    cluster_actor.req_consensus(consensus_request, None).await;
 
     // WHEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
@@ -608,7 +607,7 @@ async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     let consensus_request = Helper::consensus_request(tx, None);
 
     // WHEN
-    cluster_actor.req_consensus(consensus_request).await;
+    cluster_actor.req_consensus(consensus_request, None).await;
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
