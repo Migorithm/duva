@@ -4,9 +4,9 @@ pub mod domains;
 pub mod macros;
 pub mod presentation;
 mod types;
-use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::replications::*;
+use crate::domains::{TSerdeRead, TSerdeWrite};
 use anyhow::Result;
 pub use config::Environment;
 use domains::IoError;
@@ -14,8 +14,9 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 
-use crate::prelude::ConnectionRequest;
+use crate::prelude::ConnectionRequests;
 use crate::prelude::PeerIdentifier;
+use crate::prelude::{ConnectionRequest, ConnectionResponses};
 use crate::presentation::clients::stream::ClientStreamReader;
 use crate::presentation::clients::stream::ClientStreamWriter;
 pub use config::ENV;
@@ -44,7 +45,9 @@ pub mod prelude {
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::ConnectionRequest;
+    pub use crate::presentation::clients::ConnectionRequests;
     pub use crate::presentation::clients::ConnectionResponse;
+    pub use crate::presentation::clients::ConnectionResponses;
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
@@ -206,11 +209,16 @@ impl StartUpFacade {
             let (mut read_half, write_half) = stream.into_split();
 
             let mut writer = ClientStreamWriter(write_half);
-            let request = read_half.deserialized_read().await?;
+            let request: ConnectionRequests = read_half.deserialized_read().await?;
             self.cluster_actor_sender.wait_for_acceptance().await;
 
             match request {
-                ConnectionRequest { .. } => {
+                ConnectionRequests::Discovery => {
+                    // This point, leader_id should be known
+                    let leader_id = self.cluster_actor_sender.route_get_leader_id().await?.unwrap();
+                    writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await?;
+                },
+                ConnectionRequests::Authenticate(request) => {
                     let Ok(client_id) =
                         writer.send_conn_res(&self.cluster_actor_sender, request).await
                     else {

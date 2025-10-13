@@ -63,6 +63,7 @@ pub enum ClientMessage {
     GetTopology(Callback<Topology>),
     ClusterReshard(Callback<Result<(), anyhow::Error>>),
     CanEnter(Callback<()>),
+    GetLeaderId(Callback<Option<PeerIdentifier>>),
 }
 
 impl From<ClientMessage> for ClusterCommand {

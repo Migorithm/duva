@@ -116,6 +116,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             GetTopology(callback) => {
                 callback.send(self.get_topology());
             },
+            GetLeaderId(callback) => {
+                let leader_id = self.get_repl_set_leader_peer_id();
+                callback.send(leader_id);
+            },
         };
     }
 

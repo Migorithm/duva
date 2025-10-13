@@ -83,6 +83,12 @@ impl ClusterActorSender {
         Ok(rx.recv().await)
     }
 
+    pub(crate) async fn route_get_leader_id(&self) -> anyhow::Result<Option<PeerIdentifier>> {
+        let (tx, rx) = Callback::create();
+        self.send(ClientMessage::GetLeaderId(tx)).await?;
+        Ok(rx.recv().await)
+    }
+
     pub(crate) async fn route_get_cluster_info(&self) -> anyhow::Result<String> {
         //cluster_state:ok
         //cluster_slots_assigned:16384

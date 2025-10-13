@@ -3,6 +3,7 @@ use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
 use super::hash_ring::HashRing;
+use std::cmp::PartialEq;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
 use super::*;
@@ -782,6 +783,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 .collect(),
             hash_ring: self.hash_ring.clone(),
         }
+    }
+
+    pub(crate) fn get_repl_set_leader_peer_id(&self) -> Option<PeerIdentifier> {
+        if self.replication.is_leader() {
+            return Some(self.replication.self_identifier());
+        }
+        self.members
+            .iter()
+            .filter(|(_, peer)| *peer.replid() == self.log_state().replid)
+            .find(|(_, peer)| peer.role() == ReplicationRole::Leader)
+            .map(|(peer_id, _)| peer_id.clone())
     }
 
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
