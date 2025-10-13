@@ -1320,17 +1320,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (callback, rx) = Callback::create();
-
-        self.req_consensus(
-            ConsensusRequest {
-                entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
-                callback,
-                session_req: None,
-            },
-            None,
-        )
-        .await;
-        let _ = self.replication.flush();
+        let req = ConsensusRequest {
+            entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
+            callback,
+            session_req: None,
+        };
+        self.req_consensus_with_flush(req).await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
@@ -1350,6 +1345,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
+    async fn req_consensus_with_flush(&mut self, req: ConsensusRequest) {
+        self.req_consensus(req, None).await;
+        let _ = self.replication.flush();
+    }
+
     pub(crate) async fn handle_migration_ack(&mut self, batch_id: BatchId) {
         let Some(pending) = self.pending_reqs.as_mut() else {
             warn!("No Pending migration map available");
@@ -1363,13 +1363,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // make consensus request for delete
         let (callback, rx) = Callback::create();
-        let w_req = ConsensusRequest {
+        let req = ConsensusRequest {
             entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
             session_req: None,
         };
-        self.req_consensus(w_req, None).await;
-        let _ = self.replication.flush();
+        self.req_consensus_with_flush(req).await;
+
         // ! background synchronization is required.
         tokio::spawn({
             let handler = self.self_handler.clone();
