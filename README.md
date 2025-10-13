@@ -103,8 +103,15 @@ OK
 ```
 
 ## ReplicatedLogs
-Duva includes two pluggable replicated log implementations:
+Our replication layer ensures strong consistency and reliability in distributed systems by managing logs across both in-memory buffers and persistent storage.
 
+Key highlights:
+- Reliable replication: Logs are batched and synchronized efficiently between leader and followers.
+- Consistency guarantees: Even during leader elections or system recovery, committed entries remain safe.
+- Performance-conscious design: In-memory buffering improves throughput while maintaining system durability.
+- This approach strengthens system resilience and ensures that critical operations remain consistent and available, even under failure scenarios.
+
+Duva includes two pluggable replicated log implementations:
 ### In-Memory Log
 - Lightweight and fast
 - Ideal for testing or ephemeral environments
