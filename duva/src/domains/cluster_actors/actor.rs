@@ -363,29 +363,24 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest, send_in_mills: Option<u64>) {
-        if let Err(err) = self.replication.write_single_entry(
+        let log_index = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
             req.session_req.clone(),
-        ) {
-            req.callback.send(ConsensusClientResponse::Err(err.to_string()));
-            return;
-        };
-        let last_log_index = self.log_state().last_log_index;
+        );
 
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
-            let entry = self.replication.read_at(last_log_index).unwrap();
+            let entry = self.replication.read_at(log_index).unwrap();
             self.replication.increase_con_idx_by(1);
-            let res = self.commit_entry(entry.entry, last_log_index).await;
+            let _ = self.replication.flush();
+            let res = self.commit_entry(entry.entry, log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
-        self.consensus_tracker.insert(
-            last_log_index,
-            LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
-        );
+        self.consensus_tracker
+            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.session_req));
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
@@ -1100,12 +1095,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.log_state().replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ = self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
+        let last_index =
+            self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
 
         // * force reconciliation
-        let logs_to_reconcile = self
-            .replication
-            .range(self.replication.last_applied(), self.log_state().last_log_index);
+        let logs_to_reconcile = self.replication.range(self.replication.last_applied(), last_index);
 
         self.replication.increase_con_idx_by(logs_to_reconcile.len() as u64);
         for op in logs_to_reconcile {

@@ -20,6 +20,7 @@ pub(crate) struct Replication<T> {
     last_log_term: u64,
     con_idx: Arc<AtomicU64>,
     last_applied: u64,
+    in_mem_buffer: Vec<WriteOperation>,
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
@@ -32,6 +33,7 @@ impl<T: TWriteAheadLog> Replication<T> {
             con_idx: Arc::new(state.last_log_index.into()),
             state,
             last_applied: 0,
+            in_mem_buffer: Vec::with_capacity(10),
         }
     }
 
@@ -83,6 +85,9 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
+        let prev_log_index = self.last_log_index();
+        let prev_log_term = self.last_log_term();
+
         HeartBeat {
             from: self.state.node_id.clone(),
             term: self.state.term,
@@ -90,8 +95,8 @@ impl<T: TWriteAheadLog> Replication<T> {
             replid: self.state.replid.clone(),
             hop_count,
             banlist: Vec::new(),
-            prev_log_index: self.state.last_log_index,
-            prev_log_term: self.last_log_term,
+            prev_log_index,
+            prev_log_term,
             ..Default::default()
         }
     }
@@ -172,7 +177,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         entry: LogEntry,
         current_term: u64,
         session_req: Option<SessionRequest>,
-    ) -> anyhow::Result<()> {
+    ) -> u64 {
         let op = WriteOperation {
             entry,
             log_index: self.state.last_log_index + 1,
@@ -180,11 +185,21 @@ impl<T: TWriteAheadLog> Replication<T> {
             session_req,
         };
 
-        self.write_many(vec![op])?;
-        Ok(())
+        self.in_mem_buffer.push(op);
+
+        // self.persist_many(vec![op])?;
+        self.state.last_log_index + 1
     }
 
-    pub(crate) fn write_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
+    pub(crate) fn flush(&mut self) -> anyhow::Result<u64> {
+        if self.in_mem_buffer.is_empty() {
+            return Ok(self.last_log_index());
+        }
+        let buffer = std::mem::take(&mut self.in_mem_buffer);
+        self.persist_many(buffer)
+    }
+
+    pub(crate) fn persist_many(&mut self, entries: Vec<WriteOperation>) -> anyhow::Result<u64> {
         if entries.is_empty() {
             return Ok(self.state.last_log_index);
         }
@@ -195,6 +210,12 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
+        if !self.in_mem_buffer.is_empty()
+            && at <= self.in_mem_buffer[0].log_index
+            && at >= self.in_mem_buffer[self.in_mem_buffer.len() - 1].log_index
+        {
+            return self.in_mem_buffer.get((at - self.state.last_log_index - 1) as usize).cloned();
+        }
         self.target.read_at(at)
     }
 
@@ -224,16 +245,50 @@ impl<T: TWriteAheadLog> Replication<T> {
         low_watermark: Option<u64>,
     ) -> Vec<WriteOperation> {
         let start_exclusive = low_watermark.unwrap_or(self.state.last_log_index);
-        self.target.range(start_exclusive, self.state.last_log_index)
+        let end_inclusive = self.state.last_log_index + self.in_mem_buffer.len() as u64;
+        self.range(start_exclusive, end_inclusive)
     }
     pub(crate) fn truncate_after(&mut self, log_index: u64) {
         self.target.truncate_after(log_index);
     }
 
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, end_inclusive)
-    }
+        let last_persisted_idx = self.state.last_log_index;
+        let end_for_target = end_inclusive.min(last_persisted_idx);
 
+        let mut result = self.target.range(start_exclusive, end_for_target);
+
+        if self.in_mem_buffer.is_empty() || end_inclusive <= last_persisted_idx {
+            return result;
+        }
+
+        // Use binary search to efficiently find the slice of the in-memory buffer
+
+        let start_idx_in_buffer =
+            match self.in_mem_buffer.binary_search_by_key(&start_exclusive, |op| op.log_index) {
+                // An exact match for the EXCLUSIVE start was found.
+                Ok(i) => i + 1,
+                // No exact match. The insertion point `i` is the first element
+                // greater than `start_exclusive`, which is where we should start.
+                Err(i) => i,
+            };
+
+        let end_idx_in_buffer =
+            match self.in_mem_buffer.binary_search_by_key(&end_inclusive, |op| op.log_index) {
+                // An exact match was found. The slice should include this element,
+                // so the exclusive end index for the slice is `i + 1`.
+                Ok(i) => i + 1,
+                // No exact match. The insertion point `i` is where `end_inclusive`
+                // would go. All elements before `i` are less than it.
+                Err(i) => i,
+            };
+
+        if start_idx_in_buffer < end_idx_in_buffer {
+            result.extend_from_slice(&self.in_mem_buffer[start_idx_in_buffer..end_idx_in_buffer]);
+        }
+
+        result
+    }
     pub(crate) fn replicate_log_entries(
         &mut self,
         operations: Vec<WriteOperation>,
@@ -270,7 +325,7 @@ impl<T: TWriteAheadLog> Replication<T> {
             self.truncate_after(prev_log_index);
         }
 
-        let log_idx = self.write_many(entries).map_err(|e| {
+        let log_idx = self.persist_many(entries).map_err(|e| {
             err!("{}", e);
             RejectionReason::FailToWrite
         })?;
@@ -300,9 +355,18 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.state = state;
     }
 
-    #[cfg(test)]
     pub(crate) fn last_log_term(&self) -> u64 {
-        self.last_log_term
+        if self.in_mem_buffer.is_empty() {
+            return self.last_log_term;
+        }
+        self.in_mem_buffer[self.in_mem_buffer.len() - 1].term
+    }
+
+    pub(crate) fn last_log_index(&self) -> u64 {
+        if self.in_mem_buffer.is_empty() {
+            return self.state.last_log_index;
+        }
+        self.in_mem_buffer[self.in_mem_buffer.len() - 1].log_index
     }
 
     pub(crate) fn on_election_timeout(&mut self, term: u64) {

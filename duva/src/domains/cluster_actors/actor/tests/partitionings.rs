@@ -394,7 +394,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     cluster_actor.receive_batch(batch, &ack_to).await;
 
     // THEN - verify that the log index is incremented
-    assert_eq!(cluster_actor.log_state().last_log_index, current_index + 1);
+    assert_eq!(cluster_actor.log_state().last_log_index, current_index); // * buffer
     assert_expected_queryio(
         &repl_buf,
         QueryIO::AppendEntriesRPC(HeartBeat {

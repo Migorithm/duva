@@ -95,7 +95,7 @@ async fn test_vote_election_deny_vote_older_log() {
 
     follower_actor
         .replication
-        .write_many(vec![WriteOperation {
+        .persist_many(vec![WriteOperation {
             log_index: initial_term + 2,
             term: initial_term,
             entry: LogEntry::Set { key: "k".into(), value: "v".into(), expires_at: None },
@@ -187,7 +187,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
         replid: candidate_actor.log_state().replid.clone(),
         append_entries: vec![WriteOperation {
             entry: LogEntry::NoOp,
-            log_index: candidate_actor.log_state().last_log_index,
+            log_index: candidate_actor.replication.last_log_index(),
             term: candidate_actor.replication.last_log_term(),
             session_req: None,
         }],
