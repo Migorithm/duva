@@ -33,7 +33,7 @@ impl<T: TWriteAheadLog> Replication<T> {
             con_idx: Arc::new(state.last_log_index.into()),
             state,
             last_applied: 0,
-            in_mem_buffer: Vec::with_capacity(10),
+            in_mem_buffer: vec![],
         }
     }
 
@@ -85,9 +85,6 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
-        let prev_log_index = self.last_log_index();
-        let prev_log_term = self.last_log_term();
-
         HeartBeat {
             from: self.state.node_id.clone(),
             term: self.state.term,
@@ -95,8 +92,8 @@ impl<T: TWriteAheadLog> Replication<T> {
             replid: self.state.replid.clone(),
             hop_count,
             banlist: Vec::new(),
-            prev_log_index,
-            prev_log_term,
+            prev_log_index: self.last_log_index(),
+            prev_log_term: self.last_log_term(),
             ..Default::default()
         }
     }
@@ -149,8 +146,8 @@ impl<T: TWriteAheadLog> Replication<T> {
         RequestVote {
             term: self.state.term,
             candidate_id: self.state.node_id.clone(),
-            last_log_index: self.state.last_log_index,
-            last_log_term: self.last_log_term,
+            last_log_index: self.last_log_index(),
+            last_log_term: self.last_log_term(),
         }
     }
 
@@ -180,7 +177,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     ) -> u64 {
         let op = WriteOperation {
             entry,
-            log_index: self.state.last_log_index + 1,
+            log_index: self.last_log_index() + 1,
             term: current_term,
             session_req,
         };
@@ -188,7 +185,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.in_mem_buffer.push(op);
 
         // self.persist_many(vec![op])?;
-        self.state.last_log_index + 1
+        self.last_log_index()
     }
 
     pub(crate) fn flush(&mut self) -> anyhow::Result<u64> {
@@ -206,7 +203,7 @@ impl<T: TWriteAheadLog> Replication<T> {
 
         self.update_metadata(&entries);
         self.target.write_many(entries)?;
-        Ok(self.state.last_log_index)
+        Ok(self.last_log_index())
     }
 
     pub(crate) fn read_at(&mut self, at: u64) -> Option<WriteOperation> {
@@ -237,7 +234,8 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.state.last_log_index = 0;
         self.last_log_term = 0;
         self.target.truncate_after(0);
-        self.set_replid(ReplicationId::Undecided)
+        self.set_replid(ReplicationId::Undecided);
+        self.in_mem_buffer.clear();
     }
 
     pub(crate) fn list_append_log_entries(
@@ -355,6 +353,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.state = state;
     }
 
+    #[inline]
     pub(crate) fn last_log_term(&self) -> u64 {
         if self.in_mem_buffer.is_empty() {
             return self.last_log_term;
@@ -362,6 +361,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.in_mem_buffer[self.in_mem_buffer.len() - 1].term
     }
 
+    #[inline]
     pub(crate) fn last_log_index(&self) -> u64 {
         if self.in_mem_buffer.is_empty() {
             return self.state.last_log_index;
