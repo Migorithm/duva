@@ -3,31 +3,30 @@ sequenceDiagram
     participant L as Leader
     participant F1 as Follower1
     participant F2 as Follower2
-    
-    F1 --> L :Connect
-    F2 --> L : Join(Connect)
-    C --> L : Connection request
-    L -->> L : Crash!
-    
-    par 
-    F1 -->> F1 : Election Timeout! - Election begins..
-        and 
-    F2 -->> F2 : Election Timeout - Election begins..
-        and
+    F1 --> L: Connect
+    F2 --> L: Join(Connect)
+    C --> L: Connection request
+    L -->> L: Crash!
 
-    C -x L : Send message    
-
-    note over C,F2 : Client would randomly pick a node from the replica set
-    C --> F1 : Tell me election is done
+    par
+        F1 -->> F1: Election Timeout! - Election begins..
+    and
+        F2 -->> F2: Election Timeout - Election begins..
+    and
+        C -x L: Send message
+        note over C, F2: Client would randomly pick a node from the replica set
+        C --> F1: Tell me election is done
     end
 
-    F2 -->> F2 : Elected!
-    F1 -->> C : Notify of replication information
-    C ->> F2 : Connect 
-    C --> F2 : Keep connection 
+    F2 -->> F2: Elected!
+    F1 -->> C: Notify of replication information
+    C ->> F2: Connect
+    C --> F2: Keep connection
 
-
-    
-
-    
-    
+# Todo: Write/Send side discovery encapsulation of discovery logic
+# discovery spawning? or not
+# Inflight requests? in the client perspective, should get multiple requests
+# Broker can have multiple clients
+# one for uninit, and the other is for indexies
+# Free List - slab technich
+# multiple requests from multiple clients
