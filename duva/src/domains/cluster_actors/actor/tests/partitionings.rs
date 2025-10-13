@@ -384,7 +384,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
     // add replica
-    let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
+    let (_repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
 
     let entries = vec![CacheEntry::new("success_key3", "value2")];
 
