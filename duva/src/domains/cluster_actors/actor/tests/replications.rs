@@ -455,25 +455,6 @@ async fn req_consensus_inserts_consensus_voting() {
         leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
         session_request
     );
-    // check on follower_buffs
-    for follower in follower_buffs {
-        assert_expected_queryio(
-            &follower,
-            QueryIO::AppendEntriesRPC(HeartBeat {
-                from: leader_c_actor.replication.self_identifier(),
-                replid: leader_c_actor.log_state().replid.clone(),
-                append_entries: vec![WriteOperation {
-                    entry: w_req.clone(),
-                    log_index: 1,
-                    term: 0,
-                    session_req: Some(session_request.clone()),
-                }],
-                leader_commit_idx: Some(0),
-                ..Default::default()
-            }),
-        )
-        .await;
-    }
 }
 
 #[tokio::test]

@@ -395,22 +395,6 @@ async fn test_receive_batch_when_consensus_is_required() {
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.log_state().last_log_index, current_index + 1);
-    assert_expected_queryio(
-        &repl_buf,
-        QueryIO::AppendEntriesRPC(HeartBeat {
-            from: cluster_actor.replication.self_identifier(),
-            replid: cluster_actor.log_state().replid.clone(),
-            append_entries: vec![WriteOperation {
-                entry: LogEntry::MSet { entries: entries.clone() },
-                log_index: 1,
-                term: 0,
-                session_req: None,
-            }],
-            leader_commit_idx: Some(0),
-            ..Default::default()
-        }),
-    )
-    .await;
 }
 
 #[tokio::test]

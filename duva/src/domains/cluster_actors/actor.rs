@@ -390,14 +390,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     sender.send(SchedulerMessage::SendAppendEntriesRPC).await
                 }
             });
-            return;
         };
-
-        self.send_rpc().await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn send_rpc(&mut self) {
+        let _ = self.replication.flush();
         if !self.replication.is_leader() {
             return;
         }
@@ -1325,7 +1323,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             callback,
             session_req: None,
         };
-        self.req_consensus_with_flush(req).await;
+        self.make_consensus_in_batch(req).await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
@@ -1345,9 +1343,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
-    async fn req_consensus_with_flush(&mut self, req: ConsensusRequest) {
+    async fn make_consensus_in_batch(&mut self, req: ConsensusRequest) {
         self.req_consensus(req, None).await;
         let _ = self.replication.flush();
+        self.send_rpc().await;
     }
 
     pub(crate) async fn handle_migration_ack(&mut self, batch_id: BatchId) {
@@ -1368,7 +1367,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             callback,
             session_req: None,
         };
-        self.req_consensus_with_flush(req).await;
+        self.make_consensus_in_batch(req).await;
 
         // ! background synchronization is required.
         tokio::spawn({
