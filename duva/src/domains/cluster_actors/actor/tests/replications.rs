@@ -18,7 +18,7 @@ fn logger_create_entries_from_lowest() {
     ];
 
     let mut repl_state = Replication::new(8080, MemoryOpLogs::default(), state);
-    repl_state.write_many(test_logs.clone()).unwrap();
+    repl_state.persist_many(test_logs.clone()).unwrap();
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
@@ -26,7 +26,7 @@ fn logger_create_entries_from_lowest() {
     repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
     let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    repl_state.write_single_entry(log, repl_state.clone_state().term, None).unwrap();
+    repl_state.write_single_entry(log, repl_state.clone_state().term, None);
 
     let logs = repl_state.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
@@ -34,7 +34,7 @@ fn logger_create_entries_from_lowest() {
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 3);
     assert_eq!(logs[1].log_index, 4);
-    assert_eq!(repl_state.clone_state().last_log_index, 4);
+    assert_eq!(repl_state.clone_state().last_log_index, 3); // * Buffering - still not persisted yet
 }
 
 #[tokio::test]
@@ -60,7 +60,7 @@ async fn test_generate_follower_entries() {
     ];
 
     cluster_actor.replication.increase_con_idx_by(3);
-    cluster_actor.replication.write_many(test_logs).unwrap();
+    cluster_actor.replication.persist_many(test_logs).unwrap();
 
     //WHEN
     // *add lagged followers with its commit index being 1
@@ -69,14 +69,11 @@ async fn test_generate_follower_entries() {
 
     // * add new log - this must create entries that are greater than 3
 
-    cluster_actor
-        .replication
-        .write_single_entry(
-            LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-            cluster_actor.log_state().term,
-            None,
-        )
-        .unwrap();
+    cluster_actor.replication.write_single_entry(
+        LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
+        cluster_actor.log_state().term,
+        None,
+    );
 
     let entries = cluster_actor.iter_follower_append_entries().collect::<Vec<_>>();
 
@@ -452,31 +449,12 @@ async fn req_consensus_inserts_consensus_voting() {
 
     // THEN
     assert_eq!(leader_c_actor.consensus_tracker.len(), 1);
-    assert_eq!(leader_c_actor.log_state().last_log_index, 1);
+    assert_eq!(leader_c_actor.log_state().last_log_index, 0); // * buffer
 
     assert_eq!(
         leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
         session_request
     );
-    // check on follower_buffs
-    for follower in follower_buffs {
-        assert_expected_queryio(
-            &follower,
-            QueryIO::AppendEntriesRPC(HeartBeat {
-                from: leader_c_actor.replication.self_identifier(),
-                replid: leader_c_actor.log_state().replid.clone(),
-                append_entries: vec![WriteOperation {
-                    entry: w_req.clone(),
-                    log_index: 1,
-                    term: 0,
-                    session_req: Some(session_request.clone()),
-                }],
-                leader_commit_idx: Some(0),
-                ..Default::default()
-            }),
-        )
-        .await;
-    }
 }
 
 #[tokio::test]
@@ -593,7 +571,7 @@ async fn test_same_voter_can_vote_only_once() {
 
     // THEN - no change in consensus tracker even though the same voter voted multiple times
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-    assert_eq!(cluster_actor.log_state().last_log_index, 1);
+    assert_eq!(cluster_actor.log_state().last_log_index, 0);
 }
 #[tokio::test]
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {

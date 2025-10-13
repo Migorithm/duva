@@ -363,29 +363,24 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest, send_in_mills: Option<u64>) {
-        if let Err(err) = self.replication.write_single_entry(
+        let log_index = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
             req.session_req.clone(),
-        ) {
-            req.callback.send(ConsensusClientResponse::Err(err.to_string()));
-            return;
-        };
-        let last_log_index = self.log_state().last_log_index;
+        );
 
         let repl_cnt = self.replicas().count();
         // * If there are no replicas, we can send the response immediately
         if repl_cnt == 0 {
-            let entry = self.replication.read_at(last_log_index).unwrap();
+            let entry = self.replication.read_at(log_index).unwrap();
             self.replication.increase_con_idx_by(1);
-            let res = self.commit_entry(entry.entry, last_log_index).await;
+            let _ = self.replication.flush();
+            let res = self.commit_entry(entry.entry, log_index).await;
             req.callback.send(ConsensusClientResponse::Result(res));
             return;
         }
-        self.consensus_tracker.insert(
-            last_log_index,
-            LogConsensusVoting::new(req.callback, repl_cnt, req.session_req),
-        );
+        self.consensus_tracker
+            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.session_req));
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
@@ -395,14 +390,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     sender.send(SchedulerMessage::SendAppendEntriesRPC).await
                 }
             });
-            return;
         };
-
-        self.send_rpc().await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn send_rpc(&mut self) {
+        let _ = self.replication.flush();
         if !self.replication.is_leader() {
             return;
         }
@@ -477,7 +470,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.track_replication_progress(from).await;
+        self.advance_consensus_on_ack(from).await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
@@ -919,7 +912,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    async fn track_replication_progress(&mut self, voter: &PeerIdentifier) {
+    async fn advance_consensus_on_ack(&mut self, voter: &PeerIdentifier) {
         let Some(peer) = self.find_replica_mut(voter) else {
             return;
         };
@@ -940,9 +933,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.replication.increase_con_idx_by(1);
         self.client_sessions.set_response(voting.session_req.take());
-
         let log_entry = self.replication.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
+        let _ = self.replication.flush();
 
         voting.callback.send(ConsensusClientResponse::Result(res));
     }
@@ -1100,12 +1093,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.log_state().replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ = self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
+        let last_index =
+            self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
+        let _ = self.replication.flush();
 
         // * force reconciliation
-        let logs_to_reconcile = self
-            .replication
-            .range(self.replication.last_applied(), self.log_state().last_log_index);
+        let logs_to_reconcile = self.replication.range(self.replication.last_applied(), last_index);
 
         self.replication.increase_con_idx_by(logs_to_reconcile.len() as u64);
         for op in logs_to_reconcile {
@@ -1325,16 +1318,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (callback, rx) = Callback::create();
-
-        self.req_consensus(
-            ConsensusRequest {
-                entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
-                callback,
-                session_req: None,
-            },
-            None,
-        )
-        .await;
+        let req = ConsensusRequest {
+            entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
+            callback,
+            session_req: None,
+        };
+        self.make_consensus_in_batch(req).await;
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
@@ -1354,6 +1343,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
+    async fn make_consensus_in_batch(&mut self, req: ConsensusRequest) {
+        self.req_consensus(req, None).await;
+        let _ = self.replication.flush();
+        self.send_rpc().await;
+    }
+
     pub(crate) async fn handle_migration_ack(&mut self, batch_id: BatchId) {
         let Some(pending) = self.pending_reqs.as_mut() else {
             warn!("No Pending migration map available");
@@ -1367,12 +1362,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // make consensus request for delete
         let (callback, rx) = Callback::create();
-        let w_req = ConsensusRequest {
+        let req = ConsensusRequest {
             entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
             session_req: None,
         };
-        self.req_consensus(w_req, None).await;
+        self.make_consensus_in_batch(req).await;
+
         // ! background synchronization is required.
         tokio::spawn({
             let handler = self.self_handler.clone();
