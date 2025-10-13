@@ -547,7 +547,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-    assert_eq!(cluster_actor.log_state().last_log_index, 0); // * buffer
+    assert_eq!(cluster_actor.log_state().last_log_index, 1);
 
     client_wait.recv().await;
     assert!(cluster_actor.client_sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed

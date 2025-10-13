@@ -472,7 +472,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.track_replication_progress(from).await;
+        self.advance_consensus_on_ack(from).await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
@@ -914,7 +914,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    async fn track_replication_progress(&mut self, voter: &PeerIdentifier) {
+    async fn advance_consensus_on_ack(&mut self, voter: &PeerIdentifier) {
         let Some(peer) = self.find_replica_mut(voter) else {
             return;
         };
@@ -935,9 +935,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.replication.increase_con_idx_by(1);
         self.client_sessions.set_response(voting.session_req.take());
-
         let log_entry = self.replication.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
+        let _ = self.replication.flush();
 
         voting.callback.send(ConsensusClientResponse::Result(res));
     }
@@ -1097,6 +1097,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
         let last_index =
             self.replication.write_single_entry(LogEntry::NoOp, self.log_state().term, None);
+        let _ = self.replication.flush();
 
         // * force reconciliation
         let logs_to_reconcile = self.replication.range(self.replication.last_applied(), last_index);
@@ -1329,6 +1330,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             None,
         )
         .await;
+        let _ = self.replication.flush();
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
@@ -1367,6 +1369,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             session_req: None,
         };
         self.req_consensus(w_req, None).await;
+        let _ = self.replication.flush();
         // ! background synchronization is required.
         tokio::spawn({
             let handler = self.self_handler.clone();
