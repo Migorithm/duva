@@ -10,7 +10,8 @@ use crate::domains::{
     interface::{TRead, TWrite},
 };
 use crate::make_smart_pointer;
-use crate::prelude::ConnectionRequest;
+use crate::prelude::{ConnectionRequest, ConnectionResponses};
+use crate::prelude::{ConnectionRequests, ConnectionResponse};
 use crate::presentation::clients::request::ClientAction;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -124,31 +125,25 @@ impl ClientStreamWriter {
 
         // if the request is not new authentication but the client is already authenticated
         if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
-            self.serialized_write(ConnectionResponse::default()).await?;
+            self.serialized_write(
+                ConnectionResponses::Authenticated(ConnectionResponse::default()),
+            )
+            .await?;
             // ! The following will be removed once we allow for follower read.
             return Err(anyhow::anyhow!("Follower node cannot authenticate"));
         }
 
         let (client_id, request_id) = auth_req.deconstruct()?;
 
-        self.serialized_write(ConnectionResponse {
+        self.serialized_write(ConnectionResponses::Authenticated(ConnectionResponse {
             client_id: client_id.to_string(),
             request_id,
             topology: cluster_manager.route_get_topology().await?,
             is_leader_node: replication_state.role == ReplicationRole::Leader,
             replication_id: replication_state.replid.clone(),
-        })
+        }))
         .await?;
 
         Ok(client_id)
     }
-}
-
-#[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
-pub struct ConnectionResponse {
-    pub client_id: String,
-    pub request_id: u64,
-    pub topology: Topology,
-    pub is_leader_node: bool,
-    pub replication_id: ReplicationId,
 }

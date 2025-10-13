@@ -13,12 +13,15 @@ use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{ConnectionRequest, ConnectionResponse};
+use duva::prelude::{
+    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+};
 use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use futures::future::try_join_all;
 
+use duva::prelude::anyhow::anyhow;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
 use tracing::error;
@@ -113,8 +116,14 @@ impl Broker {
     ) -> Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
-        stream.serialized_write(auth_request.unwrap_or_default()).await?; // client_id not exist
-        let auth_response: ConnectionResponse = stream.deserialized_read().await?;
+        let request = auth_request.unwrap_or_default();
+        let connection_req = ConnectionRequests::Authenticate(request);
+        stream.serialized_write(connection_req).await?; // client_id not exist
+        let connection_res: ConnectionResponses = stream.deserialized_read().await?;
+        let auth_response = match connection_res {
+            ConnectionResponses::Authenticated(response) => response,
+            _ => return Err(IoError::Custom("Authentication failed".into())),
+        };
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
@@ -142,7 +151,18 @@ impl Broker {
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in remaining_replicas {
-            let _ = self.add_node_connection(follower).await;
+            let discovery_req = ConnectionRequests::Discovery;
+            let mut stream =
+                TcpStream::connect(follower.as_str()).await.map_err(|_| IoError::NotConnected)?;
+            stream.serialized_write(discovery_req).await?; // client_id not exist
+            let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await?
+            else {
+                continue;
+            };
+            let Ok(_) = self.add_node_connection(leader_id.clone()).await else {
+                continue;
+            };
+            break;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,

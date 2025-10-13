@@ -1,4 +1,5 @@
 use crate::domains::{IoError, cluster_actors::topology::Topology, replications::ReplicationId};
+use crate::prelude::PeerIdentifier;
 use uuid::Uuid;
 
 // TODO make the following enum and make it explicit about why it wants to connect
@@ -16,6 +17,16 @@ impl ConnectionRequest {
         )?;
         Ok((client_id.to_string(), self.request_id))
     }
+}
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
+pub enum ConnectionRequests {
+    Discovery,
+    Authenticate(ConnectionRequest),
+}
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+pub enum ConnectionResponses {
+    Discovery { leader_id: PeerIdentifier },
+    Authenticated(ConnectionResponse),
 }
 
 #[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
