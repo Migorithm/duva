@@ -9,6 +9,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::actor::heartbeat_scheduler::SchedulerTimeOutCommand;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -384,11 +385,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
-                let sender = self.self_handler.clone();
-
+                let sender = self.heartbeat_scheduler.get_handler();
                 async move {
                     tokio::time::sleep(Duration::from_millis(send_in_mills)).await;
-                    sender.send(SchedulerMessage::SendAppendEntriesRPC).await
+                    sender.send(SchedulerTimeOutCommand::ResetTimer).await
                 }
             });
         };
@@ -419,7 +419,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
-        self.heartbeat_scheduler.reset_election_timeout();
+        self.heartbeat_scheduler.reset_timeout();
 
         let current_term = self.log_state().term;
         let mut grant_vote = false;
@@ -1025,7 +1025,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     fn reset_election_timeout(&mut self, term: u64) {
-        self.heartbeat_scheduler.reset_election_timeout();
+        self.heartbeat_scheduler.reset_timeout();
         self.replication.on_election_timeout(term);
     }
 

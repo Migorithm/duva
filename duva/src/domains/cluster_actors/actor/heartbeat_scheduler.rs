@@ -51,7 +51,7 @@ impl HeartBeatScheduler {
     pub(crate) fn send_append_entries_rpc(
         heartbeat_interval: u64,
         cluster_handler: ClusterActorSender,
-    ) -> Sender<TimeOutCommand> {
+    ) -> Sender<SchedulerTimeOutCommand> {
         let (callback, mut rx) = tokio::sync::mpsc::channel(10);
 
         let mut itv = interval(Duration::from_millis(heartbeat_interval));
@@ -62,8 +62,8 @@ impl HeartBeatScheduler {
                 biased;
                 Some(msg)= rx.recv() => {
                     match msg{
-                        TimeOutCommand::Stop => break,
-                        TimeOutCommand::ResetTimer => {
+                        SchedulerTimeOutCommand::Stop => break,
+                        SchedulerTimeOutCommand::ResetTimer => {
                             let _ = cluster_handler.send(SchedulerMessage::SendAppendEntriesRPC).await;
                         },
                     }
@@ -81,8 +81,8 @@ impl HeartBeatScheduler {
 
     pub(crate) fn start_election_timer(
         cluster_handler: ClusterActorSender,
-    ) -> tokio::sync::mpsc::Sender<TimeOutCommand> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<TimeOutCommand>(5);
+    ) -> tokio::sync::mpsc::Sender<SchedulerTimeOutCommand> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SchedulerTimeOutCommand>(5);
 
         tokio::spawn(async move {
             loop {
@@ -93,8 +93,8 @@ impl HeartBeatScheduler {
                             return
                         };
                         match msg {
-                            TimeOutCommand::Stop => return,
-                            TimeOutCommand::ResetTimer => {},
+                            SchedulerTimeOutCommand::Stop => return,
+                            SchedulerTimeOutCommand::ResetTimer => {},
                         }
                     },
 
@@ -110,16 +110,16 @@ impl HeartBeatScheduler {
         tx
     }
 
-    pub(crate) fn reset_election_timeout(&self) {
-        if let Some(SchedulerMode::Follower(tx)) = &self.controller {
-            let _ = tx.try_send(TimeOutCommand::ResetTimer);
+    pub(crate) fn reset_timeout(&self) {
+        if let Some(SchedulerMode::Leader(tx) | SchedulerMode::Follower(tx)) = &self.controller {
+            let _ = tx.try_send(SchedulerTimeOutCommand::ResetTimer);
         }
     }
 
     pub(crate) async fn turn_leader_mode(&mut self) {
         let controller = match self.controller.take() {
             Some(SchedulerMode::Follower(sender)) => {
-                let _ = sender.send(TimeOutCommand::Stop).await;
+                let _ = sender.send(SchedulerTimeOutCommand::Stop).await;
                 Some(SchedulerMode::Leader(Self::send_append_entries_rpc(
                     HEARTBEAT_INTERVAL,
                     self.cluster_handler.clone(),
@@ -134,7 +134,7 @@ impl HeartBeatScheduler {
     pub(crate) async fn turn_follower_mode(&mut self) {
         let controller = match self.controller.take() {
             Some(SchedulerMode::Leader(sender)) => {
-                let _ = sender.send(TimeOutCommand::Stop).await;
+                let _ = sender.send(SchedulerTimeOutCommand::Stop).await;
                 Some(SchedulerMode::Follower(Self::start_election_timer(
                     self.cluster_handler.clone(),
                 )))
@@ -144,17 +144,24 @@ impl HeartBeatScheduler {
         };
         self.controller = controller;
     }
+
+    pub(crate) fn get_handler(&self) -> Sender<SchedulerTimeOutCommand> {
+        match self.controller.as_ref().unwrap() {
+            SchedulerMode::Leader(sender) => sender.clone(),
+            SchedulerMode::Follower(sender) => sender.clone(),
+        }
+    }
 }
 
-pub enum TimeOutCommand {
+pub enum SchedulerTimeOutCommand {
     Stop,
     ResetTimer,
 }
 
 #[derive(Debug)]
 enum SchedulerMode {
-    Leader(tokio::sync::mpsc::Sender<TimeOutCommand>),
-    Follower(tokio::sync::mpsc::Sender<TimeOutCommand>),
+    Leader(tokio::sync::mpsc::Sender<SchedulerTimeOutCommand>),
+    Follower(tokio::sync::mpsc::Sender<SchedulerTimeOutCommand>),
 }
 
 #[cfg(test)]
@@ -247,7 +254,7 @@ mod tests {
         .expect("Timeout waiting for leader heartbeats");
 
         // Stop the heartbeat
-        let _ = stop_signal.send(TimeOutCommand::Stop).await;
+        let _ = stop_signal.send(SchedulerTimeOutCommand::Stop).await;
 
         assert!(received >= 2, "Should receive at least 2 leader heartbeats");
     }
@@ -259,7 +266,7 @@ mod tests {
 
         // Test stopping the election timeout
         let stop_result = timeout(Duration::from_millis(100), async {
-            controller.send(TimeOutCommand::Stop).await
+            controller.send(SchedulerTimeOutCommand::Stop).await
         })
         .await
         .expect("Timeout waiting for stop");
@@ -292,7 +299,7 @@ mod tests {
 
         // Test sending UpdateLeaderHeartBeat command
         let ping_result = timeout(Duration::from_millis(100), async {
-            controller.send(TimeOutCommand::ResetTimer).await
+            controller.send(SchedulerTimeOutCommand::ResetTimer).await
         })
         .await
         .expect("Timeout waiting for update");
