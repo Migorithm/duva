@@ -385,6 +385,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
                 let sender = self.self_handler.clone();
+
                 async move {
                     tokio::time::sleep(Duration::from_millis(send_in_mills)).await;
                     sender.send(SchedulerMessage::SendAppendEntriesRPC).await
@@ -1080,7 +1081,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
         self.replication.reset_election_votes();
-        self.heartbeat_scheduler.turn_follower_mode();
+        self.heartbeat_scheduler.turn_follower_mode().await;
 
         self.unblock_pending_requests();
     }
@@ -1332,7 +1333,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let send_to = from.clone();
             async move {
                 rx.recv().await;
-                let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
+                let _ = cache_manager.route_mset(migrate_batch.entries).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
                         batch_id: migrate_batch.batch_id,
