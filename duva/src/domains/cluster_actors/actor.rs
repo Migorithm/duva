@@ -9,6 +9,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::actor::heartbeat_scheduler::SchedulerTimeOutCommand;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -384,10 +385,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
-                let sender = self.self_handler.clone();
+                let sender = self.heartbeat_scheduler.get_handler();
                 async move {
                     tokio::time::sleep(Duration::from_millis(send_in_mills)).await;
-                    sender.send(SchedulerMessage::SendAppendEntriesRPC).await
+                    sender.send(SchedulerTimeOutCommand::ResetTimer).await
                 }
             });
         };
@@ -418,7 +419,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
-        self.heartbeat_scheduler.reset_election_timeout();
+        self.heartbeat_scheduler.reset_timeout();
 
         let current_term = self.log_state().term;
         let mut grant_vote = false;
@@ -1024,7 +1025,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     fn reset_election_timeout(&mut self, term: u64) {
-        self.heartbeat_scheduler.reset_election_timeout();
+        self.heartbeat_scheduler.reset_timeout();
         self.replication.on_election_timeout(term);
     }
 
@@ -1080,7 +1081,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// 2) step down operation is given from user
     async fn step_down(&mut self) {
         self.replication.reset_election_votes();
-        self.heartbeat_scheduler.turn_follower_mode();
+        self.heartbeat_scheduler.turn_follower_mode().await;
 
         self.unblock_pending_requests();
     }
@@ -1332,7 +1333,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let send_to = from.clone();
             async move {
                 rx.recv().await;
-                let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
+                let _ = cache_manager.route_mset(migrate_batch.entries).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
                         batch_id: migrate_batch.batch_id,

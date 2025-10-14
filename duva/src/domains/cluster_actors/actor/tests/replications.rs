@@ -3,7 +3,6 @@ use super::*;
 #[test]
 fn logger_create_entries_from_lowest() {
     // GIVEN
-
     let state = ReplicationState {
         node_id: PeerIdentifier::new("localhost", 8080),
         replid: ReplicationId::Key("master".into()),
