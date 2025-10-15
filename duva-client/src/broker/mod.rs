@@ -151,25 +151,25 @@ impl Broker {
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in remaining_replicas {
-            let discovery_req = ConnectionRequests::Discovery;
-            let mut stream =
-                TcpStream::connect(follower.as_str()).await.map_err(|_| IoError::NotConnected)?;
-            stream.serialized_write(discovery_req).await?; // client_id not exist
-            let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await?
-            else {
-                continue;
-            };
-            if self.add_node_connection(leader_id.clone()).await.is_err() {
-                continue;
-            };
-            return Ok(());
+            if self.discover_leader_from(follower).await.is_ok() {
+                return Ok(());
+            }
         }
-
         // ! ISSUE: if no leader is found, then what?
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
         // ! system gives random result.
         std::process::abort();
+    }
+
+    async fn discover_leader_from(&mut self, follower: PeerIdentifier) -> anyhow::Result<()> {
+        let mut stream =
+            TcpStream::connect(follower.as_str()).await.map_err(|_| IoError::NotConnected)?;
+        stream.serialized_write(ConnectionRequests::Discovery).await?;
+        let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await? else {
+            return Err(anyhow!("Discovery failed"));
+        };
+        self.add_node_connection(leader_id.clone()).await
     }
 
     async fn add_leader_conns_if_not_found(&mut self) {
