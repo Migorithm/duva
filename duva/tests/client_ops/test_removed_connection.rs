@@ -1,4 +1,5 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
+use duva::prelude::ELECTION_TIMEOUT_MAX;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -14,17 +15,21 @@ fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()
     // WHEN
     drop(process2);
 
-    sleep(Duration::from_millis(200));
+    // Wait for broker to detect error, sleep through ELECTION_TIMEOUT_MAX, and attempt discovery
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX + 1000));
 
     // THEN
-    let mut results = Vec::new();
-    for i in 1..100 {
-        // Try to send a command to the removed node
-        let response = client1.send_and_get(format!("SET {i} {i}"));
-        results.push(response);
+    match client1.child.try_wait() {
+        Ok(Some(status)) => {
+            println!("Process exited with status: {}", status);
+        },
+        Ok(None) => {
+            panic!("Process is still running");
+        },
+        Err(err) => {
+            println!("Error attempting to wait: {}", err);
+        },
     }
-
-    assert!(results.iter().any(|x| x.contains(&"(error) Failed to route command".to_string())));
     Ok(())
 }
 

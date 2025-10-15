@@ -159,15 +159,17 @@ impl Broker {
             else {
                 continue;
             };
-            let Ok(_) = self.add_node_connection(leader_id.clone()).await else {
+            if self.add_node_connection(leader_id.clone()).await.is_err() {
                 continue;
             };
-            break;
+            return Ok(());
         }
+
+        // ! ISSUE: if no leader is found, then what?
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
         // ! system gives random result.
-        Ok(())
+        std::process::abort();
     }
 
     async fn add_leader_conns_if_not_found(&mut self) {

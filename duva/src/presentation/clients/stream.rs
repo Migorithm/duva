@@ -10,8 +10,10 @@ use crate::domains::{
     interface::{TRead, TWrite},
 };
 use crate::make_smart_pointer;
-use crate::prelude::{ConnectionRequest, ConnectionResponses};
-use crate::prelude::{ConnectionRequests, ConnectionResponse};
+use crate::prelude::ConnectionRequest;
+use crate::prelude::ConnectionRequests;
+use crate::prelude::ConnectionResponse;
+use crate::prelude::ConnectionResponses;
 use crate::presentation::clients::request::ClientAction;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
