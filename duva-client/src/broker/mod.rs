@@ -13,12 +13,15 @@ use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{ConnectionRequest, ConnectionResponse};
-use duva::prelude::{ELECTION_TIMEOUT_MAX, Topology, anyhow};
+use duva::prelude::{
+    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+};
 use duva::prelude::{PeerIdentifier, tokio};
+use duva::prelude::{Topology, anyhow};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use futures::future::try_join_all;
 
+use duva::prelude::anyhow::anyhow;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
 use tracing::error;
@@ -81,10 +84,6 @@ impl Broker {
                 BrokerMessage::FromServerError(repl_id, e) => {
                     error!("Replication {repl_id} returns error {e}!");
                     if e.should_break() {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(
-                            ELECTION_TIMEOUT_MAX,
-                        ))
-                        .await;
                         let removed_peer_id =
                             self.node_connections.remove_connection(&repl_id).await.unwrap();
                         self.discover_new_repl_leader(repl_id, removed_peer_id).await.unwrap();
@@ -113,8 +112,14 @@ impl Broker {
     ) -> Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
-        stream.serialized_write(auth_request.unwrap_or_default()).await?; // client_id not exist
-        let auth_response: ConnectionResponse = stream.deserialized_read().await?;
+        let request = auth_request.unwrap_or_default();
+        let connection_req = ConnectionRequests::Authenticate(request);
+        stream.serialized_write(connection_req).await?; // client_id not exist
+        let connection_res: ConnectionResponses = stream.deserialized_read().await?;
+        let auth_response = match connection_res {
+            ConnectionResponses::Authenticated(response) => response,
+            _ => return Err(IoError::Custom("Authentication failed".into())),
+        };
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
@@ -142,12 +147,25 @@ impl Broker {
 
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in remaining_replicas {
-            let _ = self.add_node_connection(follower).await;
+            if self.discover_leader_from(follower).await.is_ok() {
+                return Ok(());
+            }
         }
+        // ! ISSUE: if no leader is found, then what?
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
         // ! system gives random result.
-        Ok(())
+        std::process::abort();
+    }
+
+    async fn discover_leader_from(&mut self, follower: PeerIdentifier) -> anyhow::Result<()> {
+        let mut stream =
+            TcpStream::connect(follower.as_str()).await.map_err(|_| IoError::NotConnected)?;
+        stream.serialized_write(ConnectionRequests::Discovery).await?;
+        let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await? else {
+            return Err(anyhow!("Discovery failed"));
+        };
+        self.add_node_connection(leader_id.clone()).await
     }
 
     async fn add_leader_conns_if_not_found(&mut self) {

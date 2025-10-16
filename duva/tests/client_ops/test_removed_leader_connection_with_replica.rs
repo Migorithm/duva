@@ -5,7 +5,7 @@ use duva::prelude::ELECTION_TIMEOUT_MAX;
 use std::thread::sleep;
 use std::time::Duration;
 
-fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
+fn run_removed_leader_connection_with_replica(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
     let mut follower1_env = ServerEnv::default().with_append_only(with_append_only);
@@ -22,13 +22,13 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
         h.send_and_get(format!("SET {i} {i}"));
     }
     // wait until all keys are replicated
-    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX));
+    sleep(Duration::from_millis(200));
 
     // WHEN
     drop(leader_p);
 
     // wait for the election to complete
-    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX * 2));
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX));
 
     // THEN
     let res = h.send_and_get_vec("KEYS *", num_of_keys);
@@ -39,7 +39,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_discover_leader() -> anyhow::Result<()> {
-    run_discover_leader(true)?;
+fn test_removed_leader_connection_with_replica() -> anyhow::Result<()> {
+    run_removed_leader_connection_with_replica(true)?;
     Ok(())
 }

@@ -784,6 +784,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
+    pub(crate) fn get_leader_id(&self) -> Option<PeerIdentifier> {
+        if self.replication.is_leader() {
+            return Some(self.replication.self_identifier());
+        }
+        self.members
+            .iter()
+            .filter(|(_, peer)| *peer.replid() == self.log_state().replid)
+            .find(|(_, peer)| peer.role() == ReplicationRole::Leader)
+            .map(|(peer_id, _)| peer_id.clone())
+    }
+
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         self.cluster_join_sync.known_peers.remove(peer_addr);
         if let Some(peer) = self.members.remove(peer_addr) {
