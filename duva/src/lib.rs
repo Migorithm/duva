@@ -201,7 +201,7 @@ impl StartUpFacade {
         }
     }
 
-    // #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn start_accepting_client_streams(self) {
         let listener = TcpListener::bind(ENV.bind_addr()).await.unwrap();
         info!("start listening on {}", ENV.bind_addr());
