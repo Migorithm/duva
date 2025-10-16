@@ -1,9 +1,8 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
-use duva::prelude::ELECTION_TIMEOUT_MAX;
 use std::thread::sleep;
 use std::time::Duration;
 
-fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()> {
+fn run_removed_leader_without_replica(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
     let process1 = spawn_server_process(&env1)?;
     let process2 = spawn_server_process(&env2)?;
@@ -16,7 +15,7 @@ fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()
     drop(process2);
 
     // Wait for broker to detect error, sleep through ELECTION_TIMEOUT_MAX, and attempt discovery
-    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX + 1000));
+    sleep(Duration::from_millis(100));
 
     // THEN
     match client1.child.try_wait() {
@@ -34,11 +33,11 @@ fn run_removed_connection(env1: ServerEnv, env2: ServerEnv) -> anyhow::Result<()
 }
 
 #[test]
-fn test_removed_connection() -> anyhow::Result<()> {
+fn test_removed_leader_connection_without_replica() -> anyhow::Result<()> {
     for (node_1, node_2) in
         [(ServerEnv::default().with_append_only(true), ServerEnv::default().with_append_only(true))]
     {
-        run_removed_connection(node_1, node_2)?;
+        run_removed_leader_without_replica(node_1, node_2)?;
     }
     Ok(())
 }

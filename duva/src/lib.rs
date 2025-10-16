@@ -14,9 +14,9 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 
-use crate::prelude::ConnectionRequests;
 use crate::prelude::PeerIdentifier;
 use crate::prelude::{ConnectionRequest, ConnectionResponses};
+use crate::prelude::{ConnectionRequests, ELECTION_TIMEOUT_MAX};
 use crate::presentation::clients::stream::ClientStreamReader;
 use crate::presentation::clients::stream::ClientStreamWriter;
 pub use config::ENV;
@@ -210,10 +210,11 @@ impl StartUpFacade {
 
             let mut writer = ClientStreamWriter(write_half);
             let request: ConnectionRequests = read_half.deserialized_read().await?;
-            self.cluster_actor_sender.wait_for_acceptance().await;
 
             match request {
                 ConnectionRequests::Discovery => {
+                    tokio::time::sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX)).await;
+                    self.cluster_actor_sender.wait_for_acceptance().await;
                     // This point, leader_id should be known
                     let leader_id = self.cluster_actor_sender.route_get_leader_id().await?.unwrap();
                     writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await?;
