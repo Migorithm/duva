@@ -7,17 +7,17 @@ use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::replications::ReplicationRole;
 use duva::domains::replications::{LogEntry, ReplicationId};
-use duva::domains::{query_io::QueryIO, IoError};
+use duva::domains::{IoError, query_io::QueryIO};
 use duva::domains::{TSerdeRead, TSerdeWrite};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{anyhow, Topology, ELECTION_TIMEOUT_MAX};
-use duva::prelude::{tokio, PeerIdentifier};
 use duva::prelude::{
     ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
 };
+use duva::prelude::{PeerIdentifier, tokio};
+use duva::prelude::{Topology, anyhow};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use futures::future::try_join_all;
 
@@ -148,7 +148,7 @@ impl Broker {
         // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in remaining_replicas {
             if self.discover_leader_from(follower).await.is_ok() {
-                    return Ok(());
+                return Ok(());
             }
         }
         // ! ISSUE: if no leader is found, then what?

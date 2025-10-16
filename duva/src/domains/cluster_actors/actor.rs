@@ -3,7 +3,6 @@ use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
 use super::hash_ring::HashRing;
-use std::cmp::PartialEq;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
 use super::*;
