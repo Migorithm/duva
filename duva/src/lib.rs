@@ -214,6 +214,10 @@ impl StartUpFacade {
         }
     }
 
+    // ! TODO
+    // ! If multiple connections(due to client's level connection pool or simply the number of clients) are stormed into follower on leader crash,
+    // ! `sleep` in Discovery will block all the subsequent connection attempts leading to a huge failure
+    // ! However, accepting indiscriminately would also cause a problem of CPU spike.
     async fn handle_client_stream(&self, stream: tokio::net::TcpStream) -> anyhow::Result<()> {
         let (mut read_half, write_half) = stream.into_split();
         let mut writer = ClientStreamWriter(write_half);
