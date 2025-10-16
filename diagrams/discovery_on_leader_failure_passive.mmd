@@ -1,0 +1,23 @@
+sequenceDiagram
+    actor C as Client
+    participant L as Leader
+    participant F1 as Follower1
+    participant F2 as Follower2
+    F1 --> L: Connect
+    F2 --> L: Join(Connect)
+    C --> L: Connection request
+    L -->> L: Graceful shutdown triggered!
+    L -->> C: Send Stop Signal
+    par
+        F1 -->> F1: Election Timeout! - Election begins..
+    and
+        F2 -->> F2: Election Timeout - Election begins..
+    and
+        note over C, F2: Client would pick a node from the replica set
+        C ->> F1: Discover New Leader
+        F1 -->> F1: Wait Until Election is done
+        F2 -->> F2: Elected!
+        F1 -->> C: New Leader ID
+    end
+    C ->> F2: Connect with New Leader Id
+    C --> F2: Keep connection

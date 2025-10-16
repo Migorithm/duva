@@ -16,9 +16,9 @@ sequenceDiagram
         C -x L: Send message
         note over C, F2: Client would randomly pick a node from the replica set
         C --> F1: Tell me election is done
+        F2 -->> F2: Elected!
     end
 
-    F2 -->> F2: Elected!
     F1 -->> C: Notify of replication information
     C ->> F2: Connect
     C --> F2: Keep connection
