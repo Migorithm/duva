@@ -7,7 +7,7 @@ mod types;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::replications::*;
 use crate::domains::{TSerdeRead, TSerdeWrite};
-use anyhow::Result;
+use anyhow::{Context, Result};
 pub use config::Environment;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
@@ -29,6 +29,7 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use presentation::clients::ClientController;
 use std::fs::File;
+use std::ops::ControlFlow;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -141,6 +142,7 @@ impl StartUpFacade {
         self.discover_cluster().await?;
         let _ = self.start_accepting_client_streams().await;
 
+        // TODO move the following to signal handler
         info!("Server shut down...");
         logger_provider.shutdown().unwrap();
 
@@ -199,47 +201,48 @@ impl StartUpFacade {
         }
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
-    async fn start_accepting_client_streams(self) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(ENV.bind_addr()).await?;
+    // #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    async fn start_accepting_client_streams(self) {
+        let listener = TcpListener::bind(ENV.bind_addr()).await.unwrap();
         info!("start listening on {}", ENV.bind_addr());
 
         //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = listener.accept().await {
-            let (mut read_half, write_half) = stream.into_split();
-
-            let mut writer = ClientStreamWriter(write_half);
-            let request: ConnectionRequests = read_half.deserialized_read().await?;
-
-            match request {
-                ConnectionRequests::Discovery => {
-                    tokio::time::sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX)).await;
-                    self.cluster_actor_sender.wait_for_acceptance().await;
-                    // This point, leader_id should be known
-                    let leader_id = self.cluster_actor_sender.route_get_leader_id().await?.unwrap();
-                    writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await?;
-                },
-                ConnectionRequests::Authenticate(request) => {
-                    let Ok(client_id) =
-                        writer.send_conn_res(&self.cluster_actor_sender, request).await
-                    else {
-                        error!("Failed to authenticate client stream");
-                        continue;
-                    };
-
-                    let observer =
-                        self.cluster_actor_sender.route_subscribe_topology_change().await?;
-
-                    let stream_writer = writer.run(observer);
-
-                    let client_controller = ClientController {
-                        cluster_actor_sender: self.cluster_actor_sender.clone(),
-                        cache_manager: self.cache_manager.clone(),
-                    };
-                    let listener = ClientStreamReader { client_id, r: read_half };
-                    tokio::spawn(listener.handle_client_stream(client_controller, stream_writer));
-                },
+            if self.handle_client_stream(stream).await.is_err() {
+                continue;
             }
+        }
+    }
+
+    async fn handle_client_stream(&self, stream: tokio::net::TcpStream) -> anyhow::Result<()> {
+        let (mut read_half, write_half) = stream.into_split();
+        let mut writer = ClientStreamWriter(write_half);
+        let request = read_half.deserialized_read().await?;
+
+        match request {
+            ConnectionRequests::Discovery => {
+                tokio::time::sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX)).await;
+                self.cluster_actor_sender.wait_for_acceptance().await;
+                let leader_id = self
+                    .cluster_actor_sender
+                    .route_get_leader_id()
+                    .await?
+                    .context("Leader Id Must Be Known")?;
+
+                let _ = writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await;
+            },
+            ConnectionRequests::Authenticate(request) => {
+                let client_id = writer.send_conn_res(&self.cluster_actor_sender, request).await?;
+                let observer =
+                    self.cluster_actor_sender.route_subscribe_topology_change().await.unwrap();
+                let stream_writer = writer.run(observer);
+                let client_controller = ClientController {
+                    cluster_actor_sender: self.cluster_actor_sender.clone(),
+                    cache_manager: self.cache_manager.clone(),
+                };
+                let listener = ClientStreamReader { client_id, r: read_half };
+                tokio::spawn(listener.handle_client_stream(client_controller, stream_writer));
+            },
         }
         Ok(())
     }

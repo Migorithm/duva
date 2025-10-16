@@ -785,7 +785,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn get_repl_set_leader_peer_id(&self) -> Option<PeerIdentifier> {
+    pub(crate) fn get_leader_id(&self) -> Option<PeerIdentifier> {
         if self.replication.is_leader() {
             return Some(self.replication.self_identifier());
         }
