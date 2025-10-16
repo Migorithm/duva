@@ -228,8 +228,7 @@ impl StartUpFacade {
                     .route_get_leader_id()
                     .await?
                     .context("Leader Id Must Be Known")?;
-
-                let _ = writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await;
+                writer.serialized_write(ConnectionResponses::Discovery { leader_id }).await?;
             },
             ConnectionRequests::Authenticate(request) => {
                 let client_id = writer.send_conn_res(&self.cluster_actor_sender, request).await?;
@@ -240,8 +239,10 @@ impl StartUpFacade {
                     cluster_actor_sender: self.cluster_actor_sender.clone(),
                     cache_manager: self.cache_manager.clone(),
                 };
-                let listener = ClientStreamReader { client_id, r: read_half };
-                tokio::spawn(listener.handle_client_stream(client_controller, stream_writer));
+                tokio::spawn(
+                    ClientStreamReader { client_id, r: read_half }
+                        .handle_client_stream(client_controller, stream_writer),
+                );
             },
         }
         Ok(())
