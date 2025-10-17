@@ -1,18 +1,23 @@
-use std::ffi::c_int;
-
+use async_trait::async_trait;
 use futures::StreamExt;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use tracing::warn;
 
-use crate::types::{Callback, CallbackAwaiter};
+use crate::{
+    domains::cluster_actors::{ClusterCommand, queue::ClusterActorSender},
+    types::{Callback, CallbackAwaiter},
+};
 
 pub struct SignalHandler {
-    observers: Vec<Box<dyn TObserver>>,
-    listener: CallbackAwaiter<c_int>,
+    switches: Vec<Box<dyn TActorKillSwitch>>,
+    sig_awaiter: CallbackAwaiter<i32>,
 }
 
-trait TObserver {}
+#[async_trait]
+pub trait TActorKillSwitch {
+    async fn shutdown_gracefully(&self);
+}
 
 impl SignalHandler {
     fn new() -> anyhow::Result<Self> {
@@ -32,6 +37,20 @@ impl SignalHandler {
             }
         });
 
-        Ok(SignalHandler { observers: vec![], listener: rx })
+        Ok(SignalHandler { switches: vec![], sig_awaiter: rx })
+    }
+
+    async fn spawn(self) {
+        self.sig_awaiter.wait().await;
+        for switch in self.switches {
+            switch.shutdown_gracefully().await;
+        }
+    }
+}
+
+#[async_trait]
+impl TActorKillSwitch for ClusterActorSender {
+    async fn shutdown_gracefully(&self) {
+        let _ = self.send(ClusterCommand::ShutdownGracefully).await;
     }
 }
