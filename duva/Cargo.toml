@@ -23,10 +23,11 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2.3"
 
-opentelemetry = { version = "0.30", features = ["trace", "logs"] }
-opentelemetry_sdk = { version = "0.30", features = ["trace", "logs"] }
-opentelemetry-otlp = { version = "0.30", features = ["trace", "logs"] }
-opentelemetry-appender-tracing = { version = "0.30", default-features = false }
+
+opentelemetry = { version = "0.31", features = ["trace", "logs"] }
+opentelemetry_sdk = { version = "0.31", features = ["trace", "logs"] }
+opentelemetry-otlp = { version = "0.31", features = ["trace", "logs"] }
+opentelemetry-appender-tracing = { version = "0.31", default-features = false }
 
 
 async-trait = "0.1.88"      # async trait support

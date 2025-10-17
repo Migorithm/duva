@@ -15,7 +15,7 @@ fn run_removed_leader_without_replica(env1: ServerEnv, env2: ServerEnv) -> anyho
     drop(process2);
 
     // Wait for broker to detect error, sleep through ELECTION_TIMEOUT_MAX, and attempt discovery
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(200));
 
     // THEN
     match client1.child.try_wait() {
