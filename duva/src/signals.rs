@@ -51,6 +51,9 @@ impl SignalHandler {
 #[async_trait]
 impl TActorKillSwitch for ClusterActorSender {
     async fn shutdown_gracefully(&self) {
-        let _ = self.send(ClusterCommand::ShutdownGracefully).await;
+        let (tx, rx) = Callback::create();
+        let _ = self.send(ClusterCommand::ShutdownGracefully(tx)).await;
+
+        rx.recv().await;
     }
 }

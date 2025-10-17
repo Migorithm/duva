@@ -15,7 +15,7 @@ pub enum ClusterCommand {
     Scheduler(SchedulerMessage),
     Client(ClientMessage),
     Peer(PeerCommand),
-    ShutdownGracefully,
+    ShutdownGracefully(Callback<()>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
