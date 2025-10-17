@@ -3,6 +3,7 @@ mod config;
 pub mod domains;
 pub mod macros;
 pub mod presentation;
+mod signals;
 mod types;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::replications::*;
