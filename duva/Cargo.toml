@@ -29,6 +29,8 @@ opentelemetry_sdk = { version = "0.31", features = ["trace", "logs"] }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "logs"] }
 opentelemetry-appender-tracing = { version = "0.31", default-features = false }
 
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+signal-hook = "0.3"
 
 async-trait = "0.1.88"      # async trait support
 lzf = { version = "1.0.0" }
