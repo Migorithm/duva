@@ -28,7 +28,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 ClusterCommand::ConnectionReq(conn_msg) => {
                     self.process_connection_message(conn_msg).await;
                 },
-                ClusterCommand::ShutdownGracefully(callback) => callback.send(()), // TODO implement graceful shutdown
+                ClusterCommand::ShutdownGracefully(callback) =>
+                // TODO implement graceful shutdown
+                // * notifying peers & clients
+                {
+                    callback.send(())
+                },
             }
             trace!("Cluster command processed");
         }
