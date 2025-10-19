@@ -1,5 +1,9 @@
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::{
+    StreamExt,
+    future::join_all,
+    stream::{FuturesOrdered, FuturesUnordered},
+};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use tracing::warn;
@@ -45,9 +49,12 @@ impl SignalHandler {
 
     async fn spawn(self) {
         self.sig_awaiter.wait().await;
-        for switch in self.switches {
-            switch.shutdown_gracefully().await;
-        }
+        join_all(
+            self.switches
+                .iter() // Use .iter() instead of .into_iter()
+                .map(|switch| switch.shutdown_gracefully()),
+        )
+        .await;
     }
 }
 
