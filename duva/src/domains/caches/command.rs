@@ -101,4 +101,5 @@ pub(crate) enum CacheCommand {
         values: Vec<String>,
         callback: Callback<usize>,
     },
+    ShutdownGracefully(Callback<()>),
 }

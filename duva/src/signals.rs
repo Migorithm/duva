@@ -5,7 +5,10 @@ use signal_hook_tokio::Signals;
 use tracing::warn;
 
 use crate::{
-    domains::cluster_actors::{ClusterCommand, queue::ClusterActorSender},
+    domains::{
+        caches::{actor::CacheCommandSender, command::CacheCommand},
+        cluster_actors::{ClusterCommand, queue::ClusterActorSender},
+    },
     types::{Callback, CallbackAwaiter},
 };
 
@@ -53,7 +56,15 @@ impl TActorKillSwitch for ClusterActorSender {
     async fn shutdown_gracefully(&self) {
         let (tx, rx) = Callback::create();
         let _ = self.send(ClusterCommand::ShutdownGracefully(tx)).await;
+        rx.recv().await;
+    }
+}
 
+#[async_trait]
+impl TActorKillSwitch for CacheCommandSender {
+    async fn shutdown_gracefully(&self) {
+        let (tx, rx) = Callback::create();
+        let _ = self.send(CacheCommand::ShutdownGracefully(tx)).await;
         rx.recv().await;
     }
 }

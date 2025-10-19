@@ -103,6 +103,10 @@ impl CacheActor {
                 CacheCommand::LSet { key, index, value, callback } => {
                     callback.send(self.lset(key, index, value));
                 },
+                CacheCommand::ShutdownGracefully(callback) => {
+                    callback.send(());
+                    break;
+                },
             }
         }
         Ok(self)
