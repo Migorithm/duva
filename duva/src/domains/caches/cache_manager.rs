@@ -10,9 +10,11 @@ use crate::domains::replications::ReplicationId;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 
+use crate::signals::TActorKillSwitch;
 use crate::types::Callback;
 use anyhow::Context;
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Utc;
 use futures::StreamExt;
@@ -453,6 +455,19 @@ impl CacheManager {
             .await?;
         rx.recv().await?;
         Ok(IndexedValueCodec::encode("", current_idx))
+    }
+}
+
+#[async_trait]
+impl TActorKillSwitch for CacheManager {
+    async fn shutdown_gracefully(&self) {
+        let (senders, receivers) = self.oneshot_channels();
+        for (shard, callback) in self.chain(senders) {
+            let _ = shard.send(CacheCommand::ShutdownGracefully(callback)).await;
+        }
+        for v in receivers {
+            let _ = v.await;
+        }
     }
 }
 

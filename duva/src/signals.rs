@@ -4,13 +4,7 @@ use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use tracing::warn;
 
-use crate::{
-    domains::{
-        caches::{actor::CacheCommandSender, command::CacheCommand},
-        cluster_actors::{ClusterCommand, queue::ClusterActorSender},
-    },
-    types::{Callback, CallbackAwaiter},
-};
+use crate::types::{Callback, CallbackAwaiter};
 
 pub struct SignalHandler {
     switches: Vec<Box<dyn TActorKillSwitch>>,
@@ -18,12 +12,12 @@ pub struct SignalHandler {
 }
 
 #[async_trait]
-pub trait TActorKillSwitch {
+pub trait TActorKillSwitch: std::marker::Send {
     async fn shutdown_gracefully(&self);
 }
 
 impl SignalHandler {
-    fn new() -> anyhow::Result<Self> {
+    pub(crate) fn new() -> anyhow::Result<Self> {
         let mut signals = Signals::new(&[SIGTERM, SIGINT, SIGQUIT])?;
         let (tx, rx) = Callback::create();
         // Spawn task to handle signals
@@ -43,7 +37,7 @@ impl SignalHandler {
         Ok(SignalHandler { switches: vec![], sig_awaiter: rx })
     }
 
-    async fn spawn(self) {
+    pub(crate) async fn wait_signals(self) {
         self.sig_awaiter.wait().await;
         join_all(
             self.switches
@@ -52,24 +46,11 @@ impl SignalHandler {
         )
         .await;
 
+        println!("Shutdown...");
         std::process::exit(0)
     }
-}
 
-#[async_trait]
-impl TActorKillSwitch for ClusterActorSender {
-    async fn shutdown_gracefully(&self) {
-        let (tx, rx) = Callback::create();
-        let _ = self.send(ClusterCommand::ShutdownGracefully(tx)).await;
-        rx.recv().await;
-    }
-}
-
-#[async_trait]
-impl TActorKillSwitch for CacheCommandSender {
-    async fn shutdown_gracefully(&self) {
-        let (tx, rx) = Callback::create();
-        let _ = self.send(CacheCommand::ShutdownGracefully(tx)).await;
-        rx.recv().await;
+    pub(crate) fn register(&mut self, switches: Vec<Box<dyn TActorKillSwitch>>) {
+        self.switches.extend(switches);
     }
 }
