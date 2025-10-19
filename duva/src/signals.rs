@@ -51,6 +51,8 @@ impl SignalHandler {
                 .map(|switch| switch.shutdown_gracefully()),
         )
         .await;
+
+        std::process::exit(0)
     }
 }
 
