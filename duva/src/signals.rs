@@ -1,9 +1,5 @@
 use async_trait::async_trait;
-use futures::{
-    StreamExt,
-    future::join_all,
-    stream::{FuturesOrdered, FuturesUnordered},
-};
+use futures::{StreamExt, future::join_all};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use tracing::warn;
