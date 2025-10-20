@@ -6,14 +6,14 @@ use tracing::warn;
 
 use crate::types::{Callback, CallbackAwaiter};
 
-pub struct SignalHandler {
-    switches: Vec<Box<dyn TActorKillSwitch>>,
-    sig_awaiter: CallbackAwaiter<i32>,
-}
-
 #[async_trait]
 pub trait TActorKillSwitch: std::marker::Send {
     async fn shutdown_gracefully(&self);
+}
+
+pub struct SignalHandler {
+    switches: Vec<Box<dyn TActorKillSwitch>>,
+    sig_awaiter: CallbackAwaiter<i32>,
 }
 
 impl SignalHandler {
@@ -39,12 +39,7 @@ impl SignalHandler {
 
     pub(crate) async fn wait_signals(self) {
         self.sig_awaiter.wait().await;
-        join_all(
-            self.switches
-                .iter() // Use .iter() instead of .into_iter()
-                .map(|switch| switch.shutdown_gracefully()),
-        )
-        .await;
+        join_all(self.switches.iter().map(|switch| switch.shutdown_gracefully())).await;
 
         println!("Shutdown...");
         std::process::exit(0)
