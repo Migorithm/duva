@@ -21,6 +21,7 @@ pub(crate) enum PeerMessage {
     StartRebalance,
     ReceiveBatch(BatchEntries),
     MigrationBatchAck(BatchId),
+    CloseConnection,
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -35,6 +36,7 @@ impl TryFrom<QueryIO> for PeerMessage {
             QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
             QueryIO::MigrateBatch(batch) => Ok(PeerMessage::ReceiveBatch(batch)),
             QueryIO::MigrationBatchAck(ack) => Ok(PeerMessage::MigrationBatchAck(ack)),
+            QueryIO::CloseConnection => Ok(PeerMessage::CloseConnection),
             _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }

@@ -486,6 +486,8 @@ dependencies = [
  "opentelemetry-otlp 0.31.0",
  "opentelemetry_sdk 0.31.0",
  "rand",
+ "signal-hook",
+ "signal-hook-tokio",
  "tempfile",
  "thiserror 2.0.14",
  "tokio",
@@ -1902,6 +1904,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2a4719bff48cee6b39d12c020eeb490953ad2443b7055bd0b21fca26bd8c28b"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "signal-hook-tokio"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213241f76fb1e37e27de3b6aa1b068a2c333233b59cca6634f634b80a27ecf1e"
+dependencies = [
+ "futures-core",
+ "libc",
+ "signal-hook",
+ "tokio",
 ]
 
 [[package]]

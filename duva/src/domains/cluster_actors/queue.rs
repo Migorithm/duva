@@ -4,8 +4,10 @@ use crate::{
         replications::state::ReplicationState,
     },
     prelude::{PeerIdentifier, Topology},
+    signals::TActorKillSwitch,
     types::Callback,
 };
+use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::{
     pin::Pin,
@@ -39,9 +41,9 @@ impl ClusterActorSender {
         let command = cmd.into();
 
         match command {
-            ClusterCommand::Scheduler(_) | ClusterCommand::Peer(_) => {
-                self.priority_send.send(command).await
-            },
+            ClusterCommand::Scheduler(_)
+            | ClusterCommand::Peer(_)
+            | ClusterCommand::ShutdownGracefully(_) => self.priority_send.send(command).await,
             ClusterCommand::ConnectionReq(_) | ClusterCommand::Client(_) => {
                 self.normal_send.send(command).await
             },
@@ -158,6 +160,15 @@ impl ClusterActorSender {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::SubscribeToTopologyChange(tx)).await?;
         Ok(rx.recv().await)
+    }
+}
+
+#[async_trait]
+impl TActorKillSwitch for ClusterActorSender {
+    async fn shutdown_gracefully(&self) {
+        let (tx, rx) = Callback::create();
+        let _ = self.send(ClusterCommand::ShutdownGracefully(tx)).await;
+        rx.recv().await;
     }
 }
 

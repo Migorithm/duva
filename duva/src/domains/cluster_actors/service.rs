@@ -28,6 +28,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 ClusterCommand::ConnectionReq(conn_msg) => {
                     self.process_connection_message(conn_msg).await;
                 },
+                ClusterCommand::ShutdownGracefully(callback) => {
+                    // TODO implement graceful shutdown
+                    // * notifying peers & clients
+                    self.process_graceful_shutdown().await;
+                    callback.send(())
+                },
             }
             trace!("Cluster command processed");
         }
@@ -143,6 +149,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 MigrationBatchAck(migration_batch_ack) => {
                     self.handle_migration_ack(migration_batch_ack).await
                 },
+                CloseConnection => self.close_connection(&from).await,
             };
         }
     }

@@ -1451,4 +1451,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }
         }
     }
+
+    pub(crate) async fn process_graceful_shutdown(&mut self) {
+        self.members
+            .iter_mut()
+            .map(|(_, p)| p.send(QueryIO::CloseConnection))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
+    }
+
+    pub(crate) async fn close_connection(&mut self, from: &PeerIdentifier) {
+        warn!("{from} disconnected!");
+        self.remove_peer(from).await;
+    }
 }

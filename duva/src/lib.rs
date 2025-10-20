@@ -3,10 +3,12 @@ mod config;
 pub mod domains;
 pub mod macros;
 pub mod presentation;
+mod signals;
 mod types;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::replications::*;
 use crate::domains::{TSerdeRead, TSerdeWrite};
+use crate::signals::SignalHandler;
 use anyhow::{Context, Result};
 pub use config::Environment;
 use domains::IoError;
@@ -117,6 +119,13 @@ impl StartUpFacade {
     }
 
     pub async fn run(self) -> Result<()> {
+        let mut sig_handler = SignalHandler::new().unwrap();
+        sig_handler.register(vec![
+            Box::new(self.cache_manager.clone()),
+            Box::new(self.cluster_actor_sender.clone()),
+        ]);
+        tokio::spawn(sig_handler.wait_signals());
+
         let logger_provider = init_logs();
         // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
         let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
