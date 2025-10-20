@@ -28,6 +28,7 @@ const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
 const MIGRATE_BATCH_PREFIX: char = 'm';
 const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
+const CLOSE_CONNECTION_PREFIX: char = 'C';
 
 const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
@@ -67,6 +68,7 @@ pub enum QueryIO {
     StartRebalance,
     MigrateBatch(BatchEntries),
     MigrationBatchAck(BatchId),
+    CloseConnection,
 }
 
 impl QueryIO {
@@ -177,6 +179,7 @@ impl QueryIO {
             QueryIO::MigrationBatchAck(migration_batch_ack) => {
                 serialize_with_bincode(MIGRATION_BATCH_ACK_PREFIX, &migration_batch_ack)
             },
+            QueryIO::CloseConnection => CLOSE_CONNECTION_PREFIX.to_string().into(),
         }
     }
 
@@ -327,6 +330,7 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
             Ok((QueryIO::Err(bytes), len))
         },
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
+
         APPEND_ENTRY_RPC_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::AppendEntriesRPC(heartbeat), len))
@@ -343,6 +347,7 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
         START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
         MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
+        CLOSE_CONNECTION_PREFIX => Ok((QueryIO::CloseConnection, 1)),
         _ => Err(anyhow::anyhow!("Unknown value type with prefix: {:?}", prefix)),
     }
 }
@@ -998,6 +1003,20 @@ mod test {
             panic!("Expected a MigrationBatchAck");
         };
         assert_eq!(deserialized_migration_batch_ack, migration_batch_ack);
+    }
+
+    #[test]
+    fn test_close_connection_serde() {
+        //GIVEN
+        let query_io = QueryIO::CloseConnection;
+
+        // WHEN
+        let serialized = query_io.clone().serialize();
+        let (deserialized, _) = deserialize(serialized).unwrap();
+
+        //THEn
+        assert_eq!(deserialized, query_io);
+        let QueryIO::CloseConnection = deserialized else { panic!("Expected CloseConnection") };
     }
 
     #[test]
