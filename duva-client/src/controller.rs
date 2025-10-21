@@ -26,136 +26,136 @@ impl<T> ClientController<T> {
         tokio::spawn(broker.run());
         Ok(Self { broker_tx, target: editor })
     }
+}
 
-    fn render_return(&self, kind: ClientAction, query_io: QueryIO) -> Response {
-        use ClientAction::*;
-        use NonMutatingAction::*;
+fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
+    use ClientAction::*;
+    use NonMutatingAction::*;
 
-        match kind {
-            NonMutating(
-                Ping
-                | Get { .. }
-                | LIndex { .. }
-                | IndexGet { .. }
-                | Echo { .. }
-                | Config { .. }
-                | Info
-                | ClusterForget { .. }
-                | ReplicaOf { .. }
-                | ClusterInfo,
-            ) => match query_io {
-                QueryIO::Null => Response::Null,
-                QueryIO::SimpleString(value) => Response::String(value),
-                QueryIO::BulkString(value) => Response::String(value),
-                QueryIO::Err(value) => Response::Error(value),
-                _err => Response::FormatError,
-            },
-            Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
-                if let QueryIO::Err(value) = query_io {
-                    return Response::Error(value);
-                }
+    match kind {
+        NonMutating(
+            Ping
+            | Get { .. }
+            | LIndex { .. }
+            | IndexGet { .. }
+            | Echo { .. }
+            | Config { .. }
+            | Info
+            | ClusterForget { .. }
+            | ReplicaOf { .. }
+            | ClusterInfo,
+        ) => match query_io {
+            QueryIO::Null => Response::Null,
+            QueryIO::SimpleString(value) => Response::String(value),
+            QueryIO::BulkString(value) => Response::String(value),
+            QueryIO::Err(value) => Response::Error(value),
+            _err => Response::FormatError,
+        },
+        Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
+            if let QueryIO::Err(value) = query_io {
+                return Response::Error(value);
+            }
 
-                let QueryIO::SimpleString(value) = query_io else {
-                    return Response::FormatError;
-                };
-                match str::from_utf8(&value) {
-                    Ok(int) => Response::Integer(int.to_string().into()),
-                    Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
-                }
-            },
+            let QueryIO::SimpleString(value) = query_io else {
+                return Response::FormatError;
+            };
+            match str::from_utf8(&value) {
+                Ok(int) => Response::Integer(int.to_string().into()),
+                Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
+            }
+        },
 
-            NonMutating(Ttl { .. })
-            | Mutating(
-                LogEntry::IncrBy { .. }
-                | LogEntry::DecrBy { .. }
-                | LogEntry::LPush { .. }
-                | LogEntry::RPush { .. }
-                | LogEntry::LPushX { .. }
-                | LogEntry::RPushX { .. },
-            ) => match query_io {
-                QueryIO::SimpleString(value) => {
-                    let s = String::from_utf8_lossy(&value);
-                    let s: Option<i64> = IndexedValueCodec::decode_value(s);
-                    Response::Integer(s.unwrap().to_string().into())
-                },
-                QueryIO::Err(value) => Response::Error(value),
+        NonMutating(Ttl { .. })
+        | Mutating(
+            LogEntry::IncrBy { .. }
+            | LogEntry::DecrBy { .. }
+            | LogEntry::LPush { .. }
+            | LogEntry::RPush { .. }
+            | LogEntry::LPushX { .. }
+            | LogEntry::RPushX { .. },
+        ) => match query_io {
+            QueryIO::SimpleString(value) => {
+                let s = String::from_utf8_lossy(&value);
+                let s: Option<i64> = IndexedValueCodec::decode_value(s);
+                Response::Integer(s.unwrap().to_string().into())
+            },
+            QueryIO::Err(value) => Response::Error(value),
 
-                _ => Response::FormatError,
-            },
-            NonMutating(Save) => {
-                let QueryIO::Null = query_io else {
-                    return Response::FormatError;
-                };
-                Response::Null
-            },
-            Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
-                match query_io {
-                    QueryIO::SimpleString(_) => Response::String("OK".into()),
-                    QueryIO::Err(value) => Response::Error(value),
-                    _ => Response::FormatError,
-                }
-            },
-            NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
-                QueryIO::Null => Response::String("OK".into()),
+            _ => Response::FormatError,
+        },
+        NonMutating(Save) => {
+            let QueryIO::Null = query_io else {
+                return Response::FormatError;
+            };
+            Response::Null
+        },
+        Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
+            match query_io {
+                QueryIO::SimpleString(_) => Response::String("OK".into()),
                 QueryIO::Err(value) => Response::Error(value),
                 _ => Response::FormatError,
-            },
-            Mutating(LogEntry::Append { .. }) => match query_io {
-                QueryIO::SimpleString(value) => Response::String(value),
-                QueryIO::Err(value) => Response::Error(value),
-                _ => Response::FormatError,
-            },
-            Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
-            | NonMutating(Keys { .. } | MGet { .. } | LRange { .. }) => {
-                if let QueryIO::Null = query_io {
-                    return Response::Null;
-                }
-                let QueryIO::Array(value) = query_io else {
+            }
+        },
+        NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
+            QueryIO::Null => Response::String("OK".into()),
+            QueryIO::Err(value) => Response::Error(value),
+            _ => Response::FormatError,
+        },
+        Mutating(LogEntry::Append { .. }) => match query_io {
+            QueryIO::SimpleString(value) => Response::String(value),
+            QueryIO::Err(value) => Response::Error(value),
+            _ => Response::FormatError,
+        },
+        Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
+        | NonMutating(Keys { .. } | MGet { .. } | LRange { .. }) => {
+            if let QueryIO::Null = query_io {
+                return Response::Null;
+            }
+            let QueryIO::Array(value) = query_io else {
+                return Response::FormatError;
+            };
+
+            let mut keys = Vec::new();
+            for (i, item) in value.into_iter().enumerate() {
+                let QueryIO::BulkString(value) = item else {
                     return Response::FormatError;
                 };
-
-                let mut keys = Vec::new();
-                for (i, item) in value.into_iter().enumerate() {
+                keys.push(Response::String(
+                    format!("{}) \"{}\"", i + 1, String::from_utf8_lossy(&value)).into(),
+                ));
+            }
+            Response::Array(keys)
+        },
+        NonMutating(Role | ClusterNodes) => match query_io {
+            QueryIO::Array(value) => {
+                let mut nodes = Vec::new();
+                for item in value {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    keys.push(Response::String(
-                        format!("{}) \"{}\"", i + 1, String::from_utf8_lossy(&value)).into(),
-                    ));
+                    nodes.push(Response::String(value));
                 }
-                Response::Array(keys)
+                Response::Array(nodes)
             },
-            NonMutating(Role | ClusterNodes) => match query_io {
-                QueryIO::Array(value) => {
-                    let mut nodes = Vec::new();
-                    for item in value {
-                        let QueryIO::BulkString(value) = item else {
-                            return Response::FormatError;
-                        };
-                        nodes.push(Response::String(value));
-                    }
-                    Response::Array(nodes)
-                },
-                QueryIO::Err(value) => Response::Error(value),
-                _ => Response::FormatError,
-            },
+            QueryIO::Err(value) => Response::Error(value),
+            _ => Response::FormatError,
+        },
 
-            ClientAction::Mutating(LogEntry::MSet { .. }) => unimplemented!(),
-            ClientAction::Mutating(LogEntry::NoOp) => unreachable!(),
-        }
+        ClientAction::Mutating(LogEntry::MSet { .. }) => unimplemented!(),
+        ClientAction::Mutating(LogEntry::NoOp) => unreachable!(),
     }
+}
 
-    pub fn print_res(&self, kind: ClientAction, query_io: QueryIO) {
-        let action_debug = format!("{:?}", kind);
-        let result = self.render_return(kind, query_io.clone());
-        println!("{}", result);
+pub fn print_res(kind: ClientAction, query_io: QueryIO) {
+    let action_debug = format!("{:?}", kind);
+    let result = render_return(kind, query_io.clone());
+    println!("{}", result);
 
-        // Log the command execution for observability
-        tracing::info!(
-            action = %action_debug,
-            "Client command executed"
-        );
-    }
+    // Log the command execution for observability
+    tracing::info!(
+        action = %action_debug,
+        "Client command executed"
+    );
 }
 
 enum Response {
