@@ -11,7 +11,7 @@ use duva::{
 use duva_client::{
     broker::BrokerMessage,
     command::{InputContext, separate_command_and_args},
-    controller::ClientController,
+    controller::{ClientController, print_res},
     observability::{ObservabilityConfig, init_observability_with_config},
 };
 
@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
                     .await;
 
                 let (kind, query_io) = rx.await?;
-                controller.print_res(kind, query_io);
+                print_res(kind, query_io);
                 tracing::debug!(command = %cmd, "Command completed successfully");
             },
             Err(e) => {
