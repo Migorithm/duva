@@ -244,16 +244,14 @@ impl StartUpFacade {
             },
             ConnectionRequests::Authenticate(request) => {
                 let client_id = writer.send_conn_res(&self.cluster_actor_sender, request).await?;
-                let observer =
-                    self.cluster_actor_sender.route_subscribe_topology_change().await.unwrap();
-                let stream_writer = writer.run(observer);
+                let observer = self.cluster_actor_sender.route_subscribe_topology_change().await;
                 let client_controller = ClientController {
                     cluster_actor_sender: self.cluster_actor_sender.clone(),
                     cache_manager: self.cache_manager.clone(),
                 };
                 tokio::spawn(
                     ClientStreamReader { client_id, r: read_half }
-                        .handle_client_stream(client_controller, stream_writer),
+                        .handle_client_stream(client_controller, writer.run(observer)),
                 );
             },
         }
