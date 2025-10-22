@@ -135,14 +135,14 @@ impl ClientStreamWriter {
 
         let (client_id, request_id) = auth_req.deconstruct()?;
 
-        self.serialized_write(ConnectionResponses::Authenticated(ConnectionResponse {
-            client_id: client_id.to_string(),
+        let connection_response = ConnectionResponse {
+            client_id: client_id.clone(),
             request_id,
             topology: cluster_manager.route_get_topology().await?,
             is_leader_node: replication_state.role == ReplicationRole::Leader,
-            replication_id: replication_state.replid.clone(),
-        }))
-        .await?;
+            replication_id: replication_state.replid,
+        };
+        self.serialized_write(ConnectionResponses::Authenticated(connection_response)).await?;
 
         Ok(client_id)
     }
