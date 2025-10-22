@@ -156,10 +156,10 @@ impl ClusterActorSender {
 
     pub(crate) async fn route_subscribe_topology_change(
         &self,
-    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Topology>> {
+    ) -> tokio::sync::broadcast::Receiver<Topology> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::SubscribeToTopologyChange(tx)).await?;
-        Ok(rx.recv().await)
+        self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
+        rx.recv().await
     }
 }
 
