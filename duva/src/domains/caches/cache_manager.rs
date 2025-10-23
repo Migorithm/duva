@@ -88,11 +88,13 @@ impl CacheManager {
             },
             Append { key, value } => {
                 // TODO break!
-                QueryIO::SimpleString(self.route_append(key, value).await?.to_string().into())
+                let res = self.route_append(key, value).await?.to_string();
+                QueryIO::convert_str_res(&res, log_index)
             },
             Delete { keys } => {
                 // TODO break!
-                QueryIO::SimpleString(self.route_delete(keys).await?.to_string().into())
+                let res = self.route_delete(keys).await?.to_string();
+                QueryIO::convert_str_res(&res, log_index)
             },
             IncrBy { key, delta: value } => {
                 let res = self.route_numeric_delta(key, value).await?;
@@ -135,16 +137,16 @@ impl CacheManager {
             },
             LTrim { key, start, end } => {
                 self.route_ltrim(key, start, end).await?;
-                QueryIO::SimpleString(IndexedValueCodec::encode("".to_string(), log_index).into())
+                QueryIO::convert_str_res("", log_index)
             },
             LSet { key, index, value } => {
                 self.route_lset(key, index, value).await?;
-                QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
+                QueryIO::convert_str_res("", log_index)
             },
 
             MSet { entries } => {
                 self.route_mset(entries).await;
-                QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
+                QueryIO::convert_str_res("", log_index)
             },
             NoOp => QueryIO::Null,
         };
