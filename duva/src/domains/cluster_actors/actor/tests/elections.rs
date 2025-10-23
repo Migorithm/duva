@@ -252,5 +252,5 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     assert!(value.is_null());
 
     let res = rx.0.await.unwrap();
-    assert!(matches!(res, ConsensusClientResponse::Err(_e)))
+    assert!(matches!(res, ConsensusClientResponse::Err { reason: _e, request_id: 1 }))
 }

@@ -148,12 +148,12 @@ impl ClientController {
 
         let result = match res.recv().await {
             ConsensusClientResponse::Result(result) => result,
-            ConsensusClientResponse::AlreadyProcessed { key: keys, .. } => {
+            ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action).await
             },
-            ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
+            ConsensusClientResponse::Err { reason, request_id } => Err(anyhow::anyhow!(reason)),
         }?;
 
         Ok(result)
