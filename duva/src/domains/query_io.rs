@@ -1,3 +1,4 @@
+use crate::domains::caches::cache_manager::IndexedValueCodec;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
@@ -229,6 +230,14 @@ impl QueryIO {
             },
             _ => Err(anyhow!("Only Arrays can be merged")),
         }
+    }
+
+    pub(crate) fn convert_str_res(res: &str, index: u64) -> Self {
+        QueryIO::SimpleString(IndexedValueCodec::encode(res, index).into())
+    }
+
+    pub(crate) fn convert_str_vec_res(values: Vec<String>, index: u64) -> Self {
+        QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
     }
 }
 

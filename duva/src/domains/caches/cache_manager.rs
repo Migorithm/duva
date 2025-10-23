@@ -84,58 +84,62 @@ impl CacheManager {
                     entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
                 }
                 self.route_set(entry).await?;
-                QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
+                QueryIO::convert_str_res("", log_index)
             },
             Append { key, value } => {
+                // TODO break!
                 QueryIO::SimpleString(self.route_append(key, value).await?.to_string().into())
             },
             Delete { keys } => {
+                // TODO break!
                 QueryIO::SimpleString(self.route_delete(keys).await?.to_string().into())
             },
             IncrBy { key, delta: value } => {
                 let res = self.route_numeric_delta(key, value).await?;
-                QueryIO::SimpleString(IndexedValueCodec::encode(res, log_index).into())
+                QueryIO::convert_str_res(&res, log_index)
             },
             DecrBy { key, delta: value } => {
                 let res = self.route_numeric_delta(key, -value).await?;
-                QueryIO::SimpleString(IndexedValueCodec::encode(res, log_index).into())
+                QueryIO::convert_str_res(&res, log_index)
             },
 
             LPush { key, value } => {
-                QueryIO::SimpleString(self.route_lpush(key, value, log_index).await?.into())
+                let res = self.route_lpush(key, value).await?;
+                QueryIO::convert_str_res(&res, log_index)
             },
             LPushX { key, value } => {
-                QueryIO::SimpleString(self.route_lpushx(key, value, log_index).await?.into())
+                let res = self.route_lpushx(key, value).await?;
+                QueryIO::convert_str_res(&res, log_index)
             },
             LPop { key, count } => {
                 let values = self.route_lpop(key, count).await?;
                 if values.is_empty() {
                     return Ok(QueryIO::Null);
                 }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+                QueryIO::convert_str_vec_res(values, log_index)
             },
             RPush { key, value } => {
-                let res = self.route_rpush(key, value, log_index).await?;
-                QueryIO::SimpleString(res.into())
+                let res = self.route_rpush(key, value).await?;
+                QueryIO::convert_str_res(&res, log_index)
             },
             RPushX { key, value } => {
-                let res = self.route_rpushx(key, value, log_index).await?;
-                QueryIO::SimpleString(res.into())
+                let res = self.route_rpushx(key, value).await?;
+                QueryIO::convert_str_res(&res, log_index)
             },
             RPop { key, count } => {
                 let values = self.route_rpop(key, count).await?;
                 if values.is_empty() {
                     return Ok(QueryIO::Null);
                 }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+                QueryIO::convert_str_vec_res(values, log_index)
             },
             LTrim { key, start, end } => {
-                let res = self.route_ltrim(key, start, end, log_index).await?;
-                QueryIO::SimpleString(res.into())
+                self.route_ltrim(key, start, end).await?;
+                QueryIO::SimpleString(IndexedValueCodec::encode("".to_string(), log_index).into())
             },
             LSet { key, index, value } => {
-                let res = self.route_lset(key, index, value, log_index).await?;
-                QueryIO::SimpleString(res.into())
+                self.route_lset(key, index, value).await?;
+                QueryIO::SimpleString(IndexedValueCodec::encode("", log_index).into())
             },
 
             MSet { entries } => {
@@ -161,29 +165,18 @@ impl CacheManager {
         .await;
     }
 
-    async fn route_lpush(
-        &self,
-        key: String,
-        value: Vec<String>,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_lpush(&self, key: String, value: Vec<String>) -> Result<String> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::LPush { key, values: value, callback }).await?;
         let current_len = rx.recv().await?;
-        Ok(IndexedValueCodec::encode(current_len, current_idx))
+        Ok(current_len.to_string())
     }
-    async fn route_lpushx(
-        &self,
-        key: String,
-        value: Vec<String>,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_lpushx(&self, key: String, value: Vec<String>) -> Result<String> {
         let (callback, rx) = Callback::create();
 
         self.select_shard(&key).send(CacheCommand::LPushX { key, values: value, callback }).await?;
         let current_len = rx.recv().await;
-
-        Ok(IndexedValueCodec::encode(current_len, current_idx))
+        Ok(current_len.to_string())
     }
 
     async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
@@ -194,29 +187,18 @@ impl CacheManager {
         Ok(pop_values)
     }
 
-    async fn route_rpush(
-        &self,
-        key: String,
-        value: Vec<String>,
-        current_index: u64,
-    ) -> Result<String> {
+    async fn route_rpush(&self, key: String, value: Vec<String>) -> Result<String> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::RPush { key, values: value, callback }).await?;
         let current_len = rx.recv().await?;
-        Ok(IndexedValueCodec::encode(current_len, current_index))
+        Ok(current_len.to_string())
     }
-    async fn route_rpushx(
-        &self,
-        key: String,
-        value: Vec<String>,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_rpushx(&self, key: String, value: Vec<String>) -> Result<String> {
         let (callback, rx) = Callback::create();
 
         self.select_shard(&key).send(CacheCommand::RPushX { key, values: value, callback }).await?;
         let current_len = rx.recv().await;
-
-        Ok(IndexedValueCodec::encode(current_len, current_idx))
+        Ok(current_len.to_string())
     }
 
     async fn route_rpop(&self, key: String, count: usize) -> Result<Vec<String>> {
@@ -424,18 +406,11 @@ impl CacheManager {
         rx.recv().await
     }
 
-    async fn route_ltrim(
-        &self,
-        key: String,
-        start: isize,
-        end: isize,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_ltrim(&self, key: String, start: isize, end: isize) -> Result<()> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::LTrim { key, start, end, callback }).await?;
         rx.recv().await?;
-
-        Ok(IndexedValueCodec::encode("".to_string(), current_idx))
+        Ok(())
     }
 
     pub(crate) async fn route_lindex(&self, key: String, index: isize) -> Result<CacheValue> {
@@ -445,19 +420,13 @@ impl CacheManager {
         Ok(value)
     }
 
-    async fn route_lset(
-        &self,
-        key: String,
-        index: isize,
-        value: String,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_lset(&self, key: String, index: isize, value: String) -> Result<()> {
         let (callback, rx) = Callback::create();
         self.select_shard(key.as_str())
             .send(CacheCommand::LSet { key, index, value, callback })
             .await?;
         rx.recv().await?;
-        Ok(IndexedValueCodec::encode("", current_idx))
+        Ok(())
     }
 }
 
