@@ -518,8 +518,8 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // Set up test keys in cache that will be part of the migration
     let test_keys = vec!["migrate_key_1".to_string(), "migrate_key_2".to_string()];
-    cache_manager.route_set(CacheEntry::new("migrate_key_1", "value_1"), 1).await.unwrap();
-    cache_manager.route_set(CacheEntry::new("migrate_key_2", "value_2"), 2).await.unwrap();
+    cache_manager.route_set(CacheEntry::new("migrate_key_1", "value_1")).await.unwrap();
+    cache_manager.route_set(CacheEntry::new("migrate_key_2", "value_2")).await.unwrap();
 
     // Verify keys exist before migration
 

@@ -84,7 +84,7 @@ impl Helper {
         let con_idx = Arc::new(AtomicU64::new(0));
         let cache_manager = CacheManager::run_cache_actors(con_idx.clone());
         for key in keys.clone() {
-            cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
+            cache_manager.route_set(CacheEntry::new(key, "value")).await.unwrap();
         }
         con_idx.store(keys.len() as u64, Ordering::Relaxed);
         (con_idx, cache_manager)
