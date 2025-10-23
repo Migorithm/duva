@@ -337,7 +337,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.entry.all_keys().into_iter().map(String::from).collect();
-            req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
+                key,
+                // TODO : remove unwrap
+                request_id: req.session_req.unwrap().request_id,
+            });
             return;
         };
 

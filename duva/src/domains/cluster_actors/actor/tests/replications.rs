@@ -644,7 +644,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     assert_eq!(cluster_actor.log_state().last_log_index, 0);
 
     // Verify the response indicates already processed
-    let ConsensusClientResponse::AlreadyProcessed { key } = rx.recv().await else {
+    let ConsensusClientResponse::AlreadyProcessed { key, request_id: 1 } = rx.recv().await else {
         panic!("Expected AlreadyProcessed response");
     };
     assert_eq!(key, vec!["test_key".to_string()]);
