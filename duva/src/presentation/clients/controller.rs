@@ -146,7 +146,7 @@ impl ClientController {
             }))
             .await?;
 
-        let current_index = match res.recv().await {
+        let result = match res.recv().await {
             ConsensusClientResponse::Result(result) => result,
             ConsensusClientResponse::AlreadyProcessed { key: keys, .. } => {
                 // * Conversion! request has already been processed so we need to convert it to get
@@ -156,6 +156,6 @@ impl ClientController {
             ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }?;
 
-        Ok(current_index)
+        Ok(result)
     }
 }
