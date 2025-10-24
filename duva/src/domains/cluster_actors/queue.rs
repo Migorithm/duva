@@ -158,7 +158,7 @@ impl ClusterActorSender {
         &self,
     ) -> tokio::sync::broadcast::Receiver<Topology> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
+        let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
         rx.recv().await
     }
 }

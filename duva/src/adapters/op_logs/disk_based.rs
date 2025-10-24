@@ -534,7 +534,7 @@ impl TWriteAheadLog for FileOpLogs {
 
 #[cfg(test)]
 mod tests {
-    use crate::domains::replications::LogEntry;
+    use crate::domains::{caches::cache_objects::CacheEntry, replications::LogEntry};
 
     use super::*;
     use anyhow::Result;
@@ -543,7 +543,7 @@ mod tests {
 
     fn set_helper(index: u64, term: u64) -> WriteOperation {
         WriteOperation {
-            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             log_index: index,
             term,
             session_req: None,
@@ -572,7 +572,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
         let mut op_logs = FileOpLogs::new(path).unwrap();
-        let request = LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+        let request = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
+
         let write_op =
             WriteOperation { entry: request.clone(), log_index: 0, term: 0, session_req: None };
 
@@ -737,9 +738,7 @@ mod tests {
         for i in 0..100 {
             op_logs.write_many(vec![WriteOperation {
                 entry: LogEntry::Set {
-                    key: format!("key_{i}"),
-                    value: format!("value_{i}"),
-                    expires_at: None,
+                    entry: CacheEntry::new(format!("key_{i}"), format!("value_{i}").as_str()),
                 },
                 log_index: i as u64,
                 term: 1,
@@ -750,7 +749,7 @@ mod tests {
         op_logs.rotate_segment()?;
         // Add to new segment
         op_logs.write_many(vec![WriteOperation {
-            entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("new".to_string(), "value") },
             log_index: 100,
             term: 1,
             session_req: None,
@@ -819,9 +818,10 @@ mod tests {
         (0..count)
             .map(|i| WriteOperation {
                 entry: LogEntry::Set {
-                    key: format!("key_{}", start_index + i as u64),
-                    value: format!("value_{}", start_index + i as u64),
-                    expires_at: None,
+                    entry: CacheEntry::new(
+                        format!("key_{}", start_index + i as u64),
+                        format!("value_{}", start_index + i as u64).as_str(),
+                    ),
                 },
                 log_index: start_index + i as u64,
                 term,
@@ -1060,9 +1060,7 @@ mod tests {
             (0..100)
                 .map(|i| WriteOperation {
                     entry: LogEntry::Set {
-                        key: format!("key_{i}"),
-                        value: format!("value_{i}"),
-                        expires_at: None,
+                        entry: CacheEntry::new(format!("key_{i}"), format!("value_{i}").as_str()),
                     },
                     log_index: i as u64,
                     term: 1,
@@ -1082,7 +1080,7 @@ mod tests {
 
         // Add to new segment
         op_logs.write_many(vec![WriteOperation {
-            entry: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("new".to_string(), "value") },
             log_index: 100,
             term: 1,
             session_req: None,
@@ -1107,9 +1105,7 @@ mod tests {
             (0..50)
                 .map(|i| WriteOperation {
                     entry: LogEntry::Set {
-                        key: format!("key_{i}"),
-                        value: format!("value_{i}"),
-                        expires_at: None,
+                        entry: CacheEntry::new(format!("key_{i}"), format!("value_{i}").as_str()),
                     },
                     log_index: i as u64,
                     term: 1,

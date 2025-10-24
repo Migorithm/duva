@@ -1,3 +1,4 @@
+use crate::domains::caches::cache_manager::IndexedValueCodec;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
@@ -229,6 +230,14 @@ impl QueryIO {
             },
             _ => Err(anyhow!("Only Arrays can be merged")),
         }
+    }
+
+    pub(crate) fn convert_str_res(res: &str, index: u64) -> Self {
+        QueryIO::SimpleString(IndexedValueCodec::encode(res, index).into())
+    }
+
+    pub(crate) fn convert_str_vec_res(values: Vec<String>, index: u64) -> Self {
+        QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
     }
 }
 
@@ -575,6 +584,7 @@ mod test {
     use crate::domains::replications::LogEntry;
     use crate::domains::replications::state::ReplicationState;
 
+    use chrono::DateTime;
     use uuid::Uuid;
 
     #[test]
@@ -651,23 +661,19 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x01\0\x05hello\x05world\0");
+        let buffer = Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
 
         // THEN
-        assert_eq!(len, 21);
+        assert_eq!(len, 22);
         assert_eq!(
             value,
             QueryIO::SessionRequest {
                 request_id: 30,
-                action: LogEntry::Set {
-                    key: "hello".to_string(),
-                    value: "world".to_string(),
-                    expires_at: None
-                }
-                .into()
+                action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world",) }
+                    .into()
             }
         );
     }
@@ -676,19 +682,14 @@ mod test {
         // GIVEN
         let request = QueryIO::SessionRequest {
             request_id: 30,
-            action: LogEntry::Set {
-                key: "hello".to_string(),
-                value: "world".to_string(),
-                expires_at: None,
-            }
-            .into(),
+            action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world") }.into(),
         };
 
         // WHEN
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n%\x01\0\x05hello\x05world\0"));
+        assert_eq!(serialized, Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0"));
     }
 
     #[test]
@@ -707,7 +708,7 @@ mod test {
     fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
-            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             log_index: 1,
             term: 0,
             session_req: None,
@@ -755,20 +756,15 @@ mod test {
             banlist,
             append_entries: vec![
                 WriteOperation {
-                    entry: LogEntry::Set {
-                        key: "foo".into(),
-                        value: "bar".into(),
-                        expires_at: None,
-                    },
+                    entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
                     log_index: 1,
                     term: 0,
                     session_req: None,
                 },
                 WriteOperation {
                     entry: LogEntry::Set {
-                        key: "foo".into(),
-                        value: "bar".into(),
-                        expires_at: Some(323232),
+                        entry: CacheEntry::new("foo".to_string(), "bar")
+                            .with_expiry(DateTime::from_timestamp_millis(323232).unwrap()),
                     },
                     log_index: 2,
                     term: 1,

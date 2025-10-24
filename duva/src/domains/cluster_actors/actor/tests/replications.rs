@@ -24,7 +24,8 @@ fn logger_create_entries_from_lowest() {
 
     repl_state.increase_con_idx_by(LOWEST_FOLLOWER_COMMIT_INDEX);
 
-    let log = LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
+    let log = LogEntry::Set { entry: CacheEntry::new("foo4".to_string(), "bar") };
+
     repl_state.write_single_entry(log, repl_state.clone_state().term, None);
 
     let logs = repl_state.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
@@ -69,7 +70,7 @@ async fn test_generate_follower_entries() {
     // * add new log - this must create entries that are greater than 3
 
     cluster_actor.replication.write_single_entry(
-        LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
+        LogEntry::Set { entry: CacheEntry::new("foo4".to_string(), "bar") },
         cluster_actor.log_state().term,
         None,
     );
@@ -102,14 +103,8 @@ async fn follower_cluster_actor_replicate_log() {
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 1);
     assert_eq!(logs[1].log_index, 2);
-    assert_eq!(
-        logs[0].entry,
-        LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None }
-    );
-    assert_eq!(
-        logs[1].entry,
-        LogEntry::Set { key: "foo2".into(), value: "bar".into(), expires_at: None }
-    );
+    assert_eq!(logs[0].entry, LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },);
+    assert_eq!(logs[1].entry, LogEntry::Set { entry: CacheEntry::new("foo2".to_string(), "bar") },);
 }
 
 #[tokio::test]
@@ -436,7 +431,7 @@ async fn req_consensus_inserts_consensus_voting() {
     let (callback, _) = Callback::create();
     let client_id = Uuid::now_v7().to_string();
     let session_request = SessionRequest::new(1, client_id);
-    let w_req = LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+    let w_req = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
     let consensus_request = ConsensusRequest {
         entry: w_req.clone(),
         callback,
@@ -471,7 +466,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     let (callback, rx) = Callback::create();
     handler
         .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
-            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
             session_req: Some(client_req),
         })))
@@ -628,11 +623,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     // WHEN - send request with already processed session
     let (tx, rx) = Callback::create();
     let consensus_request = ConsensusRequest {
-        entry: LogEntry::Set {
-            key: "test_key".into(),
-            value: "test_value".into(),
-            expires_at: None,
-        },
+        entry: LogEntry::Set { entry: CacheEntry::new("test_key".to_string(), "test_value") },
         callback: tx,
         session_req: Some(session_req),
     };
@@ -644,7 +635,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     assert_eq!(cluster_actor.log_state().last_log_index, 0);
 
     // Verify the response indicates already processed
-    let ConsensusClientResponse::AlreadyProcessed { key } = rx.recv().await else {
+    let ConsensusClientResponse::AlreadyProcessed { key, request_id: 1 } = rx.recv().await else {
         panic!("Expected AlreadyProcessed response");
     };
     assert_eq!(key, vec!["test_key".to_string()]);

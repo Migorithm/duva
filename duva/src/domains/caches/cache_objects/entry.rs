@@ -33,8 +33,11 @@ impl CacheEntry {
     pub(crate) fn expiry(&self) -> Option<DateTime<Utc>> {
         self.value.expiry.and_then(DateTime::from_timestamp_millis)
     }
+    pub fn expiry_in_i64(&self) -> Option<i64> {
+        self.value.expiry.clone()
+    }
 
-    pub(crate) fn key(&self) -> &str {
+    pub fn key(&self) -> &str {
         &self.key
     }
 
@@ -60,7 +63,7 @@ impl CacheEntry {
         (self.key, self.value)
     }
 
-    pub(crate) fn as_str(&self) -> anyhow::Result<String> {
+    pub fn as_str(&self) -> anyhow::Result<String> {
         self.value.try_to_string()
     }
 }

@@ -1,3 +1,4 @@
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::replications::LogEntry;
 use duva::prelude::anyhow::{self, Context};
 use duva::presentation::clients::request::NonMutatingAction;
@@ -80,8 +81,7 @@ impl InputContext {
                 }
                 Ok(init)
             },
-            ClientAction::NonMutating(Exists { keys: _ })
-            | ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
+            ClientAction::NonMutating(Exists { keys: _ }) => {
                 let mut count = 0;
                 for result in res {
                     let QueryIO::SimpleString(byte) = result else {
@@ -92,6 +92,19 @@ impl InputContext {
                     let num = num.parse::<u64>().context("Failed to parse string to u64")?;
 
                     count += num;
+                }
+                Ok(QueryIO::SimpleString(count.to_string().into()))
+            },
+            ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
+                let mut count = 0;
+                for result in res {
+                    let QueryIO::SimpleString(value) = result else {
+                        return Err(anyhow::anyhow!("Expected SimpleString result"));
+                    };
+                    let decoded_value =
+                        IndexedValueCodec::decode_value(String::from_utf8_lossy(&value)).unwrap();
+
+                    count += decoded_value;
                 }
                 Ok(QueryIO::SimpleString(count.to_string().into()))
             },
@@ -156,13 +169,11 @@ impl From<&ClientAction> for RoutingRule {
                     expires_at: None,
                 }])
             },
-            ClientAction::Mutating(Set { key, value, expires_at }) => {
-                Self::Selective(vec![CommandEntry {
-                    key: key.clone(),
-                    value: Some(value.clone()),
-                    expires_at: *expires_at,
-                }])
-            },
+            ClientAction::Mutating(Set { entry }) => Self::Selective(vec![CommandEntry {
+                key: entry.key().into(),
+                value: Some(entry.as_str().unwrap_or_default()),
+                expires_at: entry.expiry_in_i64(),
+            }]),
 
             // commands thar require multi-key-routings
             ClientAction::Mutating(Delete { keys })

@@ -330,14 +330,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            req.callback.send(ConsensusClientResponse::Err("Write given to follower".into()));
+            req.callback.send(ConsensusClientResponse::Err {
+                reason: "Write given to follower".into(),
+                request_id: req.session_req.unwrap().request_id,
+            });
             return;
         }
 
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.entry.all_keys().into_iter().map(String::from).collect();
-            req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
+                key,
+                // TODO : remove unwrap
+                request_id: req.session_req.unwrap().request_id,
+            });
             return;
         };
 
@@ -354,11 +361,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
                 let moved_keys = replids.except(&self.log_state().replid).join(" ");
-                req.callback.send(ConsensusClientResponse::Err(format!("Moved {moved_keys}")))
+                req.callback.send(ConsensusClientResponse::Err {
+                    reason: format!("Moved {moved_keys}"),
+                    request_id: req.session_req.unwrap().request_id,
+                })
             },
             Err(err) => {
                 err!("{}", err);
-                req.callback.send(ConsensusClientResponse::Err(err.to_string()));
+                req.callback.send(ConsensusClientResponse::Err {
+                    reason: err.to_string(),
+                    request_id: req.session_req.unwrap().request_id,
+                });
             },
         }
     }

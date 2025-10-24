@@ -102,7 +102,11 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
             _ => Response::FormatError,
         },
         Mutating(LogEntry::Append { .. }) => match query_io {
-            QueryIO::SimpleString(value) => Response::String(value),
+            QueryIO::SimpleString(value) => {
+                let s = String::from_utf8_lossy(&value);
+                let s: Option<i64> = IndexedValueCodec::decode_value(s);
+                Response::String(s.unwrap().to_string().into())
+            },
             QueryIO::Err(value) => Response::Error(value),
             _ => Response::FormatError,
         },

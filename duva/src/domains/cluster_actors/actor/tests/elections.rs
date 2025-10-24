@@ -98,7 +98,7 @@ async fn test_vote_election_deny_vote_older_log() {
         .persist_many(vec![WriteOperation {
             log_index: initial_term + 2,
             term: initial_term,
-            entry: LogEntry::Set { key: "k".into(), value: "v".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("k".to_string(), "v") },
             session_req: None,
         }])
         .unwrap(); // Follower log: idx 2, term 2
@@ -234,11 +234,7 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     let session_req = SessionRequest::new(1, "client1".to_string());
 
     let consensus_request = ConsensusRequest {
-        entry: LogEntry::Set {
-            key: "key".to_string(),
-            value: "value".to_string(),
-            expires_at: None,
-        },
+        entry: LogEntry::Set { entry: CacheEntry::new("key".to_string(), "value") },
         callback: tx,
         session_req: Some(session_req),
     };
@@ -252,5 +248,5 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     assert!(value.is_null());
 
     let res = rx.0.await.unwrap();
-    assert!(matches!(res, ConsensusClientResponse::Err(_e)))
+    assert!(matches!(res, ConsensusClientResponse::Err { reason: _e, request_id: 1 }))
 }

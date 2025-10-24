@@ -15,7 +15,7 @@ pub struct WriteOperation {
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum LogEntry {
-    Set { key: String, value: String, expires_at: Option<i64> },
+    Set { entry: CacheEntry },
     MSet { entries: Vec<CacheEntry> },
     Delete { keys: Vec<String> },
     Append { key: String, value: String },
@@ -55,8 +55,8 @@ impl LogEntry {
         use LogEntry::*;
 
         match self {
-            Set { key, .. }
-            | Append { key, .. }
+            Set { entry } => vec![entry.key()],
+            Append { key, .. }
             | IncrBy { key, .. }
             | DecrBy { key, .. }
             | LPush { key, .. }
