@@ -87,12 +87,10 @@ impl CacheManager {
                 QueryIO::convert_str_res("", log_index)
             },
             Append { key, value } => {
-                // TODO break!
                 let res = self.route_append(key, value).await?.to_string();
                 QueryIO::convert_str_res(&res, log_index)
             },
             Delete { keys } => {
-                // TODO break!
                 let res = self.route_delete(keys).await?.to_string();
                 QueryIO::convert_str_res(&res, log_index)
             },
@@ -167,9 +165,9 @@ impl CacheManager {
         .await;
     }
 
-    async fn route_lpush(&self, key: String, value: Vec<String>) -> Result<String> {
+    async fn route_lpush(&self, key: String, values: Vec<String>) -> Result<String> {
         let (callback, rx) = Callback::create();
-        self.select_shard(&key).send(CacheCommand::LPush { key, values: value, callback }).await?;
+        self.select_shard(&key).send(CacheCommand::LPush { key, values, callback }).await?;
         let current_len = rx.recv().await?;
         Ok(current_len.to_string())
     }
