@@ -78,11 +78,7 @@ impl CacheManager {
         use LogEntry::*;
 
         let res = match log_entry {
-            Set { key, value, expires_at } => {
-                let mut entry = CacheEntry::new(key, value.as_str());
-                if let Some(expires_at) = expires_at {
-                    entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
-                }
+            Set { entry } => {
                 self.route_set(entry).await?;
                 QueryIO::convert_str_res("", log_index)
             },

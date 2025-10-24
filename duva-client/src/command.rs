@@ -169,13 +169,11 @@ impl From<&ClientAction> for RoutingRule {
                     expires_at: None,
                 }])
             },
-            ClientAction::Mutating(Set { key, value, expires_at }) => {
-                Self::Selective(vec![CommandEntry {
-                    key: key.clone(),
-                    value: Some(value.clone()),
-                    expires_at: *expires_at,
-                }])
-            },
+            ClientAction::Mutating(Set { entry }) => Self::Selective(vec![CommandEntry {
+                key: entry.key().into(),
+                value: Some(entry.as_str().unwrap_or_default()),
+                expires_at: entry.expiry_in_i64(),
+            }]),
 
             // commands thar require multi-key-routings
             ClientAction::Mutating(Delete { keys })

@@ -1,10 +1,11 @@
 use crate::domains::{
+    caches::cache_objects::CacheEntry,
     cluster_actors::{LazyOption, SessionRequest},
     peers::identifier::{PeerIdentifier, TPeerAddress},
     replications::LogEntry,
 };
 use anyhow::Context;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -71,8 +72,12 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 4 if args[2].eq_ignore_ascii_case("PX") => Some(extract_expiry(args[3])?),
                 _ => return Err(wrong_args_error()),
             };
-            LogEntry::Set { key: args[0].to_string(), value: args[1].to_string(), expires_at }
-                .into()
+            let mut entry = CacheEntry::new(args[0].to_string(), args[1].to_string().as_str());
+            if let Some(expires_at) = expires_at {
+                entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
+            }
+
+            LogEntry::Set { entry }.into()
         },
         "DEL" => {
             require_non_empty_args()?;

@@ -118,7 +118,7 @@ impl Helper {
     pub(crate) fn write(index_num: u64, term: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
-            entry: LogEntry::Set { key: key.into(), value: value.into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new(key, value) },
             term,
             session_req: None,
         }
@@ -132,7 +132,7 @@ impl Helper {
     ) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
-            entry: LogEntry::Set { key: key.into(), value: value.into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new(key, value) },
             term,
             session_req: Some(session_req),
         }
@@ -223,7 +223,7 @@ impl Helper {
         session_req: Option<SessionRequest>,
     ) -> ConsensusRequest {
         ConsensusRequest {
-            entry: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
             session_req,
         }
