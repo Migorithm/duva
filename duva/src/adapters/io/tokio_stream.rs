@@ -256,18 +256,11 @@ pub mod test_tokio_stream_impl {
     async fn test_deserialize_reads_vec() {
         // 1. Arrange: Single message in one chunk
 
+        let message_one = TestMessage { id: 1, data: "quick".to_string() };
+        let message_two = TestMessage { id: 2, data: "silver".to_string() };
         let mut raw_data = vec![];
-        raw_data.extend_from_slice(
-            &bincode::encode_to_vec(TestMessage { id: 1, data: "quick".to_string() }, SERDE_CONFIG)
-                .unwrap(),
-        );
-        raw_data.extend_from_slice(
-            &bincode::encode_to_vec(
-                TestMessage { id: 2, data: "silver".to_string() },
-                SERDE_CONFIG,
-            )
-            .unwrap(),
-        );
+        raw_data.extend_from_slice(&bincode::encode_to_vec(message_one, SERDE_CONFIG).unwrap());
+        raw_data.extend_from_slice(&bincode::encode_to_vec(message_two, SERDE_CONFIG).unwrap());
 
         let mut mock = MockAsyncStream::new(vec![raw_data]);
 
