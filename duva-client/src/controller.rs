@@ -46,14 +46,14 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
             | ClusterInfo,
         ) => match query_io {
             QueryIO::Null => Response::Null,
-            QueryIO::SimpleString(value) => Response::String(value),
-            QueryIO::BulkString(value) => Response::String(value),
-            QueryIO::Err(value) => Response::Error(value),
+            QueryIO::SimpleString(value) => Response::String(value.into()),
+            QueryIO::BulkString(value) => Response::String(value.into()),
+            QueryIO::Err(value) => Response::Error(value.into()),
             _err => Response::FormatError,
         },
         Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
             if let QueryIO::Err(value) = query_io {
-                return Response::Error(value);
+                return Response::Error(value.into());
             }
 
             let QueryIO::SimpleString(value) = query_io else {
@@ -79,7 +79,7 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::Integer(s.unwrap().to_string().into())
             },
-            QueryIO::Err(value) => Response::Error(value),
+            QueryIO::Err(value) => Response::Error(value.into()),
 
             _ => Response::FormatError,
         },
@@ -92,13 +92,13 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
         Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
             match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
-                QueryIO::Err(value) => Response::Error(value),
+                QueryIO::Err(value) => Response::Error(value.into()),
                 _ => Response::FormatError,
             }
         },
         NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
             QueryIO::Null => Response::String("OK".into()),
-            QueryIO::Err(value) => Response::Error(value),
+            QueryIO::Err(value) => Response::Error(value.into()),
             _ => Response::FormatError,
         },
         Mutating(LogEntry::Append { .. }) => match query_io {
@@ -107,7 +107,7 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::String(s.unwrap().to_string().into())
             },
-            QueryIO::Err(value) => Response::Error(value),
+            QueryIO::Err(value) => Response::Error(value.into()),
             _ => Response::FormatError,
         },
         Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
@@ -137,11 +137,11 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    nodes.push(Response::String(value));
+                    nodes.push(Response::String(value.into()));
                 }
                 Response::Array(nodes)
             },
-            QueryIO::Err(value) => Response::Error(value),
+            QueryIO::Err(value) => Response::Error(value.into()),
             _ => Response::FormatError,
         },
 

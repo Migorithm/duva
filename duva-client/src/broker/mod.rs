@@ -14,7 +14,7 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{
-    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+    BinBytes, ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};
@@ -97,9 +97,9 @@ impl Broker {
                         context.expected_result_cnt = result_count;
                         queue.push(context);
                     } else {
-                        context.callback(QueryIO::Err(
-                            "Failed to route command. Try again after ttl time".into(),
-                        ));
+                        context.callback(QueryIO::Err(BinBytes::new(
+                            "Failed to route command. Try again after ttl time",
+                        )));
                     };
                 },
             }

@@ -1,4 +1,5 @@
 use crate::domains::{
+    QueryIO,
     caches::cache_objects::CacheEntry,
     cluster_actors::{LazyOption, SessionRequest},
     peers::identifier::{PeerIdentifier, TPeerAddress},
@@ -293,4 +294,11 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
     pub(crate) session_req: SessionRequest,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClientResponse {
+    pub(crate) res: QueryIO,
+    pub(crate) index: u64,
+    pub(crate) request_id: u64,
 }

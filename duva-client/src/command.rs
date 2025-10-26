@@ -1,5 +1,6 @@
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::replications::LogEntry;
+use duva::prelude::BinBytes;
 use duva::prelude::anyhow::{self, Context};
 use duva::presentation::clients::request::NonMutatingAction;
 use duva::{
@@ -30,7 +31,7 @@ impl CommandQueue {
         }
 
         let result =
-            context.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
+            context.get_result().unwrap_or_else(|err| QueryIO::Err(BinBytes::new(err.to_string())));
         context.callback(result);
     }
 }
@@ -93,7 +94,7 @@ impl InputContext {
 
                     count += num;
                 }
-                Ok(QueryIO::SimpleString(count.to_string().into()))
+                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
             },
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
@@ -106,7 +107,7 @@ impl InputContext {
 
                     count += decoded_value;
                 }
-                Ok(QueryIO::SimpleString(count.to_string().into()))
+                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
             },
             _ => {
                 if res.len() != 1 {

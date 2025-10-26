@@ -29,6 +29,10 @@ pub trait TSerdeRead {
     fn deserialized_read<U: bincode::Decode<()>>(
         &mut self,
     ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
+
+    fn deserialized_reads<U: bincode::Decode<()>>(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<U>, IoError>> + Send;
 }
 
 pub(crate) trait TAsyncReadWrite {

@@ -11,7 +11,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;
 
-use crate::types::Callback;
+use crate::types::{BinBytes, Callback};
 use tracing::info;
 
 #[derive(Clone, Debug)]
@@ -28,8 +28,8 @@ impl ClientController {
         use NonMutatingAction::*;
 
         let response = match non_mutating {
-            Ping => QueryIO::SimpleString("PONG".into()),
-            Echo(val) => QueryIO::BulkString(val.into()),
+            Ping => QueryIO::SimpleString(BinBytes::new("PONG")),
+            Echo(val) => QueryIO::BulkString(BinBytes::new(val)),
 
             Save => {
                 let file_path = ENV.get_filepath();
@@ -69,7 +69,9 @@ impl ClientController {
             IndexGet { key, index } => self.cache_manager.route_index_get(key, index).await?.into(),
             Keys { pattern } => {
                 let res = self.cache_manager.route_keys(pattern).await;
-                QueryIO::Array(res.into_iter().map(|s| QueryIO::BulkString(s.into())).collect())
+                QueryIO::Array(
+                    res.into_iter().map(|s| QueryIO::BulkString(BinBytes::new(s))).collect(),
+                )
             },
             Config { key, value } => {
                 match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
@@ -79,17 +81,12 @@ impl ClientController {
                 }
             },
 
-            Exists { keys } => QueryIO::SimpleString(
-                self.cache_manager.route_exists(keys).await?.to_string().into(),
-            ),
-            Info => QueryIO::BulkString(
-                self.cluster_actor_sender
-                    .route_get_node_state()
-                    .await?
-                    .vectorize()
-                    .join("\r\n")
-                    .into(),
-            ),
+            Exists { keys } => QueryIO::SimpleString(BinBytes::new(
+                self.cache_manager.route_exists(keys).await?.to_string(),
+            )),
+            Info => QueryIO::BulkString(BinBytes::new(
+                self.cluster_actor_sender.route_get_node_state().await?.vectorize().join("\r\n"),
+            )),
             ClusterInfo => self.cluster_actor_sender.route_get_cluster_info().await?.into(),
             ClusterNodes => self
                 .cluster_actor_sender
@@ -101,9 +98,9 @@ impl ClientController {
                 .into(),
             ClusterForget(peer_identifier) => {
                 match self.cluster_actor_sender.route_forget_peer(peer_identifier).await {
-                    Ok(true) => QueryIO::SimpleString("OK".into()),
-                    Ok(false) => QueryIO::Err("No such peer".into()),
-                    Err(e) => QueryIO::Err(e.to_string().into()),
+                    Ok(true) => QueryIO::SimpleString(BinBytes::new("OK")),
+                    Ok(false) => QueryIO::Err(BinBytes::new("No such peer")),
+                    Err(e) => QueryIO::Err(BinBytes::new(e.to_string())),
                 }
             },
             ClusterMeet(peer_identifier, option) => {
@@ -112,18 +109,22 @@ impl ClientController {
             ClusterReshard => self.cluster_actor_sender.route_cluster_reshard().await?.into(),
             ReplicaOf(peer_identifier) => {
                 self.cluster_actor_sender.route_replicaof(peer_identifier.clone()).await?;
-                QueryIO::SimpleString("OK".into())
+                QueryIO::SimpleString(BinBytes::new("OK"))
             },
             Role => self.cluster_actor_sender.route_get_roles().await?.into(),
-            Ttl { key } => QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into()),
+            Ttl { key } => {
+                QueryIO::SimpleString(BinBytes::new(self.cache_manager.route_ttl(key).await?))
+            },
 
             LLen { key } => {
                 let len = self.cache_manager.route_llen(key).await?;
-                QueryIO::SimpleString(len.to_string().into())
+                QueryIO::SimpleString(BinBytes::new(len.to_string()))
             },
             LRange { key, start, end } => {
                 let values = self.cache_manager.route_lrange(key, start, end).await?;
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+                QueryIO::Array(
+                    values.into_iter().map(|v| QueryIO::BulkString(BinBytes::new(v))).collect(),
+                )
             },
             LIndex { key, index } => self.cache_manager.route_lindex(key, index).await?.into(),
         };

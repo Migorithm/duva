@@ -13,6 +13,7 @@ use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
 use crate::presentation::clients::request::ClientAction;
+use crate::types::BinBytes;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
@@ -39,7 +40,8 @@ impl ClientStreamReader {
                 if err.should_break() {
                     return;
                 }
-                let _ = stream_writer_sender.send(QueryIO::Err(err.to_string().into())).await;
+                let _ =
+                    stream_writer_sender.send(QueryIO::Err(BinBytes::new(err.to_string()))).await;
                 continue;
             }
 
@@ -57,7 +59,7 @@ impl ClientStreamReader {
             for req in requests {
                 match req {
                     Err(err) => {
-                        let _ = stream_writer_sender.send(QueryIO::Err(err.into())).await;
+                        let _ = stream_writer_sender.send(QueryIO::Err(BinBytes::new(err))).await;
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
@@ -75,7 +77,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            QueryIO::Err(e.to_string().into())
+                            QueryIO::Err(BinBytes::new(e.to_string()))
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;

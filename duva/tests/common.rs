@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_variables)]
-use bytes::Bytes;
-use duva::domains::query_io::QueryIO;
+
 use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Write};
 use std::mem::MaybeUninit;
@@ -236,11 +235,6 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
             .expect("Failed to start server process"),
         env.port,
     )
-}
-
-pub fn array(arr: Vec<&str>) -> Bytes {
-    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
-        .serialize()
 }
 
 pub struct Client {
