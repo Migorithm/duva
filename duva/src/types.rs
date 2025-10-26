@@ -1,3 +1,13 @@
+use bincode::{
+    BorrowDecode, Decode,
+    de::Decoder,
+    enc::Encoder,
+    error::{DecodeError, EncodeError},
+};
+use bytes::Bytes;
+
+use crate::{from_to, make_smart_pointer};
+
 #[derive(Debug)]
 pub(crate) struct Callback<T>(pub(crate) tokio::sync::oneshot::Sender<T>);
 
@@ -31,3 +41,36 @@ impl<T> PartialEq for Callback<T> {
     }
 }
 impl<T> Eq for Callback<T> {}
+
+#[derive(Clone, Debug, PartialEq, Default, Eq)]
+pub struct BinBytes(pub Bytes);
+
+make_smart_pointer!(BinBytes, Bytes);
+from_to!(Bytes, BinBytes);
+
+impl bincode::Encode for BinBytes {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        self.0.as_ref().encode(encoder)
+    }
+}
+impl<Ctx> Decode<Ctx> for BinBytes {
+    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let vec: Vec<u8> = Decode::decode(decoder)?;
+        Ok(BinBytes(Bytes::from(vec)))
+    }
+}
+impl<'de, Ctx> BorrowDecode<'de, Ctx> for BinBytes {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> Result<Self, DecodeError> {
+        let slice: &'de [u8] = BorrowDecode::borrow_decode(decoder)?;
+        Ok(BinBytes(Bytes::copy_from_slice(slice)))
+    }
+}
+
+impl BinBytes {
+    pub fn new(arg: impl Into<Bytes>) -> Self {
+        let bytes = arg.into();
+        Self(bytes)
+    }
+}

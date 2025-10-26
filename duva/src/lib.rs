@@ -50,6 +50,8 @@ pub mod prelude {
     pub use crate::presentation::clients::ConnectionRequests;
     pub use crate::presentation::clients::ConnectionResponse;
     pub use crate::presentation::clients::ConnectionResponses;
+    pub use crate::types::BinBytes;
+
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;

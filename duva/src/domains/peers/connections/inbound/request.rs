@@ -1,7 +1,7 @@
 use crate::domains::replications::*;
+use crate::types::BinBytes;
 use crate::{domains::QueryIO, err, from_to, make_smart_pointer};
 use anyhow::Context;
-use bytes::Bytes;
 
 pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,
@@ -58,14 +58,14 @@ impl HandShakeRequest {
         }
     }
 
-    pub(crate) fn extract_capa(&self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+    pub(crate) fn extract_capa(&self) -> anyhow::Result<Vec<(BinBytes, BinBytes)>> {
         self.match_query(HandShakeRequestEnum::ReplConf)?;
         if self.args.is_empty() || !self.args.len().is_multiple_of(2) {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         }
 
         // Process pairs directly using chunks_exact
-        let capabilities: Vec<(Bytes, Bytes)> = self
+        let capabilities: Vec<(BinBytes, BinBytes)> = self
             .args
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
@@ -79,7 +79,7 @@ impl HandShakeRequest {
             .collect();
 
         // Validate last capability is psync2
-        if capabilities.last().context("No capabilities given")?.1 != "psync2" {
+        if *capabilities.last().context("No capabilities given")?.1 != "psync2" {
             return Err(anyhow::anyhow!("psync2 must be given as the last capability"));
         }
         Ok(capabilities)

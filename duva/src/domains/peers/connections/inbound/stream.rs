@@ -12,7 +12,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
-use bytes::Bytes;
+use crate::types::BinBytes;
 
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.w.write(QueryIO::SimpleString("PONG".into())).await?;
+        self.w.write(QueryIO::SimpleString(BinBytes::new("PONG"))).await?;
         Ok(())
     }
 
@@ -55,15 +55,15 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.w.write(QueryIO::SimpleString("OK".into())).await?;
+        self.w.write(QueryIO::SimpleString(BinBytes::new("OK"))).await?;
 
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(BinBytes, BinBytes)>> {
         let cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.w.write(QueryIO::SimpleString("OK".into())).await?;
+        self.w.write(QueryIO::SimpleString(BinBytes::new("OK"))).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64, ReplicationRole, u64)> {
@@ -81,10 +81,9 @@ impl InboundStream {
         );
 
         self.w
-            .write(QueryIO::SimpleString(
-                format!("FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role} {term}")
-                    .into(),
-            ))
+            .write(QueryIO::SimpleString(BinBytes::new(format!(
+                "FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role} {term}"
+            ))))
             .await?;
         self.recv_ok().await?;
         Ok((inbound_repl_id, offset, role, term))

@@ -9,6 +9,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use crate::domains::replications::*;
+use crate::types::BinBytes;
 use crate::types::Callback;
 use crate::write_array;
 use anyhow::Context;
@@ -72,7 +73,7 @@ impl OutboundStream {
     }
 
     async fn reply_with_ok(&mut self) -> anyhow::Result<()> {
-        self.w.write(QueryIO::SimpleString(Bytes::from("ok"))).await?;
+        self.w.write(QueryIO::SimpleString(BinBytes::new("ok"))).await?;
         Ok(())
     }
 

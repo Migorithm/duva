@@ -1,15 +1,9 @@
-use bincode::{
-    BorrowDecode, Decode,
-    de::Decoder,
-    enc::Encoder,
-    error::{DecodeError, EncodeError},
-};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 
 use crate::{
     domains::caches::cache_objects::{THasExpiry, types::quicklist::QuickList},
-    from_to, make_smart_pointer,
+    types::BinBytes,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Default, bincode::Encode, bincode::Decode)]
@@ -49,33 +43,8 @@ impl CacheValue {
 pub enum TypedValue {
     #[default]
     Null,
-    String(BytesWrapper),
+    String(BinBytes),
     List(QuickList),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub(crate) struct BytesWrapper(Bytes); // To minimize bincode implementation boilerplate as Bytes does not implement bincode traits
-make_smart_pointer!(BytesWrapper, Bytes);
-from_to!(Bytes, BytesWrapper);
-
-impl bincode::Encode for BytesWrapper {
-    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-        self.0.as_ref().encode(encoder)
-    }
-}
-impl<Ctx> Decode<Ctx> for BytesWrapper {
-    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
-        let vec: Vec<u8> = Decode::decode(decoder)?;
-        Ok(BytesWrapper(Bytes::from(vec)))
-    }
-}
-impl<'de, Ctx> BorrowDecode<'de, Ctx> for BytesWrapper {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        let slice: &'de [u8] = BorrowDecode::borrow_decode(decoder)?;
-        Ok(BytesWrapper(Bytes::copy_from_slice(slice)))
-    }
 }
 
 pub const WRONG_TYPE_ERR_MSG: &str =

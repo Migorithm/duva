@@ -8,6 +8,7 @@ use crate::domains::replications::messages::{ElectionVote, ReplicationAck, Reque
 
 use crate::domains::replications::*;
 use crate::presentation::clients::request::ClientAction;
+use crate::types::BinBytes;
 use anyhow::{Context, Result, anyhow};
 
 use bincode::enc::write::SizeWriter;
@@ -39,25 +40,25 @@ pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config:
 #[macro_export]
 macro_rules! write_array {
     ($($x:expr),*) => {
-        $crate::domains::QueryIO::Array(vec![$($crate::domains::QueryIO::BulkString($x.into())),*])
+        $crate::domains::QueryIO::Array(vec![$($crate::domains::QueryIO::BulkString(BinBytes::new($x))),*])
     };
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, bincode::Decode, bincode::Encode)]
 pub enum QueryIO {
     #[default]
     Null,
-    SimpleString(Bytes),
-    BulkString(Bytes),
+    SimpleString(BinBytes),
+    BulkString(BinBytes),
     Array(Vec<QueryIO>),
     SessionRequest {
         request_id: u64,
         action: ClientAction,
     },
-    Err(Bytes),
+    Err(BinBytes),
 
     // custom types
-    File(Bytes),
+    File(BinBytes),
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
     WriteOperation(WriteOperation),
@@ -73,16 +74,16 @@ pub enum QueryIO {
 }
 
 impl QueryIO {
-    pub fn serialize(self) -> Bytes {
+    pub fn serialize(self) -> BinBytes {
         match self {
-            QueryIO::Null => NULL_PREFIX.to_string().into(),
+            QueryIO::Null => BinBytes(NULL_PREFIX.to_string().into()),
             QueryIO::SimpleString(s) => {
                 let mut buffer =
                     BytesMut::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
                 buffer.extend_from_slice(&[SIMPLE_STRING_PREFIX as u8]);
                 buffer.extend_from_slice(&s);
                 buffer.extend_from_slice(b"\r\n");
-                buffer.freeze()
+                buffer.freeze().into()
             },
             QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
@@ -91,7 +92,7 @@ impl QueryIO {
                 byte_mut.extend_from_slice(b"\r\n");
                 byte_mut.extend_from_slice(&s);
                 byte_mut.extend_from_slice(b"\r\n");
-                byte_mut.freeze()
+                byte_mut.freeze().into()
             },
             QueryIO::File(f) => {
                 let file_len = f.len() * 2;
@@ -119,7 +120,7 @@ impl QueryIO {
                     }]);
                 }
 
-                buffer.freeze()
+                buffer.freeze().into()
             },
             QueryIO::Array(array) => {
                 // Better capacity estimation: header + sum of item sizes
@@ -136,7 +137,7 @@ impl QueryIO {
                 for item in array {
                     buffer.extend_from_slice(&item.serialize());
                 }
-                buffer.freeze()
+                buffer.freeze().into()
             },
             QueryIO::SessionRequest { request_id, action } => {
                 let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
@@ -145,14 +146,14 @@ impl QueryIO {
                 buffer.extend_from_slice(request_id.to_string().as_bytes());
                 buffer.extend_from_slice(b"\r\n");
                 buffer.extend_from_slice(&value);
-                buffer.freeze()
+                buffer.freeze().into()
             },
             QueryIO::Err(e) => {
                 let mut buffer = BytesMut::with_capacity(ERR_PREFIX.len_utf8() + e.len() + 2);
                 buffer.extend_from_slice(&[ERR_PREFIX as u8]);
                 buffer.extend_from_slice(&e);
                 buffer.extend_from_slice(b"\r\n");
-                buffer.freeze()
+                buffer.freeze().into()
             },
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
@@ -180,7 +181,7 @@ impl QueryIO {
             QueryIO::MigrationBatchAck(migration_batch_ack) => {
                 serialize_with_bincode(MIGRATION_BATCH_ACK_PREFIX, &migration_batch_ack)
             },
-            QueryIO::CloseConnection => CLOSE_CONNECTION_PREFIX.to_string().into(),
+            QueryIO::CloseConnection => BinBytes::new(CLOSE_CONNECTION_PREFIX.to_string()),
         }
     }
 
@@ -233,11 +234,11 @@ impl QueryIO {
     }
 
     pub(crate) fn convert_str_res(res: &str, index: u64) -> Self {
-        QueryIO::SimpleString(IndexedValueCodec::encode(res, index).into())
+        QueryIO::SimpleString(BinBytes::new(IndexedValueCodec::encode(res, index)))
     }
 
     pub(crate) fn convert_str_vec_res(values: Vec<String>, index: u64) -> Self {
-        QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+        QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(BinBytes::new(v))).collect())
     }
 }
 
@@ -273,7 +274,7 @@ fn estimate_serialized_size(query: &QueryIO) -> usize {
 
 impl From<String> for QueryIO {
     fn from(value: String) -> Self {
-        QueryIO::BulkString(value.into())
+        QueryIO::BulkString(BinBytes::new(value))
     }
 }
 impl From<Vec<String>> for QueryIO {
@@ -297,13 +298,13 @@ impl From<CacheValue> for QueryIO {
 impl From<Option<String>> for QueryIO {
     fn from(v: Option<String>) -> Self {
         match v {
-            Some(v) => QueryIO::BulkString(v.into()),
+            Some(v) => QueryIO::BulkString(BinBytes::new(v)),
             None => QueryIO::Null,
         }
     }
 }
 
-impl From<QueryIO> for Bytes {
+impl From<QueryIO> for BinBytes {
     fn from(value: QueryIO) -> Self {
         value.serialize()
     }
@@ -322,21 +323,21 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
     match prefix {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::SimpleString(bytes), len))
+            Ok((QueryIO::SimpleString(BinBytes(bytes)), len))
         },
         ARRAY_PREFIX => parse_array(buffer),
         SESSION_REQUEST_PREFIX => parse_session_request(buffer),
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
-            Ok((QueryIO::BulkString(bytes), len))
+            Ok((QueryIO::BulkString(BinBytes(bytes)), len))
         },
         FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
-            Ok((QueryIO::File(bytes), len))
+            Ok((QueryIO::File(BinBytes(bytes)), len))
         },
         ERR_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::Err(bytes), len))
+            Ok((QueryIO::Err(BinBytes(bytes)), len))
         },
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
@@ -487,7 +488,7 @@ pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize
     })
 }
 
-fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
+fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> BinBytes {
     // Use size estimation for better performance
     let estimated_size = serialized_len_with_bincode(prefix, arg);
     let mut buffer = BytesMut::with_capacity(estimated_size);
@@ -497,7 +498,7 @@ fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
     let encoded = bincode::encode_to_vec(arg, SERDE_CONFIG).unwrap();
     buffer.extend_from_slice(&encoded);
 
-    buffer.freeze()
+    buffer.freeze().into()
 }
 
 impl From<WriteOperation> for QueryIO {
@@ -610,7 +611,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 7);
-        assert_eq!(value, QueryIO::SimpleString(Bytes::from("PING")));
+        assert_eq!(value, QueryIO::SimpleString(BinBytes(Bytes::from("PING"))));
     }
 
     #[test]
@@ -623,7 +624,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 11);
-        assert_eq!(value, QueryIO::BulkString("hello".into()));
+        assert_eq!(value, QueryIO::BulkString(BinBytes::new("hello")));
     }
 
     #[test]
@@ -636,7 +637,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 6);
-        assert_eq!(value, QueryIO::BulkString("".into()));
+        assert_eq!(value, QueryIO::BulkString(BinBytes::new("")));
     }
 
     #[test]
@@ -652,8 +653,8 @@ mod test {
         assert_eq!(
             value,
             QueryIO::Array(vec![
-                QueryIO::BulkString("hello".into()),
-                QueryIO::BulkString("world".into()),
+                QueryIO::BulkString(BinBytes::new("hello")),
+                QueryIO::BulkString(BinBytes::new("world")),
             ])
         );
     }
@@ -689,19 +690,22 @@ mod test {
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0"));
+        assert_eq!(
+            serialized,
+            BinBytes::new(Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0"))
+        );
     }
 
     #[test]
     fn test_parse_file() {
         // GIVEN
-        let file = QueryIO::File("hello".into());
+        let file = QueryIO::File(BinBytes::new("hello"));
         let serialized = file.serialize();
         // WHEN
         let (value, _) = deserialize(serialized).unwrap();
 
         // THEN
-        assert_eq!(value, QueryIO::File("hello".into()));
+        assert_eq!(value, QueryIO::File(BinBytes::new("hello")));
     }
 
     #[test]
@@ -1018,10 +1022,14 @@ mod test {
     #[test]
     fn test_merge_arrays() {
         // GIVEN
-        let array1 =
-            QueryIO::Array(vec![QueryIO::BulkString("a".into()), QueryIO::BulkString("b".into())]);
-        let array2 =
-            QueryIO::Array(vec![QueryIO::BulkString("c".into()), QueryIO::BulkString("d".into())]);
+        let array1 = QueryIO::Array(vec![
+            QueryIO::BulkString(BinBytes::new("a")),
+            QueryIO::BulkString(BinBytes::new("b")),
+        ]);
+        let array2 = QueryIO::Array(vec![
+            QueryIO::BulkString(BinBytes::new("c")),
+            QueryIO::BulkString(BinBytes::new("d")),
+        ]);
 
         // WHEN
         let merged = array1.merge(array2).unwrap();
@@ -1030,10 +1038,10 @@ mod test {
         assert_eq!(
             merged,
             QueryIO::Array(vec![
-                QueryIO::BulkString("a".into()),
-                QueryIO::BulkString("b".into()),
-                QueryIO::BulkString("c".into()),
-                QueryIO::BulkString("d".into())
+                QueryIO::BulkString(BinBytes::new("a")),
+                QueryIO::BulkString(BinBytes::new("b")),
+                QueryIO::BulkString(BinBytes::new("c")),
+                QueryIO::BulkString(BinBytes::new("d"))
             ])
         );
     }
@@ -1041,8 +1049,8 @@ mod test {
     #[test]
     fn test_merge_array_with_single_element() {
         // GIVEN
-        let array = QueryIO::Array(vec![QueryIO::BulkString("a".into())]);
-        let single_element = QueryIO::BulkString("b".into());
+        let array = QueryIO::Array(vec![QueryIO::BulkString(BinBytes::new("a"))]);
+        let single_element = QueryIO::BulkString(BinBytes::new("b"));
 
         // WHEN
         let merged = array.merge(single_element).unwrap();
@@ -1050,14 +1058,17 @@ mod test {
         // THEN
         assert_eq!(
             merged,
-            QueryIO::Array(vec![QueryIO::BulkString("a".into()), QueryIO::BulkString("b".into())])
+            QueryIO::Array(vec![
+                QueryIO::BulkString(BinBytes::new("a")),
+                QueryIO::BulkString(BinBytes::new("b"))
+            ])
         );
     }
 
     #[test]
     fn test_merge_null_with_array() {
         // GIVEN
-        let array = QueryIO::Array(vec![QueryIO::BulkString("a".into())]);
+        let array = QueryIO::Array(vec![QueryIO::BulkString(BinBytes::new("a"))]);
         let null_value = QueryIO::Null;
 
         // WHEN

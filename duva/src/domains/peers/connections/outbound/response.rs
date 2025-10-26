@@ -46,7 +46,7 @@ impl TryFrom<QueryIO> for ConnectionResponse {
     type Error = anyhow::Error;
     fn try_from(value: QueryIO) -> Result<Self, Self::Error> {
         match value {
-            QueryIO::SimpleString(value) => Ok(String::from_utf8(value.into())?.try_into()?),
+            QueryIO::SimpleString(value) => Ok(String::from_utf8(value.0.into())?.try_into()?),
             _ => {
                 eprintln!("Invalid command");
                 Err(anyhow::anyhow!("Invalid command"))

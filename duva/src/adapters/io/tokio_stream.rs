@@ -148,6 +148,8 @@ impl From<ErrorKind> for IoError {
 
 #[cfg(test)]
 pub mod test_tokio_stream_impl {
+    use crate::types::BinBytes;
+
     use super::*;
     #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode)]
     struct TestMessage {
@@ -228,10 +230,12 @@ pub mod test_tokio_stream_impl {
         assert_eq!(parsed_values.len(), 2);
         assert_eq!(
             parsed_values[0],
-            QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into())
+            QueryIO::SimpleString(BinBytes::new(
+                "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"
+            ))
         );
 
-        assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS 127.0.0.1:6378".into()));
+        assert_eq!(parsed_values[1], QueryIO::SimpleString(BinBytes::new("PEERS 127.0.0.1:6378")));
     }
 
     #[tokio::test]
