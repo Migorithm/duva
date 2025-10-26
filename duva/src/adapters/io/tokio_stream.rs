@@ -6,7 +6,7 @@ use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 const BUFFER_SIZE: usize = 512;
@@ -96,6 +96,24 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
 
         Ok(request)
     }
+
+    async fn deserialized_reads<U>(&mut self) -> Result<Vec<U>, IoError>
+    where
+        U: bincode::Decode<()>,
+    {
+        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
+        self.read_bytes(&mut buffer).await?;
+
+        let mut parsed_values = Vec::new();
+
+        while !buffer.is_empty() {
+            let (request, size) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
+                .map_err(|e| IoError::Custom(e.to_string()))?;
+            parsed_values.push(request);
+            buffer = buffer.split_off(size);
+        }
+        Ok(parsed_values)
+    }
 }
 
 impl TAsyncReadWrite for TcpStream {
@@ -128,39 +146,138 @@ impl From<ErrorKind> for IoError {
     }
 }
 
-#[test]
-fn test_socket_to_string() {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    //WHEN
-    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+#[cfg(test)]
+pub mod test_tokio_stream_impl {
+    use super::*;
+    #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode)]
+    struct TestMessage {
+        id: u32,
+        data: String,
+    }
 
-    //THEN
-    assert_eq!(socket.ip().to_string(), "127.0.0.1")
-}
-
-#[tokio::test]
-async fn test_read_values() {
-    let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-    // add a simple string to buffer
-    buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
-    buffer.extend_from_slice(b"+PEERS 127.0.0.1:6378\r\n");
-    // add an integer to buffer
-
-    let mut parsed_values = vec![];
-    while !buffer.is_empty() {
-        if let Ok((query_io, consumed)) = deserialize(buffer.clone()) {
-            parsed_values.push(query_io);
-
-            // * Remove the parsed portion from the buffer
-            buffer = buffer.split_off(consumed);
+    /// A mock that implements AsyncRead for testing
+    #[derive(Debug)]
+    struct MockAsyncStream {
+        chunks: Vec<Vec<u8>>,
+        current_chunk: usize,
+    }
+    impl MockAsyncStream {
+        /// Creates a new mock stream from a vector of byte chunks.
+        /// Each inner Vec<u8> represents a single return from the `read` method.
+        fn new(chunks: Vec<Vec<u8>>) -> Self {
+            MockAsyncStream { chunks, current_chunk: 0 }
         }
     }
 
-    assert_eq!(parsed_values.len(), 2);
-    assert_eq!(
-        parsed_values[0],
-        QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into())
-    );
+    // Must implement AsyncRead for the blanket impl of TRead to work
+    impl AsyncRead for MockAsyncStream {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            let self_mut = self.get_mut();
 
-    assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS 127.0.0.1:6378".into()));
+            if self_mut.current_chunk >= self_mut.chunks.len() {
+                // All chunks have been read, simulate EOF (read 0 bytes)
+                return std::task::Poll::Ready(Ok(()));
+            }
+
+            let chunk = &self_mut.chunks[self_mut.current_chunk];
+            let bytes_to_copy = std::cmp::min(buf.remaining(), chunk.len());
+
+            // Copy data into the ReadBuf
+            buf.put_slice(&chunk[..bytes_to_copy]);
+
+            // Note: Real world scenarios would handle `Poll::Pending` here,
+            // but for unit tests, we usually return `Ready` to keep them synchronous.
+
+            self_mut.current_chunk += 1;
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn test_socket_to_string() {
+        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+        //WHEN
+        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+        //THEN
+        assert_eq!(socket.ip().to_string(), "127.0.0.1")
+    }
+
+    #[tokio::test]
+    async fn test_read_values() {
+        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
+        // add a simple string to buffer
+        buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
+        buffer.extend_from_slice(b"+PEERS 127.0.0.1:6378\r\n");
+        // add an integer to buffer
+
+        let mut parsed_values = vec![];
+        while !buffer.is_empty() {
+            if let Ok((query_io, consumed)) = deserialize(buffer.clone()) {
+                parsed_values.push(query_io);
+
+                // * Remove the parsed portion from the buffer
+                buffer = buffer.split_off(consumed);
+            }
+        }
+
+        assert_eq!(parsed_values.len(), 2);
+        assert_eq!(
+            parsed_values[0],
+            QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into())
+        );
+
+        assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS 127.0.0.1:6378".into()));
+    }
+
+    #[tokio::test]
+    async fn test_deserialize_reads() {
+        // 1. Arrange: Single message in one chunk
+        let msg = TestMessage { id: 1, data: "quick".to_string() };
+
+        let encoded = bincode::encode_to_vec(&msg, SERDE_CONFIG).unwrap();
+        let encoded_msg = BytesMut::from(encoded.as_slice());
+        let mut mock = MockAsyncStream::new(vec![encoded_msg.into()]);
+
+        // 2. Act
+        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+
+        // 3. Assert
+        let deserialized = result.unwrap();
+        assert_eq!(deserialized.len(), 1);
+        assert_eq!(deserialized[0], msg);
+    }
+
+    #[tokio::test]
+    async fn test_deserialize_reads_vec() {
+        // 1. Arrange: Single message in one chunk
+
+        let mut raw_data = vec![];
+        raw_data.extend_from_slice(
+            &bincode::encode_to_vec(TestMessage { id: 1, data: "quick".to_string() }, SERDE_CONFIG)
+                .unwrap(),
+        );
+        raw_data.extend_from_slice(
+            &bincode::encode_to_vec(
+                TestMessage { id: 2, data: "silver".to_string() },
+                SERDE_CONFIG,
+            )
+            .unwrap(),
+        );
+
+        let mut mock = MockAsyncStream::new(vec![raw_data]);
+
+        // 2. Act
+        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+
+        // 3. Assert
+        let deserialized = result.unwrap();
+        assert_eq!(deserialized.len(), 2);
+        assert_eq!(deserialized[0], TestMessage { id: 1, data: "quick".to_string() });
+        assert_eq!(deserialized[1], TestMessage { id: 2, data: "silver".to_string() });
+    }
 }
