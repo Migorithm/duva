@@ -13,7 +13,6 @@ use crate::types::BinBytes;
 use crate::types::Callback;
 use crate::write_array;
 use anyhow::Context;
-use bytes::Bytes;
 
 use tracing::trace;
 

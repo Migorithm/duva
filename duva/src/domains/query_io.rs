@@ -1,6 +1,5 @@
 use crate::domains::caches::cache_manager::IndexedValueCodec;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
-use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
 
 use crate::domains::replications::WriteOperation;
@@ -21,7 +20,6 @@ const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const APPEND_ENTRY_RPC_PREFIX: char = '^';
 const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
-const TOPOLOGY_CHANGE_PREFIX: char = 't';
 const START_REBALANCE_PREFIX: char = 'T';
 pub const WRITE_OP_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
@@ -64,7 +62,6 @@ pub enum QueryIO {
     RequestVote(RequestVote),
     RequestVoteReply(ElectionVote),
 
-    TopologyChange(Topology),
     StartRebalance,
     MigrateBatch(BatchEntries),
     MigrationBatchAck(BatchId),
@@ -163,9 +160,7 @@ impl QueryIO {
             QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
-            QueryIO::TopologyChange(topology) => {
-                serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &topology)
-            },
+
             QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
             QueryIO::MigrateBatch(migrate_batch) => {
                 serialize_with_bincode(MIGRATE_BATCH_PREFIX, &migrate_batch)
@@ -342,7 +337,6 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
         ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
-        TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
         START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
         MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
@@ -518,12 +512,6 @@ impl From<RequestVote> for QueryIO {
 impl From<ElectionVote> for QueryIO {
     fn from(value: ElectionVote) -> Self {
         QueryIO::RequestVoteReply(value)
-    }
-}
-
-impl From<Topology> for QueryIO {
-    fn from(value: Topology) -> Self {
-        QueryIO::TopologyChange(value)
     }
 }
 
@@ -852,49 +840,6 @@ mod test {
 
         // THEN
         assert_eq!(deserialized, request_vote_reply);
-    }
-
-    #[test]
-    fn test_topology_change_serde() {
-        //GIVEN
-        let connected_nodes = vec![
-            ReplicationState {
-                node_id: PeerIdentifier("localhost:3333".to_string()),
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                last_log_index: 0,
-                term: 0,
-            },
-            ReplicationState {
-                node_id: PeerIdentifier("localhost:2222".to_string()),
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                last_log_index: 0,
-                term: 0,
-            },
-        ];
-        let hash_ring = HashRing::default();
-        let repl_states = connected_nodes
-            .iter()
-            .map(|peer| ReplicationState {
-                node_id: peer.node_id.clone(),
-                last_log_index: 0,
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                term: 0,
-            })
-            .collect();
-        let topology = Topology { repl_states, hash_ring };
-        let query_io = QueryIO::TopologyChange(topology.clone());
-
-        //WHEN
-        let serialized = query_io.clone().serialize();
-        let (deserialized, _) = deserialize(serialized).unwrap();
-        let QueryIO::TopologyChange(deserialized_topology) = deserialized else {
-            panic!("Expected a TopologyChange");
-        };
-        //THEN
-        assert_eq!(deserialized_topology, topology);
     }
 
     #[test]

@@ -6,7 +6,7 @@ use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 const BUFFER_SIZE: usize = 512;
@@ -172,7 +172,7 @@ pub mod test_tokio_stream_impl {
     }
 
     // Must implement AsyncRead for the blanket impl of TRead to work
-    impl AsyncRead for MockAsyncStream {
+    impl tokio::io::AsyncRead for MockAsyncStream {
         fn poll_read(
             self: std::pin::Pin<&mut Self>,
             _cx: &mut std::task::Context<'_>,

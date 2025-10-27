@@ -6,7 +6,7 @@ use crate::domains::peers::connections::connection_types::{ReadConnected, WriteC
 use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::ServerResponse;
+
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
