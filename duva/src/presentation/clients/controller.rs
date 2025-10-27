@@ -100,8 +100,15 @@ impl ClientController {
             ClusterForget(peer_identifier) => {
                 match self.cluster_actor_sender.route_forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString(BinBytes::new("OK")),
-                    Ok(false) => QueryIO::Err(BinBytes::new("No such peer")),
-                    Err(e) => QueryIO::Err(BinBytes::new(e.to_string())),
+                    Ok(false) => {
+                        return Ok(ServerResponse::Err {
+                            res: "No such peer".to_string(),
+                            request_id,
+                        });
+                    },
+                    Err(e) => {
+                        return Ok(ServerResponse::Err { res: e.to_string(), request_id });
+                    },
                 }
             },
             ClusterMeet(peer_identifier, option) => {

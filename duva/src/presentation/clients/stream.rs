@@ -3,17 +3,13 @@ use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
 use crate::domains::replications::ReplicationRole;
-use crate::domains::{
-    QueryIO,
-    cluster_actors::SessionRequest,
-    interface::{TRead, TWrite},
-};
+use crate::domains::{QueryIO, cluster_actors::SessionRequest, interface::TRead};
 use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
 use crate::presentation::clients::request::{ClientAction, ServerResponse};
-use crate::types::BinBytes;
+
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,

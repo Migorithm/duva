@@ -293,21 +293,25 @@ impl Broker {
             // ! If request is updating action yet receive error, we need to increase the request id
             // ! otherwise, server will not be able to process the next command
 
-            if let ServerResponse::WriteRes { res, index: _, request_id }
-            | ServerResponse::ReadRes { res, request_id } = res
-            {
-                match res {
-                    // * Current rule: s:value-idx:index_num
-                    QueryIO::SimpleString(v) => {
-                        let s = String::from_utf8_lossy(v);
-                        connection.request_id = IndexedValueCodec::decode_index(s)
-                            .filter(|&id| id > connection.request_id)
-                            .unwrap_or(connection.request_id);
-                    },
-                    //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-                    QueryIO::Err(_) => connection.request_id += 1,
-                    _ => {},
-                }
+            match res {
+                ServerResponse::WriteRes { res, index: _, request_id }
+                | ServerResponse::ReadRes { res, request_id } => {
+                    match res {
+                        // * Current rule: s:value-idx:index_num
+                        QueryIO::SimpleString(v) => {
+                            let s = String::from_utf8_lossy(v);
+                            connection.request_id = IndexedValueCodec::decode_index(s)
+                                .filter(|&id| id > connection.request_id)
+                                .unwrap_or(connection.request_id);
+                        },
+                        //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
+                        _ => {},
+                    }
+                },
+                ServerResponse::TopologyChange(topology) => {},
+                ServerResponse::Err { res, request_id } => {
+                    connection.request_id += 1;
+                },
             }
         } else {
             tracing::warn!(

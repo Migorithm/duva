@@ -32,7 +32,6 @@ const MIGRATE_BATCH_PREFIX: char = 'm';
 const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
 const CLOSE_CONNECTION_PREFIX: char = 'C';
 
-const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
 const CLIENT_ACTION_PREFIX: char = '%';
 pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
@@ -55,7 +54,6 @@ pub enum QueryIO {
         request_id: u64,
         action: ClientAction,
     },
-    Err(BinBytes),
 
     // custom types
     File(BinBytes),
@@ -148,13 +146,7 @@ impl QueryIO {
                 buffer.extend_from_slice(&value);
                 buffer.freeze().into()
             },
-            QueryIO::Err(e) => {
-                let mut buffer = BytesMut::with_capacity(ERR_PREFIX.len_utf8() + e.len() + 2);
-                buffer.extend_from_slice(&[ERR_PREFIX as u8]);
-                buffer.extend_from_slice(&e);
-                buffer.extend_from_slice(b"\r\n");
-                buffer.freeze().into()
-            },
+
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
@@ -263,7 +255,7 @@ fn estimate_serialized_size(query: &QueryIO) -> usize {
             let file_len = f.len() * 2;
             1 + file_len.to_string().len() + 2 + file_len
         },
-        QueryIO::Err(e) => 1 + e.len() + 2,
+
         QueryIO::SessionRequest { request_id, .. } => {
             1 + request_id.to_string().len() + 2 + 64 // rough estimate for action
         },
@@ -335,10 +327,7 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(BinBytes(bytes)), len))
         },
-        ERR_PREFIX => {
-            let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::Err(BinBytes(bytes)), len))
-        },
+
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
         APPEND_ENTRY_RPC_PREFIX => {
