@@ -7,7 +7,7 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
 
-use crate::presentation::clients::request::SessionRequest;
+use crate::presentation::clients::request::ClientReq;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
@@ -79,7 +79,7 @@ impl From<ClientMessage> for ClusterCommand {
 pub(crate) struct ConsensusRequest {
     pub(crate) entry: LogEntry,
     pub(crate) callback: Callback<ConsensusClientResponse>,
-    pub(crate) session_req: Option<SessionRequest>,
+    pub(crate) session_req: Option<ClientReq>,
 }
 
 #[derive(Debug)]

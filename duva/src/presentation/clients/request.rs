@@ -14,10 +14,16 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct SessionRequest {
+    pub request_id: u64,
+    pub action: ClientAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub struct ClientReq {
     pub(crate) request_id: u64,
     pub(crate) client_id: String,
 }
-impl SessionRequest {
+impl ClientReq {
     pub(crate) fn new(request_id: u64, client_id: String) -> Self {
         Self { request_id, client_id }
     }
@@ -307,7 +313,7 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
-    pub(crate) session_req: SessionRequest,
+    pub(crate) session_req: ClientReq,
 }
 
 #[derive(Clone, Debug, bincode::Decode, bincode::Encode)]

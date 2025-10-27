@@ -7,7 +7,7 @@ use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, Con
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::{NonMutatingAction, ServerResponse, SessionRequest};
+use crate::presentation::clients::request::{ClientReq, NonMutatingAction, ServerResponse};
 
 use crate::types::{BinBytes, Callback};
 use tracing::info;
@@ -141,7 +141,7 @@ impl ClientController {
 
     pub(crate) async fn handle_mutating(
         &self,
-        session_req: SessionRequest,
+        session_req: ClientReq,
         entry: LogEntry,
     ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs

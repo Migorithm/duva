@@ -14,7 +14,7 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{
-    BinBytes, ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};

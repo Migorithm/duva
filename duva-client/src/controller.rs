@@ -1,8 +1,5 @@
-use std::fmt::Display;
-
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
-
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
 use duva::domains::replications::LogEntry;
@@ -14,6 +11,7 @@ use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::presentation::clients::request::ClientAction;
 use duva::presentation::clients::request::NonMutatingAction;
 use duva::presentation::clients::request::ServerResponse;
+use std::fmt::Display;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,

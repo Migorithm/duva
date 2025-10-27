@@ -1,6 +1,6 @@
 use crate::{
     domains::{QueryIO, caches::cache_objects::CacheEntry, deserialize},
-    presentation::clients::request::SessionRequest,
+    presentation::clients::request::ClientReq,
 };
 use bytes::Bytes;
 
@@ -9,7 +9,7 @@ pub struct WriteOperation {
     pub(crate) entry: LogEntry,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
-    pub(crate) session_req: Option<SessionRequest>,
+    pub(crate) session_req: Option<ClientReq>,
 }
 
 /// Operations that appear in the Append-Only File (WAL).

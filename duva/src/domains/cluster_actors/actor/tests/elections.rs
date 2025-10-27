@@ -231,7 +231,7 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     // GIVEN: A candidate actor
     let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let (tx, rx) = Callback::create();
-    let session_req = SessionRequest::new(1, "client1".to_string());
+    let session_req = ClientReq::new(1, "client1".to_string());
 
     let consensus_request = ConsensusRequest {
         entry: LogEntry::Set { entry: CacheEntry::new("key".to_string(), "value") },

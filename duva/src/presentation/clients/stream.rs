@@ -1,14 +1,17 @@
 use super::{ClientController, request::ClientRequest};
+use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
 use crate::domains::replications::ReplicationRole;
-use crate::domains::{QueryIO, interface::TRead};
+
 use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
-use crate::presentation::clients::request::{ClientAction, ServerResponse, SessionRequest};
+use crate::presentation::clients::request::{
+    ClientAction, ClientReq, ServerResponse, SessionRequest,
+};
 
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -30,7 +33,7 @@ impl ClientStreamReader {
     ) {
         loop {
             // * extract queries
-            let query_ios = self.r.read_values().await;
+            let query_ios = self.r.deserialized_reads::<SessionRequest>().await;
             if let Err(err) = query_ios {
                 info!("{}", err);
                 if err.should_break() {
@@ -44,12 +47,9 @@ impl ClientStreamReader {
 
             // * map client request
             let requests = query_ios.unwrap().into_iter().map(|query_io| {
-                let QueryIO::SessionRequest { request_id, action } = query_io else {
-                    return Err("Unexpected command format".to_string());
-                };
                 Ok(ClientRequest {
-                    action,
-                    session_req: SessionRequest::new(request_id, self.client_id.clone()),
+                    action: query_io.action,
+                    session_req: ClientReq::new(query_io.request_id, self.client_id.clone()),
                 })
             });
 

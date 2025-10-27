@@ -6,7 +6,7 @@ use crate::domains::replications::messages::RejectionReason;
 use crate::domains::replications::messages::ReplicationAck;
 use crate::domains::replications::messages::RequestVote;
 use crate::err;
-use crate::presentation::clients::request::SessionRequest;
+use crate::presentation::clients::request::ClientReq;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -174,7 +174,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         &mut self,
         entry: LogEntry,
         current_term: u64,
-        session_req: Option<SessionRequest>,
+        session_req: Option<ClientReq>,
     ) -> u64 {
         let op = WriteOperation {
             entry,
@@ -293,7 +293,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         operations: Vec<WriteOperation>,
         prev_log_index: u64,
         prev_log_term: u64,
-        session_reqs: &mut Vec<SessionRequest>,
+        session_reqs: &mut Vec<ClientReq>,
     ) -> Result<ReplicationAck, RejectionReason> {
         let mut entries = Vec::with_capacity(operations.len());
 
