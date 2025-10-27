@@ -18,7 +18,7 @@ use duva::prelude::{
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};
-use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
+use duva::presentation::clients::request::{ClientAction, NonMutatingAction, ServerResponse};
 use futures::future::try_join_all;
 
 use duva::prelude::anyhow::anyhow;
@@ -67,18 +67,21 @@ impl Broker {
         let mut queue = CommandQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
+                BrokerMessage::FromServer(
+                    _,
+                    ServerResponse { res: QueryIO::TopologyChange(topology), index, request_id },
+                ) => {
                     self.update_topology(topology).await;
                 },
 
-                BrokerMessage::FromServer(repl_id, query_io) => {
+                BrokerMessage::FromServer(repl_id, ServerResponse { res, index, request_id }) => {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
-                        self.update_reqid(repl_id, &query_io);
+                        self.update_reqid(repl_id, &res);
                     }
-                    queue.finalize_or_requeue(query_io, context);
+                    queue.finalize_or_requeue(res, context);
                 },
 
                 BrokerMessage::FromServerError(repl_id, e) => {
@@ -312,7 +315,7 @@ impl Broker {
 }
 
 pub enum BrokerMessage {
-    FromServer(ReplicationId, QueryIO),
+    FromServer(ReplicationId, ServerResponse),
     FromServerError(ReplicationId, IoError),
     ToServer(InputContext),
 }

@@ -12,7 +12,7 @@ use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
-use crate::presentation::clients::request::ClientAction;
+use crate::presentation::clients::request::{ClientAction, ServerResponse};
 use crate::types::BinBytes;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -30,7 +30,7 @@ impl ClientStreamReader {
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,
-        stream_writer_sender: Sender<QueryIO>,
+        stream_writer_sender: Sender<ServerResponse>,
     ) {
         loop {
             // * extract queries
@@ -40,8 +40,9 @@ impl ClientStreamReader {
                 if err.should_break() {
                     return;
                 }
-                let _ =
-                    stream_writer_sender.send(QueryIO::Err(BinBytes::new(err.to_string()))).await;
+                let _ = stream_writer_sender
+                    .send(ServerResponse::Err { reason: err.to_string(), request_id: 0 })
+                    .await;
                 continue;
             }
 
@@ -59,7 +60,9 @@ impl ClientStreamReader {
             for req in requests {
                 match req {
                     Err(err) => {
-                        let _ = stream_writer_sender.send(QueryIO::Err(BinBytes::new(err))).await;
+                        let _ = stream_writer_sender
+                            .send(ServerResponse::Err { reason: err, request_id: 0 })
+                            .await;
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
@@ -68,7 +71,12 @@ impl ClientStreamReader {
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {
-                                handler.handle_non_mutating(non_mutating_action).await
+                                handler
+                                    .handle_non_mutating(
+                                        non_mutating_action,
+                                        session_req.request_id,
+                                    )
+                                    .await
                             },
                             ClientAction::Mutating(log_entry) => {
                                 handler.handle_mutating(session_req, log_entry).await
@@ -77,7 +85,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            QueryIO::Err(BinBytes::new(e.to_string()))
+                            ServerResponse::Err { reason: e.to_string(), request_id: 0 }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;
@@ -95,7 +103,7 @@ impl ClientStreamWriter {
     pub(crate) fn run(
         mut self,
         mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
-    ) -> Sender<QueryIO> {
+    ) -> Sender<ServerResponse> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(2000);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
@@ -111,7 +119,7 @@ impl ClientStreamWriter {
             let tx = tx.clone();
             async move {
                 while let Ok(topology) = topology_observer.recv().await {
-                    let _ = tx.send(QueryIO::TopologyChange(topology)).await;
+                    let _ = tx.send(ServerResponse::TopologyChange(topology)).await;
                 }
             }
         });

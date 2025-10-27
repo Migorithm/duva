@@ -9,7 +9,7 @@ use crate::domains::cluster_actors::{
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::NonMutatingAction;
+use crate::presentation::clients::request::{NonMutatingAction, ServerResponse};
 
 use crate::types::{BinBytes, Callback};
 use tracing::info;
@@ -24,7 +24,8 @@ impl ClientController {
     pub(crate) async fn handle_non_mutating(
         &self,
         non_mutating: NonMutatingAction,
-    ) -> anyhow::Result<QueryIO> {
+        request_id: u64,
+    ) -> anyhow::Result<ServerResponse> {
         use NonMutatingAction::*;
 
         let response = match non_mutating {
@@ -129,14 +130,15 @@ impl ClientController {
             LIndex { key, index } => self.cache_manager.route_lindex(key, index).await?.into(),
         };
         info!("{response:?}");
-        Ok(response)
+
+        Ok(ServerResponse::ReadRes { res: response, request_id })
     }
 
     pub(crate) async fn handle_mutating(
         &self,
         session_req: SessionRequest,
         entry: LogEntry,
-    ) -> anyhow::Result<QueryIO> {
+    ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
         self.cluster_actor_sender
@@ -152,7 +154,7 @@ impl ClientController {
             ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
-                self.handle_non_mutating(action).await
+                return self.handle_non_mutating(action, request_id).await;
             },
             ConsensusClientResponse::Err { reason, request_id } => Err(anyhow::anyhow!(reason)),
         }?;

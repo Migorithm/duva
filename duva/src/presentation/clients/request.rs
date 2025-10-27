@@ -1,9 +1,12 @@
-use crate::domains::{
-    QueryIO,
-    caches::cache_objects::CacheEntry,
-    cluster_actors::{LazyOption, SessionRequest},
-    peers::identifier::{PeerIdentifier, TPeerAddress},
-    replications::LogEntry,
+use crate::{
+    domains::{
+        QueryIO,
+        caches::cache_objects::CacheEntry,
+        cluster_actors::{LazyOption, SessionRequest},
+        peers::identifier::{PeerIdentifier, TPeerAddress},
+        replications::LogEntry,
+    },
+    prelude::Topology,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -296,9 +299,10 @@ pub struct ClientRequest {
     pub(crate) session_req: SessionRequest,
 }
 
-#[derive(Clone, Debug)]
-pub struct ClientResponse {
-    pub(crate) res: QueryIO,
-    pub(crate) index: u64,
-    pub(crate) request_id: u64,
+#[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
+pub enum ServerResponse {
+    WriteRes { res: QueryIO, index: u64, request_id: u64 },
+    ReadRes { res: QueryIO, request_id: u64 },
+    TopologyChange(Topology),
+    Err { reason: String, request_id: u64 },
 }

@@ -6,6 +6,7 @@ use crate::domains::peers::connections::connection_types::{ReadConnected, WriteC
 use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
+use crate::presentation::clients::request::ServerResponse;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
@@ -84,7 +85,7 @@ pub(crate) struct ConsensusRequest {
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, request_id: u64 },
     Err { reason: String, request_id: u64 },
-    Result(anyhow::Result<QueryIO>),
+    Result { res: anyhow::Result<QueryIO>, index: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]

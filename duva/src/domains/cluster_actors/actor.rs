@@ -962,7 +962,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let res = self.commit_entry(log_entry.entry, log_index).await;
         let _ = self.replication.flush();
 
-        voting.callback.send(ConsensusClientResponse::Result(res));
+        voting.callback.send(ConsensusClientResponse::Result {
+            res,
+            request_id: voting.session_req.unwrap().request_id,
+            index,
+        });
     }
 
     async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
