@@ -141,6 +141,8 @@ impl ClientController {
     ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
+        let request_id = session_req.request_id;
+
         self.cluster_actor_sender
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest {
                 entry,
@@ -150,14 +152,25 @@ impl ClientController {
             .await?;
 
         let result = match res.recv().await {
-            ConsensusClientResponse::Result(result) => result,
+            ConsensusClientResponse::Result { res, log_index } => match res {
+                Ok(query_io) => {
+                    ServerResponse::WriteRes { res: query_io, index: log_index, request_id }
+                },
+                Err(err) => ServerResponse::Err {
+                    res: QueryIO::SimpleString(BinBytes::new(err.to_string())),
+                    request_id,
+                },
+            },
             ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
-                return self.handle_non_mutating(action, request_id).await;
+                self.handle_non_mutating(action, request_id).await?
             },
-            ConsensusClientResponse::Err { reason, request_id } => Err(anyhow::anyhow!(reason)),
-        }?;
+            ConsensusClientResponse::Err { reason, request_id } => ServerResponse::Err {
+                res: QueryIO::SimpleString(BinBytes::new(reason)),
+                request_id,
+            },
+        };
 
         Ok(result)
     }

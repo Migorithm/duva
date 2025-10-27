@@ -85,7 +85,7 @@ pub(crate) struct ConsensusRequest {
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, request_id: u64 },
     Err { reason: String, request_id: u64 },
-    Result { res: anyhow::Result<QueryIO>, index: u64 },
+    Result { res: anyhow::Result<QueryIO>, log_index: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]

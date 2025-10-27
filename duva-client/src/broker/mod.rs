@@ -67,14 +67,16 @@ impl Broker {
         let mut queue = CommandQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                BrokerMessage::FromServer(
-                    _,
-                    ServerResponse { res: QueryIO::TopologyChange(topology), index, request_id },
-                ) => {
+                BrokerMessage::FromServer(_, ServerResponse::TopologyChange(topology)) => {
                     self.update_topology(topology).await;
                 },
 
-                BrokerMessage::FromServer(repl_id, ServerResponse { res, index, request_id }) => {
+                BrokerMessage::FromServer(
+                    repl_id,
+                    ServerResponse::WriteRes { res, index: _, request_id }
+                    | ServerResponse::ReadRes { res, request_id }
+                    | ServerResponse::Err { res, request_id },
+                ) => {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
