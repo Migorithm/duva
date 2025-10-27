@@ -304,5 +304,5 @@ pub enum ServerResponse {
     WriteRes { res: QueryIO, index: u64, request_id: u64 },
     ReadRes { res: QueryIO, request_id: u64 },
     TopologyChange(Topology),
-    Err { res: QueryIO, request_id: u64 },
+    Err { res: String, request_id: u64 },
 }

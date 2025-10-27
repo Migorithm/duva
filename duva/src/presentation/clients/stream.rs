@@ -41,10 +41,7 @@ impl ClientStreamReader {
                     return;
                 }
                 let _ = stream_writer_sender
-                    .send(ServerResponse::Err {
-                        res: QueryIO::SimpleString(BinBytes::new(err.to_string())),
-                        request_id: 0,
-                    })
+                    .send(ServerResponse::Err { res: err.to_string(), request_id: 0 })
                     .await;
                 continue;
             }
@@ -64,10 +61,7 @@ impl ClientStreamReader {
                 match req {
                     Err(err) => {
                         let _ = stream_writer_sender
-                            .send(ServerResponse::Err {
-                                res: QueryIO::SimpleString(BinBytes::new(err)),
-                                request_id: 0,
-                            })
+                            .send(ServerResponse::Err { res: err, request_id: 0 })
                             .await;
                         break;
                     },
@@ -91,10 +85,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            ServerResponse::Err {
-                                res: QueryIO::SimpleString(BinBytes::new(e.to_string())),
-                                request_id: 0,
-                            }
+                            ServerResponse::Err { res: e.to_string(), request_id: 0 }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;

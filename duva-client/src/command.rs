@@ -2,7 +2,7 @@ use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::replications::LogEntry;
 use duva::prelude::BinBytes;
 use duva::prelude::anyhow::{self, Context};
-use duva::presentation::clients::request::NonMutatingAction;
+use duva::presentation::clients::request::{NonMutatingAction, ServerResponse};
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
@@ -22,7 +22,11 @@ impl CommandQueue {
         self.queue.pop_front()
     }
 
-    pub(crate) fn finalize_or_requeue(&mut self, query_io: QueryIO, mut context: InputContext) {
+    pub(crate) fn finalize_or_requeue(
+        &mut self,
+        query_io: ServerResponse,
+        mut context: InputContext,
+    ) {
         context.results.push(query_io);
 
         if context.results.len() != context.expected_result_cnt {
@@ -30,8 +34,9 @@ impl CommandQueue {
             return;
         }
 
-        let result =
-            context.get_result().unwrap_or_else(|err| QueryIO::Err(BinBytes::new(err.to_string())));
+        let result = context
+            .get_result()
+            .unwrap_or_else(|err| ServerResponse::Err { res: err.to_string(), request_id: 0 });
         context.callback(result);
     }
 }
@@ -47,19 +52,19 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
 #[derive(Debug)]
 pub struct InputContext {
     pub(crate) client_action: ClientAction,
-    pub(crate) callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    pub(crate) results: Vec<QueryIO>,
+    pub(crate) callback: oneshot::Sender<(ClientAction, ServerResponse)>,
+    pub(crate) results: Vec<ServerResponse>,
     pub(crate) expected_result_cnt: usize,
 }
 impl InputContext {
     pub fn new(
         client_action: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+        callback: oneshot::Sender<(ClientAction, ServerResponse)>,
     ) -> Self {
         Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
 
-    pub(crate) fn callback(self, query_io: QueryIO) {
+    pub(crate) fn callback(self, query_io: ServerResponse) {
         let action_debug = format!("{:?}", self.client_action);
         self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
             // Log callback failure for debugging
@@ -70,22 +75,31 @@ impl InputContext {
         });
     }
 
-    pub(crate) fn get_result(&mut self) -> anyhow::Result<QueryIO> {
+    pub(crate) fn get_result(&mut self) -> anyhow::Result<ServerResponse> {
         use NonMutatingAction::*;
         let res = std::mem::take(&mut self.results);
 
         match self.client_action {
             ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
                 let mut init = QueryIO::Array(Vec::with_capacity(res.len()));
+
                 for item in res {
-                    init = init.merge(item)?;
+                    let ServerResponse::ReadRes { res, request_id } = item else {
+                        panic!();
+                    };
+                    init = init.merge(res)?;
                 }
-                Ok(init)
+
+                Ok(ServerResponse::ReadRes { res: init, request_id: 0 })
             },
             ClientAction::NonMutating(Exists { keys: _ }) => {
                 let mut count = 0;
                 for result in res {
-                    let QueryIO::SimpleString(byte) = result else {
+                    let ServerResponse::ReadRes { res, request_id } = result else {
+                        panic!();
+                    };
+
+                    let QueryIO::SimpleString(byte) = res else {
                         return Err(anyhow::anyhow!("Expected SimpleString result"));
                     };
                     let num = String::from_utf8(byte.to_vec())
@@ -94,12 +108,20 @@ impl InputContext {
 
                     count += num;
                 }
-                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
+
+                Ok(ServerResponse::ReadRes {
+                    res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
+                    request_id: 0,
+                })
             },
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in res {
-                    let QueryIO::SimpleString(value) = result else {
+                    let ServerResponse::WriteRes { res, index: _, request_id } = result else {
+                        panic!();
+                    };
+
+                    let QueryIO::SimpleString(value) = res else {
                         return Err(anyhow::anyhow!("Expected SimpleString result"));
                     };
                     let decoded_value =
@@ -107,7 +129,11 @@ impl InputContext {
 
                     count += decoded_value;
                 }
-                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
+                Ok(ServerResponse::WriteRes {
+                    res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
+                    index: 0,
+                    request_id: 0,
+                })
             },
             _ => {
                 if res.len() != 1 {

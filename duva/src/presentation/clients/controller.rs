@@ -156,19 +156,15 @@ impl ClientController {
                 Ok(query_io) => {
                     ServerResponse::WriteRes { res: query_io, index: log_index, request_id }
                 },
-                Err(err) => ServerResponse::Err {
-                    res: QueryIO::SimpleString(BinBytes::new(err.to_string())),
-                    request_id,
-                },
+                Err(err) => ServerResponse::Err { res: err.to_string(), request_id },
             },
             ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action, request_id).await?
             },
-            ConsensusClientResponse::Err { reason, request_id } => ServerResponse::Err {
-                res: QueryIO::SimpleString(BinBytes::new(reason)),
-                request_id,
+            ConsensusClientResponse::Err { reason, request_id } => {
+                ServerResponse::Err { res: reason, request_id }
             },
         };
 
