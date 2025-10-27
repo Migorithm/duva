@@ -1,12 +1,9 @@
 use crate::domains::caches::cache_manager::IndexedValueCodec;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
-
 use crate::domains::replications::WriteOperation;
 use crate::domains::replications::messages::{ElectionVote, ReplicationAck, RequestVote};
-
 use crate::domains::replications::*;
-use crate::presentation::clients::request::ClientAction;
 use crate::types::BinBytes;
 use anyhow::{Context, Result, anyhow};
 
@@ -25,13 +22,11 @@ pub const WRITE_OP_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
-const SESSION_REQUEST_PREFIX: char = '!';
 const MIGRATE_BATCH_PREFIX: char = 'm';
 const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
 const CLOSE_CONNECTION_PREFIX: char = 'C';
-
 const NULL_PREFIX: char = '\u{0000}';
-const CLIENT_ACTION_PREFIX: char = '%';
+
 pub const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -48,10 +43,6 @@ pub enum QueryIO {
     SimpleString(BinBytes),
     BulkString(BinBytes),
     Array(Vec<QueryIO>),
-    SessionRequest {
-        request_id: u64,
-        action: ClientAction,
-    },
 
     // custom types
     File(BinBytes),
@@ -132,15 +123,6 @@ impl QueryIO {
                 for item in array {
                     buffer.extend_from_slice(&item.serialize());
                 }
-                buffer.freeze().into()
-            },
-            QueryIO::SessionRequest { request_id, action } => {
-                let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
-                let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
-                buffer.extend_from_slice(&[SESSION_REQUEST_PREFIX as u8]);
-                buffer.extend_from_slice(request_id.to_string().as_bytes());
-                buffer.extend_from_slice(b"\r\n");
-                buffer.extend_from_slice(&value);
                 buffer.freeze().into()
             },
 
@@ -251,9 +233,6 @@ fn estimate_serialized_size(query: &QueryIO) -> usize {
             1 + file_len.to_string().len() + 2 + file_len
         },
 
-        QueryIO::SessionRequest { request_id, .. } => {
-            1 + request_id.to_string().len() + 2 + 64 // rough estimate for action
-        },
         // For custom types, use a reasonable default
         _ => 128,
     }
@@ -313,7 +292,7 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
             Ok((QueryIO::SimpleString(BinBytes(bytes)), len))
         },
         ARRAY_PREFIX => parse_array(buffer),
-        SESSION_REQUEST_PREFIX => parse_session_request(buffer),
+
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(BinBytes(bytes)), len))
@@ -371,26 +350,6 @@ fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
     }
 
     Ok((QueryIO::Array(elements), offset))
-}
-
-fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
-    // Skip the array type indicator (first byte)
-    let mut offset = 1;
-
-    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
-    offset += count_len;
-    let request_id = count_bytes.parse()?;
-
-    let (action_byte, len): (ClientAction, usize) = parse_client_action(buffer.slice(offset..))?;
-    Ok((QueryIO::SessionRequest { request_id, action: action_byte }, offset + len))
-}
-
-fn parse_client_action(buffer: Bytes) -> Result<(ClientAction, usize)> {
-    let (action, len): (ClientAction, usize) =
-        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
-            .map_err(|err| anyhow::anyhow!("Failed to decode client action: {:?}", err))?;
-    Ok((action, len + 1))
 }
 
 pub fn parse_custom_type<T>(buffer: Bytes) -> Result<(QueryIO, usize)>
@@ -633,43 +592,6 @@ mod test {
                 QueryIO::BulkString(BinBytes::new("hello")),
                 QueryIO::BulkString(BinBytes::new("world")),
             ])
-        );
-    }
-
-    #[test]
-    fn test_deserialize_session_request() {
-        // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0");
-
-        // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 22);
-        assert_eq!(
-            value,
-            QueryIO::SessionRequest {
-                request_id: 30,
-                action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world",) }
-                    .into()
-            }
-        );
-    }
-    #[test]
-    fn test_serialize_session_request() {
-        // GIVEN
-        let request = QueryIO::SessionRequest {
-            request_id: 30,
-            action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world") }.into(),
-        };
-
-        // WHEN
-        let serialized = request.serialize();
-
-        // THEN
-        assert_eq!(
-            serialized,
-            BinBytes::new(Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0"))
         );
     }
 
