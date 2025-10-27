@@ -1,3 +1,5 @@
+use crate::presentation::clients::request::SessionRequest;
+
 use super::*;
 
 #[test]

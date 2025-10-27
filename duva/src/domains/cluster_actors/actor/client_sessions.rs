@@ -1,4 +1,4 @@
-use crate::{domains::cluster_actors::SessionRequest, make_smart_pointer};
+use crate::{make_smart_pointer, presentation::clients::request::SessionRequest};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 

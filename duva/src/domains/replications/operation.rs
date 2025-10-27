@@ -1,5 +1,6 @@
-use crate::domains::{
-    QueryIO, caches::cache_objects::CacheEntry, cluster_actors::SessionRequest, deserialize,
+use crate::{
+    domains::{QueryIO, caches::cache_objects::CacheEntry, deserialize},
+    presentation::clients::request::SessionRequest,
 };
 use bytes::Bytes;
 

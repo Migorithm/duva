@@ -1,9 +1,7 @@
 use crate::{
-    domains::{
-        cluster_actors::{ConsensusClientResponse, SessionRequest},
-        peers::identifier::PeerIdentifier,
-    },
+    domains::{cluster_actors::ConsensusClientResponse, peers::identifier::PeerIdentifier},
     make_smart_pointer,
+    presentation::clients::request::SessionRequest,
     types::Callback,
 };
 use std::collections::HashMap;

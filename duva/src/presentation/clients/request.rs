@@ -2,7 +2,7 @@ use crate::{
     domains::{
         QueryIO,
         caches::cache_objects::CacheEntry,
-        cluster_actors::{LazyOption, SessionRequest},
+        cluster_actors::LazyOption,
         peers::identifier::{PeerIdentifier, TPeerAddress},
         replications::LogEntry,
     },
@@ -11,6 +11,17 @@ use crate::{
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use std::str::FromStr;
+
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub struct SessionRequest {
+    pub(crate) request_id: u64,
+    pub(crate) client_id: String,
+}
+impl SessionRequest {
+    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
+        Self { request_id, client_id }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum ClientAction {

@@ -7,6 +7,7 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
 
+use crate::presentation::clients::request::SessionRequest;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
@@ -103,16 +104,5 @@ impl FromStr for LazyOption {
             "eager" => Ok(LazyOption::Eager),
             _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub struct SessionRequest {
-    pub(crate) request_id: u64,
-    pub(crate) client_id: String,
-}
-impl SessionRequest {
-    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
-        Self { request_id, client_id }
     }
 }

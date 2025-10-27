@@ -3,13 +3,11 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::{
-    ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
-};
+use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::{NonMutatingAction, ServerResponse};
+use crate::presentation::clients::request::{NonMutatingAction, ServerResponse, SessionRequest};
 
 use crate::types::{BinBytes, Callback};
 use tracing::info;

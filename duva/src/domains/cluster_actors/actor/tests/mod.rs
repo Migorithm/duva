@@ -13,6 +13,7 @@ use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
+use crate::presentation::clients::request::SessionRequest;
 
 use crate::domains::peers::command::HeartBeat;
 
