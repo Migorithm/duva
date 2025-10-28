@@ -334,4 +334,14 @@ impl ServerResponse {
             ServerResponse::TopologyChange(..) => None,
         }
     }
+
+    pub fn response(&self) -> Option<QueryIO> {
+        match self {
+            ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
+                Some(res.clone())
+            },
+
+            _ => None,
+        }
+    }
 }

@@ -78,69 +78,64 @@ impl InputContext {
     pub(crate) fn get_result(&mut self) -> anyhow::Result<ServerResponse> {
         use NonMutatingAction::*;
         let res = std::mem::take(&mut self.results);
+        let mut highest_req_id = 0; // TODO for now, set request id to the highest one
+        let mut iterator = res.into_iter();
 
         match self.client_action {
             ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
-                let mut init = QueryIO::Array(Vec::with_capacity(res.len()));
+                let mut init = QueryIO::Array(Vec::with_capacity(iterator.len()));
 
-                for item in res {
-                    let ServerResponse::ReadRes { res, request_id } = item else {
-                        panic!();
-                    };
+                while let Some(ServerResponse::ReadRes { res, request_id }) = iterator.next() {
                     init = init.merge(res)?;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
-
-                Ok(ServerResponse::ReadRes { res: init, request_id: 0 })
+                Ok(ServerResponse::ReadRes { res: init, request_id: highest_req_id })
             },
+
             ClientAction::NonMutating(Exists { keys: _ }) => {
                 let mut count = 0;
-                for result in res {
-                    let ServerResponse::ReadRes { res, request_id } = result else {
-                        panic!();
-                    };
 
-                    let QueryIO::SimpleString(byte) = res else {
-                        return Err(anyhow::anyhow!("Expected SimpleString result"));
-                    };
+                while let Some(ServerResponse::ReadRes {
+                    res: QueryIO::SimpleString(byte),
+                    request_id,
+                }) = iterator.next()
+                {
                     let num = String::from_utf8(byte.to_vec())
                         .context("Failed to convert byte to string")?;
                     let num = num.parse::<u64>().context("Failed to parse string to u64")?;
 
                     count += num;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
 
                 Ok(ServerResponse::ReadRes {
                     res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
-                    request_id: 0,
+                    request_id: highest_req_id,
                 })
             },
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
-                for result in res {
-                    let ServerResponse::WriteRes { res, .. } = result else {
-                        panic!();
-                    };
 
-                    let QueryIO::SimpleString(value) = res else {
-                        return Err(anyhow::anyhow!("Expected SimpleString result"));
-                    };
+                while let Some(ServerResponse::WriteRes {
+                    res: QueryIO::SimpleString(value),
+                    request_id,
+                    ..
+                }) = iterator.next()
+                {
                     let decoded_value =
                         IndexedValueCodec::decode_value(String::from_utf8_lossy(&value)).unwrap();
 
                     count += decoded_value;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
+
                 Ok(ServerResponse::WriteRes {
                     res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
-                    log_index: 0,
-                    request_id: 0,
+                    log_index: 0, // TODO
+                    request_id: highest_req_id,
                 })
             },
-            _ => {
-                if res.len() != 1 {
-                    return Err(anyhow::anyhow!("Expected exactly one result"));
-                }
-                Ok(res[0].clone())
-            },
+            _ => iterator.next().ok_or(anyhow::anyhow!("Expected exactly one result")),
         }
     }
 }
