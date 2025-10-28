@@ -308,10 +308,11 @@ impl Broker {
                         _ => {},
                     }
                 },
-                ServerResponse::TopologyChange(topology) => {},
                 ServerResponse::Err { res, request_id } => {
                     connection.request_id += 1;
                 },
+
+                _ => {},
             }
         } else {
             tracing::warn!(

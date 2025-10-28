@@ -62,17 +62,13 @@ impl ClientStreamReader {
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
+                        let request_id = session_req.request_id;
                         info!(?action, "Processing request");
 
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {
-                                handler
-                                    .handle_non_mutating(
-                                        non_mutating_action,
-                                        session_req.request_id,
-                                    )
-                                    .await
+                                handler.handle_non_mutating(non_mutating_action, request_id).await
                             },
                             ClientAction::Mutating(log_entry) => {
                                 handler.handle_mutating(session_req, log_entry).await
@@ -81,7 +77,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            ServerResponse::Err { res: e.to_string(), request_id: 0 }
+                            ServerResponse::Err { res: e.to_string(), request_id }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;

@@ -99,13 +99,10 @@ impl ClientController {
                 match self.cluster_actor_sender.route_forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString(BinBytes::new("OK")),
                     Ok(false) => {
-                        return Ok(ServerResponse::Err {
-                            res: "No such peer".to_string(),
-                            request_id,
-                        });
+                        return Err(anyhow::anyhow!("No such peer"));
                     },
                     Err(e) => {
-                        return Ok(ServerResponse::Err { res: e.to_string(), request_id });
+                        return Err(anyhow::anyhow!(e.to_string()));
                     },
                 }
             },
