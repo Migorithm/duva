@@ -36,7 +36,7 @@ impl CommandQueue {
 
         let result = context
             .get_result()
-            .unwrap_or_else(|err| ServerResponse::Err { res: err.to_string(), request_id: 0 });
+            .unwrap_or_else(|err| ServerResponse::Err { reason: err.to_string(), request_id: 0 });
         context.callback(result);
     }
 }

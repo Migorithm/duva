@@ -31,7 +31,7 @@ fn render_return(kind: ClientAction, response: ServerResponse) -> Response {
     use ClientAction::*;
     use NonMutatingAction::*;
 
-    if let ServerResponse::Err { res, request_id } = response {
+    if let ServerResponse::Err { reason: res, request_id } = response {
         return Response::Error(res.into());
     }
 

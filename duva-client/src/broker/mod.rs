@@ -99,7 +99,7 @@ impl Broker {
                         queue.push(context);
                     } else {
                         context.callback(ServerResponse::Err {
-                            res: "Failed to route command. Try again after ttl time".to_string(),
+                            reason: "Failed to route command. Try again after ttl time".to_string(),
                             request_id: 0,
                         })
                     };
@@ -308,7 +308,7 @@ impl Broker {
                         _ => {},
                     }
                 },
-                ServerResponse::Err { res, request_id } => {
+                ServerResponse::Err { reason: res, request_id } => {
                     connection.request_id += 1;
                 },
 

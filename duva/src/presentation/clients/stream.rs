@@ -40,7 +40,7 @@ impl ClientStreamReader {
                     return;
                 }
                 let _ = stream_writer_sender
-                    .send(ServerResponse::Err { res: err.to_string(), request_id: 0 })
+                    .send(ServerResponse::Err { reason: err.to_string(), request_id: 0 })
                     .await;
                 continue;
             }
@@ -57,14 +57,12 @@ impl ClientStreamReader {
                 match req {
                     Err(err) => {
                         let _ = stream_writer_sender
-                            .send(ServerResponse::Err { res: err, request_id: 0 })
+                            .send(ServerResponse::Err { reason: err, request_id: 0 })
                             .await;
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
                         let request_id = session_req.request_id;
-                        info!(?action, "Processing request");
-
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {
@@ -77,7 +75,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            ServerResponse::Err { res: e.to_string(), request_id }
+                            ServerResponse::Err { reason: e.to_string(), request_id }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;

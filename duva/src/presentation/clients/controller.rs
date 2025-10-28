@@ -154,11 +154,8 @@ impl ClientController {
             .await?;
 
         let result = match res.recv().await {
-            ConsensusClientResponse::Result { res, log_index } => match res {
-                Ok(query_io) => {
-                    ServerResponse::WriteRes { res: query_io, index: log_index, request_id }
-                },
-                Err(err) => ServerResponse::Err { res: err.to_string(), request_id },
+            ConsensusClientResponse::Result { res, log_index } => {
+                ServerResponse::WriteRes { res: res?, index: log_index, request_id }
             },
             ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
@@ -166,7 +163,7 @@ impl ClientController {
                 self.handle_non_mutating(action, request_id).await?
             },
             ConsensusClientResponse::Err { reason, request_id } => {
-                ServerResponse::Err { res: reason, request_id }
+                ServerResponse::Err { reason, request_id }
             },
         };
 
