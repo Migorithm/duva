@@ -296,16 +296,11 @@ impl Broker {
             match res {
                 ServerResponse::WriteRes { res, index: _, request_id }
                 | ServerResponse::ReadRes { res, request_id } => {
-                    match res {
-                        // * Current rule: s:value-idx:index_num
-                        QueryIO::SimpleString(v) => {
-                            let s = String::from_utf8_lossy(v);
-                            connection.request_id = IndexedValueCodec::decode_index(s)
-                                .filter(|&id| id > connection.request_id)
-                                .unwrap_or(connection.request_id);
-                        },
-                        //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-                        _ => {},
+                    if let QueryIO::SimpleString(v) = res {
+                        let s = String::from_utf8_lossy(v);
+                        connection.request_id = IndexedValueCodec::decode_index(s)
+                            .filter(|&id| id > connection.request_id)
+                            .unwrap_or(connection.request_id);
                     }
                 },
                 ServerResponse::Err { reason: res, request_id } => {

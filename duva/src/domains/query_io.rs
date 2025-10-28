@@ -111,8 +111,7 @@ impl QueryIO {
             QueryIO::Array(array) => {
                 // Better capacity estimation: header + sum of item sizes
                 let header_size = 1 + array.len().to_string().len() + 2; // prefix + len + \r\n
-                let estimated_item_size =
-                    array.iter().map(|item| estimate_serialized_size(item)).sum::<usize>();
+                let estimated_item_size = array.iter().map(estimate_serialized_size).sum::<usize>();
                 let mut buffer = BytesMut::with_capacity(header_size + estimated_item_size);
 
                 // Write array header directly
@@ -252,7 +251,7 @@ impl From<CacheValue> for QueryIO {
     fn from(v: CacheValue) -> Self {
         match v {
             CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
-            CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s.into()),
+            CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s),
             // TODO rendering full list at once is not supported yet
             CacheValue { value: TypedValue::List(_b), .. } => {
                 panic!("List is not supported");
@@ -402,7 +401,7 @@ fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
     let file_content = &buffer.slice(len..(len + content_len));
 
     // Ensure content length is even for hex pairs
-    if content_len % 2 != 0 {
+    if content_len.is_multiple_of(2) {
         return Err(anyhow::anyhow!("Invalid hex data: odd number of characters"));
     }
 

@@ -59,7 +59,7 @@ impl ClientController {
                             Some(CacheEntry {
                                 value: CacheValue { value: TypedValue::String(s), .. },
                                 ..
-                            }) => QueryIO::BulkString(s.into()),
+                            }) => QueryIO::BulkString(s),
                             _ => QueryIO::Null,
                         })
                         .collect(),
@@ -161,9 +161,6 @@ impl ClientController {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action, request_id).await?
-            },
-            ConsensusClientResponse::Err { reason, request_id } => {
-                ServerResponse::Err { reason, request_id }
             },
         };
 
