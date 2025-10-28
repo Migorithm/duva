@@ -155,7 +155,7 @@ impl ClientController {
 
         let result = match res.recv().await {
             ConsensusClientResponse::Result { res, log_index } => {
-                ServerResponse::WriteRes { res: res?, index: log_index, request_id }
+                ServerResponse::WriteRes { res: res?, log_index, request_id }
             },
             ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get

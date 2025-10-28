@@ -318,7 +318,7 @@ pub struct ClientRequest {
 
 #[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
 pub enum ServerResponse {
-    WriteRes { res: QueryIO, index: u64, request_id: u64 },
+    WriteRes { res: QueryIO, log_index: u64, request_id: u64 },
     ReadRes { res: QueryIO, request_id: u64 },
     TopologyChange(Topology),
     Err { reason: String, request_id: u64 },

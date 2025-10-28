@@ -36,7 +36,7 @@ fn render_return(kind: ClientAction, response: ServerResponse) -> Response {
     }
 
     let (ServerResponse::ReadRes { res, request_id }
-    | ServerResponse::WriteRes { res, index: _, request_id }) = response
+    | ServerResponse::WriteRes { res, log_index: _, request_id }) = response
     else {
         panic!()
     };

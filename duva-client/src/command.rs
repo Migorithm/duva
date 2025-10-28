@@ -117,7 +117,7 @@ impl InputContext {
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in res {
-                    let ServerResponse::WriteRes { res, index: _, request_id } = result else {
+                    let ServerResponse::WriteRes { res, log_index: _, request_id } = result else {
                         panic!();
                     };
 
@@ -131,7 +131,7 @@ impl InputContext {
                 }
                 Ok(ServerResponse::WriteRes {
                     res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
-                    index: 0,
+                    log_index: 0,
                     request_id: 0,
                 })
             },

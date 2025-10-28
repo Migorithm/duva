@@ -294,7 +294,7 @@ impl Broker {
             // ! otherwise, server will not be able to process the next command
 
             match res {
-                ServerResponse::WriteRes { res, index: _, request_id }
+                ServerResponse::WriteRes { res, log_index: _, request_id }
                 | ServerResponse::ReadRes { res, request_id } => {
                     if let QueryIO::SimpleString(v) = res {
                         let s = String::from_utf8_lossy(v);
