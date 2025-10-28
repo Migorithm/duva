@@ -323,3 +323,15 @@ pub enum ServerResponse {
     TopologyChange(Topology),
     Err { reason: String, request_id: u64 },
 }
+
+impl ServerResponse {
+    pub fn request_id(&self) -> Option<u64> {
+        match self {
+            ServerResponse::WriteRes { request_id, .. }
+            | ServerResponse::ReadRes { request_id, .. }
+            | ServerResponse::Err { request_id, .. } => Some(*request_id),
+
+            ServerResponse::TopologyChange(..) => None,
+        }
+    }
+}

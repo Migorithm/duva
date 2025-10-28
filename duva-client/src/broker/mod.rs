@@ -294,8 +294,7 @@ impl Broker {
             // ! otherwise, server will not be able to process the next command
 
             match res {
-                ServerResponse::WriteRes { res, log_index: _, request_id }
-                | ServerResponse::ReadRes { res, request_id } => {
+                ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
                     if let QueryIO::SimpleString(v) = res {
                         let s = String::from_utf8_lossy(v);
                         connection.request_id = IndexedValueCodec::decode_index(s)
@@ -303,7 +302,7 @@ impl Broker {
                             .unwrap_or(connection.request_id);
                     }
                 },
-                ServerResponse::Err { reason: res, request_id } => {
+                ServerResponse::Err { .. } => {
                     connection.request_id += 1;
                 },
 

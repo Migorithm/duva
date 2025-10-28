@@ -401,7 +401,7 @@ fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
     let file_content = &buffer.slice(len..(len + content_len));
 
     // Ensure content length is even for hex pairs
-    if content_len.is_multiple_of(2) {
+    if content_len % 2 != 0 {
         return Err(anyhow::anyhow!("Invalid hex data: odd number of characters"));
     }
 
@@ -431,7 +431,7 @@ pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize
 
 pub fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> BinBytes {
     // Use size estimation for better performance
-    let estimated_size: usize = serialized_len_with_bincode(prefix, arg);
+    let estimated_size = serialized_len_with_bincode(prefix, arg);
     let mut buffer = BytesMut::with_capacity(estimated_size);
 
     buffer.extend_from_slice(prefix.encode_utf8(&mut [0; 4]).as_bytes());

@@ -27,19 +27,9 @@ impl<T> ClientController<T> {
     }
 }
 
-fn render_return(kind: ClientAction, response: ServerResponse) -> Response {
+fn render_return(kind: ClientAction, res: QueryIO) -> Response {
     use ClientAction::*;
     use NonMutatingAction::*;
-
-    if let ServerResponse::Err { reason: res, request_id } = response {
-        return Response::Error(res.into());
-    }
-
-    let (ServerResponse::ReadRes { res, request_id }
-    | ServerResponse::WriteRes { res, log_index: _, request_id }) = response
-    else {
-        panic!()
-    };
 
     match kind {
         NonMutating(
@@ -153,15 +143,15 @@ fn render_return(kind: ClientAction, response: ServerResponse) -> Response {
 }
 
 pub fn print_res(kind: ClientAction, query_io: ServerResponse) {
-    let action_debug = format!("{:?}", kind);
-    let result = render_return(kind, query_io.clone());
-    println!("{}", result);
+    if let ServerResponse::Err { reason: res, .. } = query_io {
+        println!("{}", Response::Error(res.into()));
+        return;
+    }
 
-    // Log the command execution for observability
-    tracing::info!(
-        action = %action_debug,
-        "Client command executed"
-    );
+    if let ServerResponse::ReadRes { res, .. } | ServerResponse::WriteRes { res, .. } = query_io {
+        let result = render_return(kind, res);
+        println!("{}", result);
+    }
 }
 
 enum Response {

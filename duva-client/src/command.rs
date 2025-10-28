@@ -117,7 +117,7 @@ impl InputContext {
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in res {
-                    let ServerResponse::WriteRes { res, log_index: _, request_id } = result else {
+                    let ServerResponse::WriteRes { res, .. } = result else {
                         panic!();
                     };
 
