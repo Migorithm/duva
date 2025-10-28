@@ -295,7 +295,7 @@ impl Broker {
 
             match res {
                 ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
-                    if let QueryIO::SimpleString(v) = res {
+                    if let QueryIO::BulkString(v) = res {
                         let s = String::from_utf8_lossy(v);
                         connection.request_id = IndexedValueCodec::decode_index(s)
                             .filter(|&id| id > connection.request_id)

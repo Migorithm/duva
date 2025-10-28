@@ -12,7 +12,6 @@ use bytes::{Bytes, BytesMut};
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
-const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const APPEND_ENTRY_RPC_PREFIX: char = '^';
@@ -40,7 +39,6 @@ macro_rules! write_array {
 pub enum QueryIO {
     #[default]
     Null,
-    SimpleString(BinBytes),
     BulkString(BinBytes),
     Array(Vec<QueryIO>),
 
@@ -63,14 +61,7 @@ impl QueryIO {
     pub fn serialize(self) -> BinBytes {
         match self {
             QueryIO::Null => BinBytes(NULL_PREFIX.to_string().into()),
-            QueryIO::SimpleString(s) => {
-                let mut buffer =
-                    BytesMut::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
-                buffer.extend_from_slice(&[SIMPLE_STRING_PREFIX as u8]);
-                buffer.extend_from_slice(&s);
-                buffer.extend_from_slice(b"\r\n");
-                buffer.freeze().into()
-            },
+
             QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
@@ -202,7 +193,7 @@ impl QueryIO {
     }
 
     pub(crate) fn convert_str_res(res: &str, index: u64) -> Self {
-        QueryIO::SimpleString(BinBytes::new(IndexedValueCodec::encode(res, index)))
+        QueryIO::BulkString(BinBytes::new(IndexedValueCodec::encode(res, index)))
     }
 
     pub(crate) fn convert_str_vec_res(values: Vec<String>, index: u64) -> Self {
@@ -220,7 +211,7 @@ pub(crate) fn serialized_len_with_bincode<T: bincode::Encode>(prefix: char, arg:
 fn estimate_serialized_size(query: &QueryIO) -> usize {
     match query {
         QueryIO::Null => 1,
-        QueryIO::SimpleString(s) => 1 + s.len() + 2,
+
         QueryIO::BulkString(s) => 1 + s.len().to_string().len() + 2 + s.len() + 2,
         QueryIO::Array(array) => {
             let header = 1 + array.len().to_string().len() + 2;
@@ -286,10 +277,6 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
 
 fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)> {
     match prefix {
-        SIMPLE_STRING_PREFIX => {
-            let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::SimpleString(BinBytes(bytes)), len))
-        },
         ARRAY_PREFIX => parse_array(buffer),
 
         BULK_STRING_PREFIX => {
@@ -321,13 +308,6 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
         CLOSE_CONNECTION_PREFIX => Ok((QueryIO::CloseConnection, 1)),
         _ => Err(anyhow::anyhow!("Unknown value type with prefix: {:?}", prefix)),
     }
-}
-
-// +PING\r\n
-pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(Bytes, usize)> {
-    let (line, len) = read_until_crlf_exclusive(&buffer.slice(1..))
-        .ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    Ok((line.into(), len + 1))
 }
 
 fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
@@ -522,32 +502,6 @@ mod test {
 
     use chrono::DateTime;
     use uuid::Uuid;
-
-    #[test]
-    fn test_deserialize_simple_string() {
-        // GIVEN
-        let buffer = Bytes::from("+OK\r\n");
-
-        // WHEN
-        let (value, len) = parse_simple_string(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 5);
-        assert_eq!(value, Bytes::from("OK"));
-    }
-
-    #[test]
-    fn test_deserialize_simple_string_ping() {
-        // GIVEN
-        let buffer = Bytes::from("+PING\r\n");
-
-        // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 7);
-        assert_eq!(value, QueryIO::SimpleString(BinBytes(Bytes::from("PING"))));
-    }
 
     #[test]
     fn test_deserialize_bulk_string() {

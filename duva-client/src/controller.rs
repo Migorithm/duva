@@ -45,12 +45,12 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
             | ClusterInfo,
         ) => match res {
             QueryIO::Null => Response::Null,
-            QueryIO::SimpleString(value) => Response::String(value.into()),
             QueryIO::BulkString(value) => Response::String(value.into()),
+
             _err => Response::FormatError,
         },
         Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
-            let QueryIO::SimpleString(value) = res else {
+            let QueryIO::BulkString(value) = res else {
                 return Response::FormatError;
             };
             match str::from_utf8(&value) {
@@ -68,7 +68,7 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
             | LogEntry::LPushX { .. }
             | LogEntry::RPushX { .. },
         ) => match res {
-            QueryIO::SimpleString(value) => {
+            QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::Integer(s.unwrap().to_string().into())
@@ -84,7 +84,7 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
         },
         Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
             match res {
-                QueryIO::SimpleString(_) => Response::String("OK".into()),
+                QueryIO::BulkString(_) => Response::String("OK".into()),
 
                 _ => Response::FormatError,
             }
@@ -95,7 +95,7 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
             _ => Response::FormatError,
         },
         Mutating(LogEntry::Append { .. }) => match res {
-            QueryIO::SimpleString(value) => {
+            QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::String(s.unwrap().to_string().into())

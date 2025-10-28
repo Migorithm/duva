@@ -27,7 +27,7 @@ impl ClientController {
         use NonMutatingAction::*;
 
         let response = match non_mutating {
-            Ping => QueryIO::SimpleString(BinBytes::new("PONG")),
+            Ping => QueryIO::BulkString(BinBytes::new("PONG")),
             Echo(val) => QueryIO::BulkString(BinBytes::new(val)),
 
             Save => {
@@ -80,7 +80,7 @@ impl ClientController {
                 }
             },
 
-            Exists { keys } => QueryIO::SimpleString(BinBytes::new(
+            Exists { keys } => QueryIO::BulkString(BinBytes::new(
                 self.cache_manager.route_exists(keys).await?.to_string(),
             )),
             Info => QueryIO::BulkString(BinBytes::new(
@@ -97,7 +97,7 @@ impl ClientController {
                 .into(),
             ClusterForget(peer_identifier) => {
                 match self.cluster_actor_sender.route_forget_peer(peer_identifier).await {
-                    Ok(true) => QueryIO::SimpleString(BinBytes::new("OK")),
+                    Ok(true) => QueryIO::BulkString(BinBytes::new("OK")),
                     Ok(false) => {
                         return Err(anyhow::anyhow!("No such peer"));
                     },
@@ -112,16 +112,16 @@ impl ClientController {
             ClusterReshard => self.cluster_actor_sender.route_cluster_reshard().await?.into(),
             ReplicaOf(peer_identifier) => {
                 self.cluster_actor_sender.route_replicaof(peer_identifier.clone()).await?;
-                QueryIO::SimpleString(BinBytes::new("OK"))
+                QueryIO::BulkString(BinBytes::new("OK"))
             },
             Role => self.cluster_actor_sender.route_get_roles().await?.into(),
             Ttl { key } => {
-                QueryIO::SimpleString(BinBytes::new(self.cache_manager.route_ttl(key).await?))
+                QueryIO::BulkString(BinBytes::new(self.cache_manager.route_ttl(key).await?))
             },
 
             LLen { key } => {
                 let len = self.cache_manager.route_llen(key).await?;
-                QueryIO::SimpleString(BinBytes::new(len.to_string()))
+                QueryIO::BulkString(BinBytes::new(len.to_string()))
             },
             LRange { key, start, end } => {
                 let values = self.cache_manager.route_lrange(key, start, end).await?;

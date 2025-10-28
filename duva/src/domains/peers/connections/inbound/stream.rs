@@ -46,7 +46,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.w.write(QueryIO::SimpleString(BinBytes::new("PONG"))).await?;
+        self.w.write(QueryIO::BulkString(BinBytes::new("PONG"))).await?;
         Ok(())
     }
 
@@ -55,7 +55,7 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.w.write(QueryIO::SimpleString(BinBytes::new("OK"))).await?;
+        self.w.write(QueryIO::BulkString(BinBytes::new("OK"))).await?;
 
         Ok(port)
     }
@@ -63,7 +63,7 @@ impl InboundStream {
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(BinBytes, BinBytes)>> {
         let cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.w.write(QueryIO::SimpleString(BinBytes::new("OK"))).await?;
+        self.w.write(QueryIO::BulkString(BinBytes::new("OK"))).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64, ReplicationRole, u64)> {
@@ -81,7 +81,7 @@ impl InboundStream {
         );
 
         self.w
-            .write(QueryIO::SimpleString(BinBytes::new(format!(
+            .write(QueryIO::BulkString(BinBytes::new(format!(
                 "FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role} {term}"
             ))))
             .await?;
@@ -98,7 +98,7 @@ impl InboundStream {
         let Some(query) = query_io.pop() else {
             return Err(anyhow::anyhow!("No query found"));
         };
-        let QueryIO::SimpleString(val) = query else {
+        let QueryIO::BulkString(val) = query else {
             return Err(anyhow::anyhow!("Invalid query"));
         };
         if val.as_ref() != b"ok" {

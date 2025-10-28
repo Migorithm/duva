@@ -96,7 +96,7 @@ impl InputContext {
                 let mut count = 0;
 
                 while let Some(ServerResponse::ReadRes {
-                    res: QueryIO::SimpleString(byte),
+                    res: QueryIO::BulkString(byte),
                     request_id,
                 }) = iterator.next()
                 {
@@ -109,7 +109,7 @@ impl InputContext {
                 }
 
                 Ok(ServerResponse::ReadRes {
-                    res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
+                    res: QueryIO::BulkString(BinBytes::new(count.to_string())),
                     request_id: highest_req_id,
                 })
             },
@@ -117,7 +117,7 @@ impl InputContext {
                 let mut count = 0;
 
                 while let Some(ServerResponse::WriteRes {
-                    res: QueryIO::SimpleString(value),
+                    res: QueryIO::BulkString(value),
                     request_id,
                     ..
                 }) = iterator.next()
@@ -130,7 +130,7 @@ impl InputContext {
                 }
 
                 Ok(ServerResponse::WriteRes {
-                    res: QueryIO::SimpleString(BinBytes::new(count.to_string())),
+                    res: QueryIO::BulkString(BinBytes::new(count.to_string())),
                     log_index: 0, // TODO
                     request_id: highest_req_id,
                 })
