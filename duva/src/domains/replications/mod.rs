@@ -7,7 +7,7 @@ pub(crate) use consensus::election::*;
 pub(crate) use consensus::log::*;
 pub(crate) use interfaces::*;
 pub use operation::LogEntry;
-pub use operation::WriteOperation;
+pub(crate) use operation::WriteOperation;
 pub(crate) mod messages;
 
 pub use messages::ReplicationId;

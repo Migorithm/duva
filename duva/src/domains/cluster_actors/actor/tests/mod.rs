@@ -28,7 +28,6 @@ use crate::{
     domains::{IoError, TRead, TWrite},
     make_smart_pointer,
 };
-use bytes::BytesMut;
 use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::sync::Arc;
@@ -76,10 +75,6 @@ impl TSerdeDynamicWrite for FakeReadWrite {
 
 #[async_trait::async_trait]
 impl TRead for FakeReadWrite {
-    async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
-        Ok(())
-    }
-
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
         panic!()
     }

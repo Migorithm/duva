@@ -11,7 +11,6 @@ use bytes::{Bytes, BytesMut};
 
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
-pub const WRITE_OP_PREFIX: char = '#';
 const NULL_PREFIX: char = '\u{0000}';
 pub const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 

@@ -3,7 +3,8 @@ use crate::domains::peers::connections::connection_types::{ReadConnected, WriteC
 use crate::domains::query_io::SERDE_CONFIG;
 use crate::domains::replications::messages::PeerMessage;
 use crate::domains::{
-    IoError, TAsyncReadWrite, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead, TSerdeWrite,
+    IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead,
+    TSerdeWrite,
 };
 use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
@@ -23,7 +24,7 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWri
 }
 
 #[async_trait::async_trait]
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead for T {
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TReadBytes for T {
     // TCP doesn't inherently delimit messages.
     // The data arrives in a continuous stream of bytes. And
     // we might not receive all the data in one go.
@@ -55,7 +56,10 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
         }
         Ok(())
     }
+}
 
+#[async_trait::async_trait]
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead for T {
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
         let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
         self.read_bytes(&mut buffer).await?;

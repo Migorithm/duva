@@ -9,9 +9,12 @@ use bytes::BytesMut;
 
 #[async_trait::async_trait]
 pub trait TRead: Send + Sync + Debug + 'static {
-    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
-
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError>;
+}
+
+#[async_trait::async_trait]
+pub trait TReadBytes: Send + Sync + Debug + 'static {
+    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]
