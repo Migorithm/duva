@@ -13,6 +13,7 @@ use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
+use crate::presentation::clients::request::ClientReq;
 
 use crate::domains::peers::command::HeartBeat;
 
@@ -128,7 +129,7 @@ impl Helper {
         term: u64,
         key: &str,
         value: &str,
-        session_req: SessionRequest,
+        session_req: ClientReq,
     ) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
@@ -220,7 +221,7 @@ impl Helper {
 
     fn consensus_request(
         callback: Callback<ConsensusClientResponse>,
-        session_req: Option<SessionRequest>,
+        session_req: Option<ClientReq>,
     ) -> ConsensusRequest {
         ConsensusRequest {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },

@@ -18,16 +18,15 @@ pub struct SignalHandler {
 
 impl SignalHandler {
     pub(crate) fn new() -> anyhow::Result<Self> {
-        let mut signals = Signals::new(&[SIGTERM, SIGINT, SIGQUIT])?;
+        let mut signals = Signals::new([SIGTERM, SIGINT, SIGQUIT])?;
         let (tx, rx) = Callback::create();
         // Spawn task to handle signals
         tokio::spawn(async move {
-            while let Some(signal) = signals.next().await {
+            if let Some(signal) = signals.next().await {
                 match signal {
                     SIGTERM | SIGINT | SIGQUIT => {
                         warn!("\nReceived signal: {:?}", signal);
                         tx.send(signal);
-                        break;
                     },
                     _ => unreachable!(),
                 }

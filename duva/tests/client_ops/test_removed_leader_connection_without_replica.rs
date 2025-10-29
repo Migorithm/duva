@@ -9,13 +9,12 @@ fn run_removed_leader_without_replica(env1: ServerEnv, env2: ServerEnv) -> anyho
     let mut client1 = Client::new(process1.port);
 
     client1.send_and_get(format!("CLUSTER MEET {} eager", process2.bind_addr()));
-    sleep(Duration::from_millis(500));
 
     // WHEN
     drop(process2);
 
     // Wait for broker to detect error, sleep through ELECTION_TIMEOUT_MAX, and attempt discovery
-    sleep(Duration::from_millis(200));
+    sleep(Duration::from_millis(500));
 
     // THEN
     match client1.child.try_wait() {

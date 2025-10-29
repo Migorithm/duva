@@ -6,7 +6,7 @@ use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 const BUFFER_SIZE: usize = 512;
@@ -172,7 +172,7 @@ pub mod test_tokio_stream_impl {
     }
 
     // Must implement AsyncRead for the blanket impl of TRead to work
-    impl AsyncRead for MockAsyncStream {
+    impl tokio::io::AsyncRead for MockAsyncStream {
         fn poll_read(
             self: std::pin::Pin<&mut Self>,
             _cx: &mut std::task::Context<'_>,
@@ -213,8 +213,20 @@ pub mod test_tokio_stream_impl {
     async fn test_read_values() {
         let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
         // add a simple string to buffer
-        buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
-        buffer.extend_from_slice(b"+PEERS 127.0.0.1:6378\r\n");
+        let sync_msg = "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0";
+
+        buffer.extend_from_slice(
+            format!(
+                "${}\r\nFULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n",
+                sync_msg.len()
+            )
+            .as_bytes(),
+        );
+
+        let peer_info_msg = "PEERS 127.0.0.1:6378";
+        buffer.extend_from_slice(
+            format!("${}\r\nPEERS 127.0.0.1:6378\r\n", peer_info_msg.len()).as_bytes(),
+        );
         // add an integer to buffer
 
         let mut parsed_values = vec![];
@@ -230,12 +242,12 @@ pub mod test_tokio_stream_impl {
         assert_eq!(parsed_values.len(), 2);
         assert_eq!(
             parsed_values[0],
-            QueryIO::SimpleString(BinBytes::new(
+            QueryIO::BulkString(BinBytes::new(
                 "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"
             ))
         );
 
-        assert_eq!(parsed_values[1], QueryIO::SimpleString(BinBytes::new("PEERS 127.0.0.1:6378")));
+        assert_eq!(parsed_values[1], QueryIO::BulkString(BinBytes::new("PEERS 127.0.0.1:6378")));
     }
 
     #[tokio::test]

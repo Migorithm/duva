@@ -34,7 +34,7 @@ impl CacheEntry {
         self.value.expiry.and_then(DateTime::from_timestamp_millis)
     }
     pub fn expiry_in_i64(&self) -> Option<i64> {
-        self.value.expiry.clone()
+        self.value.expiry
     }
 
     pub fn key(&self) -> &str {

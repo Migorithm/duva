@@ -1,8 +1,5 @@
-use std::fmt::Display;
-
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
-
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
 use duva::domains::replications::LogEntry;
@@ -13,6 +10,8 @@ use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::presentation::clients::request::ClientAction;
 use duva::presentation::clients::request::NonMutatingAction;
+use duva::presentation::clients::request::ServerResponse;
+use std::fmt::Display;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
@@ -28,7 +27,7 @@ impl<T> ClientController<T> {
     }
 }
 
-fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
+fn render_return(kind: ClientAction, res: QueryIO) -> Response {
     use ClientAction::*;
     use NonMutatingAction::*;
 
@@ -44,19 +43,14 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
             | ClusterForget { .. }
             | ReplicaOf { .. }
             | ClusterInfo,
-        ) => match query_io {
+        ) => match res {
             QueryIO::Null => Response::Null,
-            QueryIO::SimpleString(value) => Response::String(value.into()),
             QueryIO::BulkString(value) => Response::String(value.into()),
-            QueryIO::Err(value) => Response::Error(value.into()),
+
             _err => Response::FormatError,
         },
         Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
-            if let QueryIO::Err(value) = query_io {
-                return Response::Error(value.into());
-            }
-
-            let QueryIO::SimpleString(value) = query_io else {
+            let QueryIO::BulkString(value) = res else {
                 return Response::FormatError;
             };
             match str::from_utf8(&value) {
@@ -73,49 +67,48 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
             | LogEntry::RPush { .. }
             | LogEntry::LPushX { .. }
             | LogEntry::RPushX { .. },
-        ) => match query_io {
-            QueryIO::SimpleString(value) => {
+        ) => match res {
+            QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::Integer(s.unwrap().to_string().into())
             },
-            QueryIO::Err(value) => Response::Error(value.into()),
 
             _ => Response::FormatError,
         },
         NonMutating(Save) => {
-            let QueryIO::Null = query_io else {
+            let QueryIO::Null = res else {
                 return Response::FormatError;
             };
             Response::Null
         },
         Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
-            match query_io {
-                QueryIO::SimpleString(_) => Response::String("OK".into()),
-                QueryIO::Err(value) => Response::Error(value.into()),
+            match res {
+                QueryIO::BulkString(_) => Response::String("OK".into()),
+
                 _ => Response::FormatError,
             }
         },
-        NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
+        NonMutating(ClusterMeet { .. } | ClusterReshard) => match res {
             QueryIO::Null => Response::String("OK".into()),
-            QueryIO::Err(value) => Response::Error(value.into()),
+
             _ => Response::FormatError,
         },
-        Mutating(LogEntry::Append { .. }) => match query_io {
-            QueryIO::SimpleString(value) => {
+        Mutating(LogEntry::Append { .. }) => match res {
+            QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
                 let s: Option<i64> = IndexedValueCodec::decode_value(s);
                 Response::String(s.unwrap().to_string().into())
             },
-            QueryIO::Err(value) => Response::Error(value.into()),
+
             _ => Response::FormatError,
         },
         Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
         | NonMutating(Keys { .. } | MGet { .. } | LRange { .. }) => {
-            if let QueryIO::Null = query_io {
+            if let QueryIO::Null = res {
                 return Response::Null;
             }
-            let QueryIO::Array(value) = query_io else {
+            let QueryIO::Array(value) = res else {
                 return Response::FormatError;
             };
 
@@ -130,7 +123,7 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
             }
             Response::Array(keys)
         },
-        NonMutating(Role | ClusterNodes) => match query_io {
+        NonMutating(Role | ClusterNodes) => match res {
             QueryIO::Array(value) => {
                 let mut nodes = Vec::new();
                 for item in value {
@@ -141,7 +134,6 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
                 }
                 Response::Array(nodes)
             },
-            QueryIO::Err(value) => Response::Error(value.into()),
             _ => Response::FormatError,
         },
 
@@ -150,16 +142,16 @@ fn render_return(kind: ClientAction, query_io: QueryIO) -> Response {
     }
 }
 
-pub fn print_res(kind: ClientAction, query_io: QueryIO) {
-    let action_debug = format!("{:?}", kind);
-    let result = render_return(kind, query_io.clone());
-    println!("{}", result);
+pub fn print_res(kind: ClientAction, query_io: ServerResponse) {
+    if let ServerResponse::Err { reason: res, .. } = query_io {
+        println!("{}", Response::Error(res.into()));
+        return;
+    }
 
-    // Log the command execution for observability
-    tracing::info!(
-        action = %action_debug,
-        "Client command executed"
-    );
+    if let ServerResponse::ReadRes { res, .. } | ServerResponse::WriteRes { res, .. } = query_io {
+        let result = render_return(kind, res);
+        println!("{}", result);
+    }
 }
 
 enum Response {

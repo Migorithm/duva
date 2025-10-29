@@ -6,6 +6,8 @@ use crate::domains::peers::connections::connection_types::{ReadConnected, WriteC
 use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
+
+use crate::presentation::clients::request::ClientReq;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
@@ -77,14 +79,14 @@ impl From<ClientMessage> for ClusterCommand {
 pub(crate) struct ConsensusRequest {
     pub(crate) entry: LogEntry,
     pub(crate) callback: Callback<ConsensusClientResponse>,
-    pub(crate) session_req: Option<SessionRequest>,
+    pub(crate) session_req: Option<ClientReq>,
 }
 
 #[derive(Debug)]
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, request_id: u64 },
-    Err { reason: String, request_id: u64 },
-    Result(anyhow::Result<QueryIO>),
+
+    Result { res: anyhow::Result<QueryIO>, log_index: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -102,16 +104,5 @@ impl FromStr for LazyOption {
             "eager" => Ok(LazyOption::Eager),
             _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub struct SessionRequest {
-    pub(crate) request_id: u64,
-    pub(crate) client_id: String,
-}
-impl SessionRequest {
-    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
-        Self { request_id, client_id }
     }
 }

@@ -1,19 +1,18 @@
 use super::{ClientController, request::ClientRequest};
+use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
 use crate::domains::replications::ReplicationRole;
-use crate::domains::{
-    QueryIO,
-    cluster_actors::SessionRequest,
-    interface::{TRead, TWrite},
-};
+
 use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
-use crate::presentation::clients::request::ClientAction;
-use crate::types::BinBytes;
+use crate::presentation::clients::request::{
+    ClientAction, ClientReq, ServerResponse, SessionRequest,
+};
+
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
@@ -30,45 +29,44 @@ impl ClientStreamReader {
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,
-        stream_writer_sender: Sender<QueryIO>,
+        stream_writer_sender: Sender<ServerResponse>,
     ) {
         loop {
             // * extract queries
-            let query_ios = self.r.read_values().await;
+            let query_ios = self.r.deserialized_reads::<SessionRequest>().await;
             if let Err(err) = query_ios {
                 info!("{}", err);
                 if err.should_break() {
                     return;
                 }
-                let _ =
-                    stream_writer_sender.send(QueryIO::Err(BinBytes::new(err.to_string()))).await;
+                let _ = stream_writer_sender
+                    .send(ServerResponse::Err { reason: err.to_string(), request_id: 0 })
+                    .await;
                 continue;
             }
 
             // * map client request
             let requests = query_ios.unwrap().into_iter().map(|query_io| {
-                let QueryIO::SessionRequest { request_id, action } = query_io else {
-                    return Err("Unexpected command format".to_string());
-                };
                 Ok(ClientRequest {
-                    action,
-                    session_req: SessionRequest::new(request_id, self.client_id.clone()),
+                    action: query_io.action,
+                    session_req: ClientReq::new(query_io.request_id, self.client_id.clone()),
                 })
             });
 
             for req in requests {
                 match req {
                     Err(err) => {
-                        let _ = stream_writer_sender.send(QueryIO::Err(BinBytes::new(err))).await;
+                        let _ = stream_writer_sender
+                            .send(ServerResponse::Err { reason: err, request_id: 0 })
+                            .await;
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
-                        info!(?action, "Processing request");
-
+                        let request_id = session_req.request_id;
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {
-                                handler.handle_non_mutating(non_mutating_action).await
+                                handler.handle_non_mutating(non_mutating_action, request_id).await
                             },
                             ClientAction::Mutating(log_entry) => {
                                 handler.handle_mutating(session_req, log_entry).await
@@ -77,7 +75,7 @@ impl ClientStreamReader {
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            QueryIO::Err(BinBytes::new(e.to_string()))
+                            ServerResponse::Err { reason: e.to_string(), request_id }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;
@@ -95,11 +93,11 @@ impl ClientStreamWriter {
     pub(crate) fn run(
         mut self,
         mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
-    ) -> Sender<QueryIO> {
+    ) -> Sender<ServerResponse> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(2000);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
-                if let Err(e) = self.write(data).await
+                if let Err(e) = self.serialized_write(data).await
                     && e.should_break()
                 {
                     break;
@@ -111,7 +109,7 @@ impl ClientStreamWriter {
             let tx = tx.clone();
             async move {
                 while let Ok(topology) = topology_observer.recv().await {
-                    let _ = tx.send(QueryIO::TopologyChange(topology)).await;
+                    let _ = tx.send(ServerResponse::TopologyChange(topology)).await;
                 }
             }
         });

@@ -2,7 +2,7 @@ use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::replications::LogEntry;
 use duva::prelude::BinBytes;
 use duva::prelude::anyhow::{self, Context};
-use duva::presentation::clients::request::NonMutatingAction;
+use duva::presentation::clients::request::{NonMutatingAction, ServerResponse};
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
@@ -22,7 +22,11 @@ impl CommandQueue {
         self.queue.pop_front()
     }
 
-    pub(crate) fn finalize_or_requeue(&mut self, query_io: QueryIO, mut context: InputContext) {
+    pub(crate) fn finalize_or_requeue(
+        &mut self,
+        query_io: ServerResponse,
+        mut context: InputContext,
+    ) {
         context.results.push(query_io);
 
         if context.results.len() != context.expected_result_cnt {
@@ -30,8 +34,9 @@ impl CommandQueue {
             return;
         }
 
-        let result =
-            context.get_result().unwrap_or_else(|err| QueryIO::Err(BinBytes::new(err.to_string())));
+        let result = context
+            .get_result()
+            .unwrap_or_else(|err| ServerResponse::Err { reason: err.to_string(), request_id: 0 });
         context.callback(result);
     }
 }
@@ -47,19 +52,19 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
 #[derive(Debug)]
 pub struct InputContext {
     pub(crate) client_action: ClientAction,
-    pub(crate) callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    pub(crate) results: Vec<QueryIO>,
+    pub(crate) callback: oneshot::Sender<(ClientAction, ServerResponse)>,
+    pub(crate) results: Vec<ServerResponse>,
     pub(crate) expected_result_cnt: usize,
 }
 impl InputContext {
     pub fn new(
         client_action: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+        callback: oneshot::Sender<(ClientAction, ServerResponse)>,
     ) -> Self {
         Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
 
-    pub(crate) fn callback(self, query_io: QueryIO) {
+    pub(crate) fn callback(self, query_io: ServerResponse) {
         let action_debug = format!("{:?}", self.client_action);
         self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
             // Log callback failure for debugging
@@ -70,51 +75,67 @@ impl InputContext {
         });
     }
 
-    pub(crate) fn get_result(&mut self) -> anyhow::Result<QueryIO> {
+    pub(crate) fn get_result(&mut self) -> anyhow::Result<ServerResponse> {
         use NonMutatingAction::*;
         let res = std::mem::take(&mut self.results);
+        let mut highest_req_id = 0; // TODO for now, set request id to the highest one
+        let mut iterator = res.into_iter();
 
         match self.client_action {
             ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
-                let mut init = QueryIO::Array(Vec::with_capacity(res.len()));
-                for item in res {
-                    init = init.merge(item)?;
+                let mut init = QueryIO::Array(Vec::with_capacity(iterator.len()));
+
+                while let Some(ServerResponse::ReadRes { res, request_id }) = iterator.next() {
+                    init = init.merge(res)?;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
-                Ok(init)
+                Ok(ServerResponse::ReadRes { res: init, request_id: highest_req_id })
             },
+
             ClientAction::NonMutating(Exists { keys: _ }) => {
                 let mut count = 0;
-                for result in res {
-                    let QueryIO::SimpleString(byte) = result else {
-                        return Err(anyhow::anyhow!("Expected SimpleString result"));
-                    };
+
+                while let Some(ServerResponse::ReadRes {
+                    res: QueryIO::BulkString(byte),
+                    request_id,
+                }) = iterator.next()
+                {
                     let num = String::from_utf8(byte.to_vec())
                         .context("Failed to convert byte to string")?;
                     let num = num.parse::<u64>().context("Failed to parse string to u64")?;
 
                     count += num;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
-                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
+
+                Ok(ServerResponse::ReadRes {
+                    res: QueryIO::BulkString(BinBytes::new(count.to_string())),
+                    request_id: highest_req_id,
+                })
             },
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
-                for result in res {
-                    let QueryIO::SimpleString(value) = result else {
-                        return Err(anyhow::anyhow!("Expected SimpleString result"));
-                    };
+
+                while let Some(ServerResponse::WriteRes {
+                    res: QueryIO::BulkString(value),
+                    request_id,
+                    ..
+                }) = iterator.next()
+                {
                     let decoded_value =
                         IndexedValueCodec::decode_value(String::from_utf8_lossy(&value)).unwrap();
 
                     count += decoded_value;
+                    highest_req_id = highest_req_id.max(request_id);
                 }
-                Ok(QueryIO::SimpleString(BinBytes::new(count.to_string())))
+
+                Ok(ServerResponse::WriteRes {
+                    res: QueryIO::BulkString(BinBytes::new(count.to_string())),
+                    log_index: 0, // TODO
+                    request_id: highest_req_id,
+                })
             },
-            _ => {
-                if res.len() != 1 {
-                    return Err(anyhow::anyhow!("Expected exactly one result"));
-                }
-                Ok(res[0].clone())
-            },
+            _ => iterator.next().ok_or(anyhow::anyhow!("Expected exactly one result")),
         }
     }
 }

@@ -1,13 +1,33 @@
-use crate::domains::{
-    QueryIO,
-    caches::cache_objects::CacheEntry,
-    cluster_actors::{LazyOption, SessionRequest},
-    peers::identifier::{PeerIdentifier, TPeerAddress},
-    replications::LogEntry,
+use crate::{
+    domains::{
+        QueryIO,
+        caches::cache_objects::CacheEntry,
+        cluster_actors::LazyOption,
+        peers::identifier::{PeerIdentifier, TPeerAddress},
+        replications::LogEntry,
+    },
+    prelude::Topology,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use std::str::FromStr;
+
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub struct SessionRequest {
+    pub request_id: u64,
+    pub action: ClientAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub struct ClientReq {
+    pub(crate) request_id: u64,
+    pub(crate) client_id: String,
+}
+impl ClientReq {
+    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
+        Self { request_id, client_id }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum ClientAction {
@@ -293,12 +313,35 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
-    pub(crate) session_req: SessionRequest,
+    pub(crate) session_req: ClientReq,
 }
 
-#[derive(Clone, Debug)]
-pub struct ClientResponse {
-    pub(crate) res: QueryIO,
-    pub(crate) index: u64,
-    pub(crate) request_id: u64,
+#[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
+pub enum ServerResponse {
+    WriteRes { res: QueryIO, log_index: u64, request_id: u64 },
+    ReadRes { res: QueryIO, request_id: u64 },
+    TopologyChange(Topology),
+    Err { reason: String, request_id: u64 },
+}
+
+impl ServerResponse {
+    pub fn request_id(&self) -> Option<u64> {
+        match self {
+            ServerResponse::WriteRes { request_id, .. }
+            | ServerResponse::ReadRes { request_id, .. }
+            | ServerResponse::Err { request_id, .. } => Some(*request_id),
+
+            ServerResponse::TopologyChange(..) => None,
+        }
+    }
+
+    pub fn response(&self) -> Option<QueryIO> {
+        match self {
+            ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
+                Some(res.clone())
+            },
+
+            _ => None,
+        }
+    }
 }

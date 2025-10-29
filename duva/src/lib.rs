@@ -51,8 +51,8 @@ pub mod prelude {
     pub use crate::presentation::clients::ConnectionResponse;
     pub use crate::presentation::clients::ConnectionResponses;
     pub use crate::types::BinBytes;
-
     pub use anyhow;
+    pub use bincode;
     pub use bytes;
     pub use bytes::BytesMut;
     pub use rand;

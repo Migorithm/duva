@@ -1,10 +1,11 @@
 use super::write_stream::MsgToServer;
-use duva::domains::query_io::QueryIO::SessionRequest;
+use duva::domains::query_io::SERDE_CONFIG;
 use duva::domains::replications::ReplicationId;
 use duva::make_smart_pointer;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::Context;
+use duva::prelude::bincode;
 use duva::prelude::rand;
 use duva::prelude::rand::SeedableRng;
 use duva::prelude::rand::rngs::StdRng;
@@ -12,6 +13,7 @@ use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
+use duva::presentation::clients::request::SessionRequest;
 use futures::future::join_all;
 use futures::future::try_join_all;
 use std::collections::HashMap;
@@ -96,7 +98,7 @@ impl NodeConnection {
     pub(crate) async fn send(&self, client_action: ClientAction) -> anyhow::Result<()> {
         let session_request = SessionRequest { request_id: self.request_id, action: client_action };
         self.writer
-            .send(MsgToServer::Command(session_request.serialize().to_vec()))
+            .send(MsgToServer::Command(bincode::encode_to_vec(session_request, SERDE_CONFIG)?))
             .await
             .context("Failed to send commend")
     }

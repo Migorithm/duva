@@ -1,13 +1,9 @@
 use crate::domains::caches::cache_manager::IndexedValueCodec;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
-use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::{BatchEntries, BatchId, HeartBeat};
-
 use crate::domains::replications::WriteOperation;
 use crate::domains::replications::messages::{ElectionVote, ReplicationAck, RequestVote};
-
 use crate::domains::replications::*;
-use crate::presentation::clients::request::ClientAction;
 use crate::types::BinBytes;
 use anyhow::{Context, Result, anyhow};
 
@@ -16,26 +12,21 @@ use bytes::{Bytes, BytesMut};
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
-const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const APPEND_ENTRY_RPC_PREFIX: char = '^';
 const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
-const TOPOLOGY_CHANGE_PREFIX: char = 't';
 const START_REBALANCE_PREFIX: char = 'T';
 pub const WRITE_OP_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
-const SESSION_REQUEST_PREFIX: char = '!';
 const MIGRATE_BATCH_PREFIX: char = 'm';
 const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
 const CLOSE_CONNECTION_PREFIX: char = 'C';
-
-const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
-const CLIENT_ACTION_PREFIX: char = '%';
-pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
+
+pub const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
 macro_rules! write_array {
@@ -48,14 +39,8 @@ macro_rules! write_array {
 pub enum QueryIO {
     #[default]
     Null,
-    SimpleString(BinBytes),
     BulkString(BinBytes),
     Array(Vec<QueryIO>),
-    SessionRequest {
-        request_id: u64,
-        action: ClientAction,
-    },
-    Err(BinBytes),
 
     // custom types
     File(BinBytes),
@@ -66,7 +51,6 @@ pub enum QueryIO {
     RequestVote(RequestVote),
     RequestVoteReply(ElectionVote),
 
-    TopologyChange(Topology),
     StartRebalance,
     MigrateBatch(BatchEntries),
     MigrationBatchAck(BatchId),
@@ -77,14 +61,7 @@ impl QueryIO {
     pub fn serialize(self) -> BinBytes {
         match self {
             QueryIO::Null => BinBytes(NULL_PREFIX.to_string().into()),
-            QueryIO::SimpleString(s) => {
-                let mut buffer =
-                    BytesMut::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
-                buffer.extend_from_slice(&[SIMPLE_STRING_PREFIX as u8]);
-                buffer.extend_from_slice(&s);
-                buffer.extend_from_slice(b"\r\n");
-                buffer.freeze().into()
-            },
+
             QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
@@ -125,8 +102,7 @@ impl QueryIO {
             QueryIO::Array(array) => {
                 // Better capacity estimation: header + sum of item sizes
                 let header_size = 1 + array.len().to_string().len() + 2; // prefix + len + \r\n
-                let estimated_item_size =
-                    array.iter().map(|item| estimate_serialized_size(item)).sum::<usize>();
+                let estimated_item_size = array.iter().map(estimate_serialized_size).sum::<usize>();
                 let mut buffer = BytesMut::with_capacity(header_size + estimated_item_size);
 
                 // Write array header directly
@@ -139,22 +115,7 @@ impl QueryIO {
                 }
                 buffer.freeze().into()
             },
-            QueryIO::SessionRequest { request_id, action } => {
-                let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
-                let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
-                buffer.extend_from_slice(&[SESSION_REQUEST_PREFIX as u8]);
-                buffer.extend_from_slice(request_id.to_string().as_bytes());
-                buffer.extend_from_slice(b"\r\n");
-                buffer.extend_from_slice(&value);
-                buffer.freeze().into()
-            },
-            QueryIO::Err(e) => {
-                let mut buffer = BytesMut::with_capacity(ERR_PREFIX.len_utf8() + e.len() + 2);
-                buffer.extend_from_slice(&[ERR_PREFIX as u8]);
-                buffer.extend_from_slice(&e);
-                buffer.extend_from_slice(b"\r\n");
-                buffer.freeze().into()
-            },
+
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
@@ -171,9 +132,7 @@ impl QueryIO {
             QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
-            QueryIO::TopologyChange(topology) => {
-                serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &topology)
-            },
+
             QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
             QueryIO::MigrateBatch(migrate_batch) => {
                 serialize_with_bincode(MIGRATE_BATCH_PREFIX, &migrate_batch)
@@ -234,7 +193,7 @@ impl QueryIO {
     }
 
     pub(crate) fn convert_str_res(res: &str, index: u64) -> Self {
-        QueryIO::SimpleString(BinBytes::new(IndexedValueCodec::encode(res, index)))
+        QueryIO::BulkString(BinBytes::new(IndexedValueCodec::encode(res, index)))
     }
 
     pub(crate) fn convert_str_vec_res(values: Vec<String>, index: u64) -> Self {
@@ -252,7 +211,7 @@ pub(crate) fn serialized_len_with_bincode<T: bincode::Encode>(prefix: char, arg:
 fn estimate_serialized_size(query: &QueryIO) -> usize {
     match query {
         QueryIO::Null => 1,
-        QueryIO::SimpleString(s) => 1 + s.len() + 2,
+
         QueryIO::BulkString(s) => 1 + s.len().to_string().len() + 2 + s.len() + 2,
         QueryIO::Array(array) => {
             let header = 1 + array.len().to_string().len() + 2;
@@ -263,10 +222,7 @@ fn estimate_serialized_size(query: &QueryIO) -> usize {
             let file_len = f.len() * 2;
             1 + file_len.to_string().len() + 2 + file_len
         },
-        QueryIO::Err(e) => 1 + e.len() + 2,
-        QueryIO::SessionRequest { request_id, .. } => {
-            1 + request_id.to_string().len() + 2 + 64 // rough estimate for action
-        },
+
         // For custom types, use a reasonable default
         _ => 128,
     }
@@ -286,7 +242,7 @@ impl From<CacheValue> for QueryIO {
     fn from(v: CacheValue) -> Self {
         match v {
             CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
-            CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s.into()),
+            CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s),
             // TODO rendering full list at once is not supported yet
             CacheValue { value: TypedValue::List(_b), .. } => {
                 panic!("List is not supported");
@@ -321,12 +277,8 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
 
 fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)> {
     match prefix {
-        SIMPLE_STRING_PREFIX => {
-            let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::SimpleString(BinBytes(bytes)), len))
-        },
         ARRAY_PREFIX => parse_array(buffer),
-        SESSION_REQUEST_PREFIX => parse_session_request(buffer),
+
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(BinBytes(bytes)), len))
@@ -335,10 +287,7 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(BinBytes(bytes)), len))
         },
-        ERR_PREFIX => {
-            let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::Err(BinBytes(bytes)), len))
-        },
+
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
         APPEND_ENTRY_RPC_PREFIX => {
@@ -353,20 +302,12 @@ fn deserialize_by_prefix(buffer: Bytes, prefix: char) -> Result<(QueryIO, usize)
         ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
-        TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
         START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
         MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
         CLOSE_CONNECTION_PREFIX => Ok((QueryIO::CloseConnection, 1)),
         _ => Err(anyhow::anyhow!("Unknown value type with prefix: {:?}", prefix)),
     }
-}
-
-// +PING\r\n
-pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(Bytes, usize)> {
-    let (line, len) = read_until_crlf_exclusive(&buffer.slice(1..))
-        .ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    Ok((line.into(), len + 1))
 }
 
 fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
@@ -388,26 +329,6 @@ fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
     }
 
     Ok((QueryIO::Array(elements), offset))
-}
-
-fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
-    // Skip the array type indicator (first byte)
-    let mut offset = 1;
-
-    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
-    offset += count_len;
-    let request_id = count_bytes.parse()?;
-
-    let (action_byte, len): (ClientAction, usize) = parse_client_action(buffer.slice(offset..))?;
-    Ok((QueryIO::SessionRequest { request_id, action: action_byte }, offset + len))
-}
-
-fn parse_client_action(buffer: Bytes) -> Result<(ClientAction, usize)> {
-    let (action, len): (ClientAction, usize) =
-        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
-            .map_err(|err| anyhow::anyhow!("Failed to decode client action: {:?}", err))?;
-    Ok((action, len + 1))
 }
 
 pub fn parse_custom_type<T>(buffer: Bytes) -> Result<(QueryIO, usize)>
@@ -488,7 +409,7 @@ pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize
     })
 }
 
-fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> BinBytes {
+pub fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> BinBytes {
     // Use size estimation for better performance
     let estimated_size = serialized_len_with_bincode(prefix, arg);
     let mut buffer = BytesMut::with_capacity(estimated_size);
@@ -529,12 +450,6 @@ impl From<RequestVote> for QueryIO {
 impl From<ElectionVote> for QueryIO {
     fn from(value: ElectionVote) -> Self {
         QueryIO::RequestVoteReply(value)
-    }
-}
-
-impl From<Topology> for QueryIO {
-    fn from(value: Topology) -> Self {
-        QueryIO::TopologyChange(value)
     }
 }
 
@@ -589,32 +504,6 @@ mod test {
     use uuid::Uuid;
 
     #[test]
-    fn test_deserialize_simple_string() {
-        // GIVEN
-        let buffer = Bytes::from("+OK\r\n");
-
-        // WHEN
-        let (value, len) = parse_simple_string(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 5);
-        assert_eq!(value, Bytes::from("OK"));
-    }
-
-    #[test]
-    fn test_deserialize_simple_string_ping() {
-        // GIVEN
-        let buffer = Bytes::from("+PING\r\n");
-
-        // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 7);
-        assert_eq!(value, QueryIO::SimpleString(BinBytes(Bytes::from("PING"))));
-    }
-
-    #[test]
     fn test_deserialize_bulk_string() {
         // GIVEN
         let buffer = Bytes::from("$5\r\nhello\r\n");
@@ -656,43 +545,6 @@ mod test {
                 QueryIO::BulkString(BinBytes::new("hello")),
                 QueryIO::BulkString(BinBytes::new("world")),
             ])
-        );
-    }
-
-    #[test]
-    fn test_deserialize_session_request() {
-        // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0");
-
-        // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(len, 22);
-        assert_eq!(
-            value,
-            QueryIO::SessionRequest {
-                request_id: 30,
-                action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world",) }
-                    .into()
-            }
-        );
-    }
-    #[test]
-    fn test_serialize_session_request() {
-        // GIVEN
-        let request = QueryIO::SessionRequest {
-            request_id: 30,
-            action: LogEntry::Set { entry: CacheEntry::new("hello".to_string(), "world") }.into(),
-        };
-
-        // WHEN
-        let serialized = request.serialize();
-
-        // THEN
-        assert_eq!(
-            serialized,
-            BinBytes::new(Bytes::from("!30\r\n%\x01\0\x05hello\x01\x05world\0"))
         );
     }
 
@@ -863,49 +715,6 @@ mod test {
 
         // THEN
         assert_eq!(deserialized, request_vote_reply);
-    }
-
-    #[test]
-    fn test_topology_change_serde() {
-        //GIVEN
-        let connected_nodes = vec![
-            ReplicationState {
-                node_id: PeerIdentifier("localhost:3333".to_string()),
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                last_log_index: 0,
-                term: 0,
-            },
-            ReplicationState {
-                node_id: PeerIdentifier("localhost:2222".to_string()),
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                last_log_index: 0,
-                term: 0,
-            },
-        ];
-        let hash_ring = HashRing::default();
-        let repl_states = connected_nodes
-            .iter()
-            .map(|peer| ReplicationState {
-                node_id: peer.node_id.clone(),
-                last_log_index: 0,
-                replid: ReplicationId::Key(Uuid::now_v7().to_string()),
-                role: ReplicationRole::Follower,
-                term: 0,
-            })
-            .collect();
-        let topology = Topology { repl_states, hash_ring };
-        let query_io = QueryIO::TopologyChange(topology.clone());
-
-        //WHEN
-        let serialized = query_io.clone().serialize();
-        let (deserialized, _) = deserialize(serialized).unwrap();
-        let QueryIO::TopologyChange(deserialized_topology) = deserialized else {
-            panic!("Expected a TopologyChange");
-        };
-        //THEN
-        assert_eq!(deserialized_topology, topology);
     }
 
     #[test]

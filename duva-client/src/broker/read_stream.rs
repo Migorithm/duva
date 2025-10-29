@@ -1,9 +1,7 @@
 use crate::broker::BrokerMessage;
+use duva::domains::TSerdeRead;
 use duva::domains::replications::ReplicationId;
-use duva::{
-    domains::interface::TRead,
-    prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
-};
+use duva::prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot};
 
 pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
 impl ServerStreamReader {
@@ -18,11 +16,11 @@ impl ServerStreamReader {
             let controller_sender = controller_sender.clone();
 
             loop {
-                match self.0.read_values().await {
-                    Ok(query_ios) => {
-                        for query_io in query_ios {
+                match self.0.deserialized_reads().await {
+                    Ok(server_responses) => {
+                        for res in server_responses {
                             if controller_sender
-                                .send(BrokerMessage::FromServer(replication_id.clone(), query_io))
+                                .send(BrokerMessage::FromServer(replication_id.clone(), res))
                                 .await
                                 .is_err()
                             {

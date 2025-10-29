@@ -14,11 +14,11 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{
-    BinBytes, ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};
-use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
+use duva::presentation::clients::request::{ClientAction, NonMutatingAction, ServerResponse};
 use futures::future::try_join_all;
 
 use duva::prelude::anyhow::anyhow;
@@ -67,18 +67,19 @@ impl Broker {
         let mut queue = CommandQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
+                BrokerMessage::FromServer(_, ServerResponse::TopologyChange(topology)) => {
                     self.update_topology(topology).await;
                 },
 
-                BrokerMessage::FromServer(repl_id, query_io) => {
+                BrokerMessage::FromServer(repl_id, res) => {
                     let Some(context) = queue.pop() else {
                         continue;
                     };
+
                     if matches!(context.client_action, ClientAction::Mutating(..)) {
-                        self.update_reqid(repl_id, &query_io);
+                        self.update_reqid(repl_id, &res);
                     }
-                    queue.finalize_or_requeue(query_io, context);
+                    queue.finalize_or_requeue(res, context);
                 },
 
                 BrokerMessage::FromServerError(repl_id, e) => {
@@ -97,9 +98,10 @@ impl Broker {
                         context.expected_result_cnt = result_count;
                         queue.push(context);
                     } else {
-                        context.callback(QueryIO::Err(BinBytes::new(
-                            "Failed to route command. Try again after ttl time",
-                        )));
+                        context.callback(ServerResponse::Err {
+                            reason: "Failed to route command. Try again after ttl time".to_string(),
+                            request_id: 0,
+                        })
                     };
                 },
             }
@@ -284,22 +286,26 @@ impl Broker {
         }
     }
 
-    pub(crate) fn update_reqid(&mut self, replid: ReplicationId, res: &QueryIO) {
+    pub(crate) fn update_reqid(&mut self, replid: ReplicationId, res: &ServerResponse) {
         if let Some(connection) = self.node_connections.get_mut(&replid) {
             // ! CONSIDER IDEMPOTENCY RULE
             // !
             // ! If request is updating action yet receive error, we need to increase the request id
             // ! otherwise, server will not be able to process the next command
+
             match res {
-                // * Current rule: s:value-idx:index_num
-                QueryIO::SimpleString(v) => {
-                    let s = String::from_utf8_lossy(v);
-                    connection.request_id = IndexedValueCodec::decode_index(s)
-                        .filter(|&id| id > connection.request_id)
-                        .unwrap_or(connection.request_id);
+                ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
+                    if let QueryIO::BulkString(v) = res {
+                        let s = String::from_utf8_lossy(v);
+                        connection.request_id = IndexedValueCodec::decode_index(s)
+                            .filter(|&id| id > connection.request_id)
+                            .unwrap_or(connection.request_id);
+                    }
                 },
-                //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-                QueryIO::Err(_) => connection.request_id += 1,
+                ServerResponse::Err { .. } => {
+                    connection.request_id += 1;
+                },
+
                 _ => {},
             }
         } else {
@@ -312,7 +318,7 @@ impl Broker {
 }
 
 pub enum BrokerMessage {
-    FromServer(ReplicationId, QueryIO),
+    FromServer(ReplicationId, ServerResponse),
     FromServerError(ReplicationId, IoError),
     ToServer(InputContext),
 }
