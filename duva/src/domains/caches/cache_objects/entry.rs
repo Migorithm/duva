@@ -70,6 +70,8 @@ impl CacheEntry {
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::query_io::SERDE_CONFIG;
+
     use super::*;
     use bincode::{decode_from_slice, encode_to_vec};
     use chrono::{DateTime, Utc};
@@ -82,10 +84,10 @@ mod tests {
         let original_value = CacheValue::new("test_value").with_expiry(expiry_time);
 
         // WHEN
-        let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
+        let encoded = encode_to_vec(&original_value, SERDE_CONFIG).unwrap();
 
         let (decoded_value, _): (CacheValue, usize) =
-            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+            decode_from_slice(&encoded, SERDE_CONFIG).unwrap();
 
         // THEN - Verify the decoded value matches the original
         assert_eq!(decoded_value.value, original_value.value);
@@ -99,11 +101,11 @@ mod tests {
         let original_value = CacheValue::new("test_value_no_expiry");
 
         // Encode the value
-        let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
+        let encoded = encode_to_vec(&original_value, SERDE_CONFIG).unwrap();
 
         // Decode the value back
         let (decoded_value, _): (CacheValue, usize) =
-            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+            decode_from_slice(&encoded, SERDE_CONFIG).unwrap();
 
         // Verify the decoded value matches the original
         assert_eq!(decoded_value.value, original_value.value);
@@ -120,11 +122,11 @@ mod tests {
             .with_expiry(DateTime::from_timestamp_millis(expiry_millis).unwrap());
 
         // Encode the entry
-        let encoded = encode_to_vec(&original_entry, bincode::config::standard()).unwrap();
+        let encoded = encode_to_vec(&original_entry, SERDE_CONFIG).unwrap();
 
         // Decode the entry back
         let (decoded_entry, _): (CacheEntry, usize) =
-            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+            decode_from_slice(&encoded, SERDE_CONFIG).unwrap();
 
         // Verify the decoded entry matches the original
         assert_eq!(decoded_entry.key(), original_entry.key());

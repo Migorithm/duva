@@ -588,7 +588,7 @@ mod tests {
         file.read_to_end(&mut buf).unwrap();
 
         let (encoded, _): (WriteOperation, usize) =
-            bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
+            bincode::decode_from_slice(&buf[1..], SERDE_CONFIG).unwrap();
 
         assert_eq!(encoded.entry, request);
     }
