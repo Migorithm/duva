@@ -18,6 +18,7 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
 use crate::domains::replications::messages::ElectionVote;
+use crate::domains::replications::messages::PeerMessage;
 use crate::domains::replications::messages::RejectionReason;
 use crate::domains::replications::messages::ReplicationAck;
 use crate::domains::replications::messages::RequestVote;
@@ -654,7 +655,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }
 
             let peer = self.members.get_mut(&request_to).unwrap();
-            let _ = peer.send(QueryIO::StartRebalance).await;
+            let _ = peer.send(PeerMessage::StartRebalance).await;
         }
     }
 
@@ -861,7 +862,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn send_rpc_to_replicas(&mut self) {
         self.iter_follower_append_entries()
-            .map(|(peer, hb)| peer.send(QueryIO::AppendEntriesRPC(hb)))
+            .map(|(peer, hb)| peer.send(PeerMessage::AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -1338,7 +1339,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 warn!("No Member Found");
                 return;
             };
-            let _ = peer.send(QueryIO::MigrationBatchAck(migrate_batch.batch_id)).await;
+            let _ = peer.send(PeerMessage::MigrationBatchAck(migrate_batch.batch_id)).await;
             return;
         }
 
@@ -1446,7 +1447,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&to) else {
             return;
         };
-        let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
+        let _ = peer.send(PeerMessage::MigrationBatchAck(batch_id)).await;
     }
 
     async fn update_cluster_members(
@@ -1468,7 +1469,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn process_graceful_shutdown(&mut self) {
         self.members
             .iter_mut()
-            .map(|(_, p)| p.send(QueryIO::CloseConnection))
+            .map(|(_, p)| p.send(PeerMessage::CloseConnection))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;

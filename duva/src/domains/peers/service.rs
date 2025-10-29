@@ -1,7 +1,7 @@
 use crate::{
     domains::{
-        cluster_actors::queue::ClusterActorSender,
-        peers::{PeerMessage, peer::ListeningActorKillTrigger},
+        cluster_actors::queue::ClusterActorSender, peers::peer::ListeningActorKillTrigger,
+        replications::messages::PeerMessage,
     },
     prelude::PeerIdentifier,
     types::Callback,
@@ -48,11 +48,6 @@ impl PeerListener {
     }
 
     async fn read_command(&mut self) -> anyhow::Result<Vec<PeerMessage>> {
-        self.read_connected
-            .read_values()
-            .await?
-            .into_iter()
-            .map(PeerMessage::try_from)
-            .collect::<Result<_, _>>()
+        Ok(self.read_connected.receive_peer_msgs().await?)
     }
 }

@@ -1,5 +1,4 @@
 use super::*;
-use crate::domains::QueryIO;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
 use std::time::Duration;
@@ -78,7 +77,7 @@ async fn test_rebalance_request_happypath() {
     // At this point, the re-balance request should not block the requests
     // requests will be blocked only if migrations needed.
     assert!(cluster_actor.pending_reqs.is_none());
-    assert_expected_queryio(&buf, QueryIO::StartRebalance).await;
+    assert_expected_queryio(&buf, PeerMessage::StartRebalance).await;
 }
 
 #[tokio::test]
@@ -129,7 +128,7 @@ async fn test_start_rebalance_happy_path() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::ClusterHeartBeat(HeartBeat {
+        PeerMessage::ClusterHeartBeat(HeartBeat {
             from: cluster_actor.replication.self_identifier(),
             hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
             replid: cluster_actor.log_state().replid.clone(),
@@ -163,7 +162,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
-    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
+    let PeerMessage::ClusterHeartBeat(HeartBeat { hashring, .. }) =
         buf.lock().await.pop_front().unwrap()
     else {
         panic!()
@@ -353,7 +352,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(BatchEntries { batch_id: batch.batch_id, entries: vec![] }),
+        PeerMessage::BatchEntries(BatchEntries { batch_id: batch.batch_id, entries: vec![] }),
     )
     .await;
 }
@@ -372,7 +371,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.log_state().last_log_index, 0);
-    assert_expected_queryio(&buf, QueryIO::MigrationBatchAck(batch.batch_id)).await;
+    assert_expected_queryio(&buf, PeerMessage::MigrationBatchAck(batch.batch_id)).await;
 }
 
 #[tokio::test]

@@ -1,6 +1,22 @@
 use std::fmt::Display;
 
-use crate::prelude::PeerIdentifier;
+use crate::{
+    domains::peers::command::{BatchEntries, BatchId, HeartBeat},
+    prelude::PeerIdentifier,
+};
+
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Decode, bincode::Encode)]
+pub enum PeerMessage {
+    AppendEntriesRPC(HeartBeat),
+    ClusterHeartBeat(HeartBeat),
+    AckReplication(ReplicationAck),
+    RequestVote(RequestVote),
+    ElectionVote(ElectionVote),
+    StartRebalance,
+    BatchEntries(BatchEntries),
+    MigrationBatchAck(BatchId),
+    CloseConnection,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct RequestVote {
@@ -77,5 +93,39 @@ impl From<String> for ReplicationId {
             "?" => ReplicationId::Undecided,
             _ => ReplicationId::Key(value),
         }
+    }
+}
+
+impl From<ReplicationAck> for PeerMessage {
+    fn from(value: ReplicationAck) -> Self {
+        PeerMessage::AckReplication(value)
+    }
+}
+
+impl From<RequestVote> for PeerMessage {
+    fn from(value: RequestVote) -> Self {
+        PeerMessage::RequestVote(value)
+    }
+}
+
+impl From<ElectionVote> for PeerMessage {
+    fn from(value: ElectionVote) -> Self {
+        PeerMessage::ElectionVote(value)
+    }
+}
+
+impl From<HeartBeat> for PeerMessage {
+    fn from(value: HeartBeat) -> Self {
+        PeerMessage::ClusterHeartBeat(value)
+    }
+}
+impl From<BatchEntries> for PeerMessage {
+    fn from(value: BatchEntries) -> Self {
+        PeerMessage::BatchEntries(value)
+    }
+}
+impl From<BatchId> for PeerMessage {
+    fn from(value: BatchId) -> Self {
+        PeerMessage::MigrationBatchAck(value)
     }
 }

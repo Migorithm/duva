@@ -3,8 +3,9 @@ use crate::domains::cluster_actors::ClusterActor;
 use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
-use crate::domains::peers::PeerMessage;
+
 use crate::domains::replications::TWriteAheadLog;
+use crate::domains::replications::messages::PeerMessage;
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
 use tokio::net::TcpStream;
@@ -141,11 +142,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 RequestVote(request_vote) => self.vote_election(request_vote).await,
                 AckReplication(repl_res) => self.ack_replication(&from, repl_res).await,
                 AppendEntriesRPC(heartbeat) => self.append_entries_rpc(heartbeat).await,
-                ElectionVoteReply(request_vote_reply) => {
+                ElectionVote(request_vote_reply) => {
                     self.receive_election_vote(&from, request_vote_reply).await
                 },
                 StartRebalance => self.start_rebalance().await,
-                ReceiveBatch(migrate_batch) => self.receive_batch(migrate_batch, &from).await,
+                BatchEntries(migrate_batch) => self.receive_batch(migrate_batch, &from).await,
                 MigrationBatchAck(migration_batch_ack) => {
                     self.handle_migration_ack(migration_batch_ack).await
                 },

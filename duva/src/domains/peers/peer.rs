@@ -1,9 +1,10 @@
 use super::connections::connection_types::WriteConnected;
 
-use crate::domains::QueryIO;
+use crate::domains::IoError;
+use crate::domains::TSerdeDynamicRead;
+use crate::domains::replications::messages::PeerMessage;
 use crate::domains::replications::state::ReplicationState;
 use crate::domains::replications::{ReplicationId, ReplicationRole};
-use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
 use crate::types::Callback;
 use std::collections::VecDeque;
@@ -52,11 +53,11 @@ impl Peer {
         self.phi.record_heartbeat(Instant::now());
     }
 
-    pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
-        self.w_conn.write(io.into()).await
+    pub(crate) async fn send(&mut self, io: impl Into<PeerMessage>) -> Result<(), IoError> {
+        self.w_conn.send(io.into()).await
     }
 
-    pub(crate) async fn kill(self) -> Box<dyn TRead> {
+    pub(crate) async fn kill(self) -> Box<dyn TSerdeDynamicRead> {
         self.listener_kill_trigger.kill().await
     }
 
@@ -78,15 +79,15 @@ impl Peer {
 }
 
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(Callback<()>, JoinHandle<Box<dyn TRead>>);
+pub(crate) struct ListeningActorKillTrigger(Callback<()>, JoinHandle<Box<dyn TSerdeDynamicRead>>);
 impl ListeningActorKillTrigger {
     pub(crate) fn new(
         kill_trigger: Callback<()>,
-        listning_task: JoinHandle<Box<dyn TRead>>,
+        listning_task: JoinHandle<Box<dyn TSerdeDynamicRead>>,
     ) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(crate) async fn kill(self) -> Box<dyn TRead> {
+    pub(crate) async fn kill(self) -> Box<dyn TSerdeDynamicRead> {
         self.0.send(());
         self.1.await.unwrap()
     }
