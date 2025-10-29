@@ -3,14 +3,28 @@ use std::fmt::Debug;
 use crate::domains::{
     IoError, QueryIO,
     peers::connections::connection_types::{ReadConnected, WriteConnected},
+    replications::messages::PeerMessage,
 };
 use bytes::BytesMut;
 
 #[async_trait::async_trait]
 pub trait TRead: Send + Sync + Debug + 'static {
-    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
-
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError>;
+}
+
+#[async_trait::async_trait]
+pub trait TReadBytes: Send + Sync + Debug + 'static {
+    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
+}
+
+#[async_trait::async_trait]
+pub(crate) trait TSerdeDynamicRead: TRead + Send + Sync + Debug + 'static {
+    async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError>;
+}
+
+#[async_trait::async_trait]
+pub(crate) trait TSerdeDynamicWrite: TWrite + Send + Sync + Debug + 'static {
+    async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]

@@ -10,6 +10,8 @@ use crate::Replication;
 use crate::ReplicationId;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
+use crate::domains::TSerdeDynamicRead;
+use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
@@ -26,7 +28,6 @@ use crate::{
     domains::{IoError, TRead, TWrite},
     make_smart_pointer,
 };
-use bytes::BytesMut;
 use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::sync::Arc;
@@ -39,8 +40,8 @@ use tokio::sync::mpsc::channel;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
-make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
+pub struct FakeReadWrite(Arc<Mutex<VecDeque<PeerMessage>>>);
+make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<PeerMessage>>>);
 
 impl FakeReadWrite {
     pub fn new() -> Self {
@@ -50,23 +51,32 @@ impl FakeReadWrite {
 #[async_trait::async_trait]
 impl TWrite for FakeReadWrite {
     async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+        panic!()
+    }
+}
+
+#[async_trait::async_trait]
+impl TSerdeDynamicRead for FakeReadWrite {
+    async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError> {
+        let guard = self.0.lock().await;
+        let values = guard.clone().drain(..).collect();
+        Ok(values)
+    }
+}
+
+#[async_trait::async_trait]
+impl TSerdeDynamicWrite for FakeReadWrite {
+    async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError> {
         let mut guard = self.0.lock().await;
-        guard.push_back(io);
+        guard.push_back(msg);
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
 impl TRead for FakeReadWrite {
-    async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
-        Ok(())
-    }
-
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let guard = self.0.lock().await;
-        // ! it doesn't empty the buffer, so we can test the buffer later on
-        let values = guard.clone().drain(..).collect();
-        Ok(values)
+        panic!()
     }
 }
 
@@ -253,7 +263,7 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
 // Helper function to assert migration batch ack
 pub(crate) async fn assert_expected_queryio(
     message_buf: &FakeReadWrite,
-    expected_query_io: impl Into<QueryIO>,
+    expected_query_io: impl Into<PeerMessage>,
 ) {
     let mut sent_messages = message_buf.lock().await;
 

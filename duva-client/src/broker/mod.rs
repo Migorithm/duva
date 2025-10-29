@@ -21,7 +21,7 @@ use duva::prelude::{Topology, anyhow};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction, ServerResponse};
 use futures::future::try_join_all;
 
-use duva::prelude::anyhow::anyhow;
+use duva::prelude::anyhow::bail;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
 use tracing::error;
@@ -37,8 +37,10 @@ pub struct Broker {
 
 impl Broker {
     pub(crate) async fn new(server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
-        let (r, w, auth_response) = Broker::authenticate(&server_addr.clone(), None).await?;
+        let stream =
+            TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
 
+        let (r, w, auth_response) = Broker::authenticate(stream, Default::default()).await?;
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(2000);
 
         let seed_replid = auth_response.replication_id;
@@ -109,21 +111,17 @@ impl Broker {
     }
 
     pub(crate) async fn authenticate(
-        server_addr: &PeerIdentifier,
-        auth_request: Option<ConnectionRequest>,
-    ) -> Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse), IoError> {
-        let mut stream =
-            TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
-        let request = auth_request.unwrap_or_default();
-        let connection_req = ConnectionRequests::Authenticate(request);
-        stream.serialized_write(connection_req).await?; // client_id not exist
-        let connection_res: ConnectionResponses = stream.deserialized_read().await?;
-        let auth_response = match connection_res {
-            ConnectionResponses::Authenticated(response) => response,
-            _ => return Err(IoError::Custom("Authentication failed".into())),
+        mut stream: TcpStream,
+        conn_req: ConnectionRequest,
+    ) -> anyhow::Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse)> {
+        stream.serialized_write(ConnectionRequests::Authenticate(conn_req)).await?; // client_id not exist
+
+        let ConnectionResponses::Authenticated(response) = stream.deserialized_read().await? else {
+            bail!("Authentication failed");
         };
+
         let (r, w) = stream.into_split();
-        Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
+        Ok((ServerStreamReader(r), ServerStreamWriter(w), response))
     }
 
     // pull-based leader discovery
@@ -161,12 +159,12 @@ impl Broker {
     }
 
     async fn discover_leader_from(&mut self, follower: PeerIdentifier) -> anyhow::Result<()> {
-        let mut stream =
-            TcpStream::connect(follower.as_str()).await.map_err(|_| IoError::NotConnected)?;
+        let mut stream = TcpStream::connect(follower.as_str()).await?;
         stream.serialized_write(ConnectionRequests::Discovery).await?;
         let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await? else {
-            return Err(anyhow!("Discovery failed"));
+            bail!("Discovery failed!");
         };
+
         self.add_node_connection(leader_id.clone()).await
     }
 
@@ -190,14 +188,14 @@ impl Broker {
         let auth_req =
             ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
 
-        let Ok((server_stream_reader, server_stream_writer, auth_response)) =
-            Self::authenticate(&peer_id, Some(auth_req)).await
-        else {
-            return Err(anyhow::anyhow!("Authentication failed!"));
-        };
+        let stream =
+            TcpStream::connect(peer_id.as_str()).await.map_err(|_| IoError::NotConnected)?;
+
+        let (server_stream_reader, server_stream_writer, auth_response) =
+            Self::authenticate(stream, auth_req).await?;
 
         if !auth_response.is_leader_node {
-            return Err(anyhow::anyhow!("Only Leader connection is allowed!"));
+            bail!("Only Leader connection is allowed!");
         }
 
         self.node_connections.insert(

@@ -1,5 +1,5 @@
 use crate::{
-    domains::{QueryIO, cluster_actors::ClusterCommand, replications::messages::*},
+    domains::{cluster_actors::ClusterCommand, replications::messages::*},
     prelude::PeerIdentifier,
 };
 
@@ -9,37 +9,6 @@ pub(crate) use peer_messages::*;
 pub(crate) struct PeerCommand {
     pub(crate) from: PeerIdentifier,
     pub(crate) msg: Vec<PeerMessage>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum PeerMessage {
-    AppendEntriesRPC(HeartBeat),
-    ClusterHeartBeat(HeartBeat),
-    AckReplication(ReplicationAck),
-    RequestVote(RequestVote),
-    ElectionVoteReply(ElectionVote),
-    StartRebalance,
-    ReceiveBatch(BatchEntries),
-    MigrationBatchAck(BatchId),
-    CloseConnection,
-}
-
-impl TryFrom<QueryIO> for PeerMessage {
-    type Error = anyhow::Error;
-    fn try_from(query: QueryIO) -> anyhow::Result<Self> {
-        match query {
-            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
-            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
-            QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
-            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
-            QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
-            QueryIO::MigrateBatch(batch) => Ok(PeerMessage::ReceiveBatch(batch)),
-            QueryIO::MigrationBatchAck(ack) => Ok(PeerMessage::MigrationBatchAck(ack)),
-            QueryIO::CloseConnection => Ok(PeerMessage::CloseConnection),
-            _ => Err(anyhow::anyhow!("Invalid data")),
-        }
-    }
 }
 
 impl From<PeerCommand> for ClusterCommand {

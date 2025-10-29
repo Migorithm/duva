@@ -194,7 +194,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
         ..Default::default()
     };
 
-    assert_expected_queryio(&replica1_fake_buf, QueryIO::AppendEntriesRPC(hb.clone())).await;
+    assert_expected_queryio(&replica1_fake_buf, PeerMessage::AppendEntriesRPC(hb.clone())).await;
 
     // hb that sends to cluster
     hb.append_entries = vec![];
@@ -203,7 +203,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
 
     assert_expected_queryio(
         &replica1_fake_buf,
-        QueryIO::ClusterHeartBeat(hb.set_hashring(candidate_actor.hash_ring.clone())),
+        PeerMessage::ClusterHeartBeat(hb.set_hashring(candidate_actor.hash_ring.clone())),
     )
     .await;
 }

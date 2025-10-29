@@ -1,5 +1,5 @@
 use crate::{
-    domains::{QueryIO, caches::cache_objects::CacheEntry, deserialize},
+    domains::{caches::cache_objects::CacheEntry, query_io::SERDE_CONFIG},
     presentation::clients::request::ClientReq,
 };
 use bytes::Bytes;
@@ -33,6 +33,13 @@ pub enum LogEntry {
     NoOp,
 }
 
+pub fn parse_custom_type(buffer: &Bytes) -> anyhow::Result<(WriteOperation, usize)> {
+    let (encoded, len): (WriteOperation, usize) =
+        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
+            .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    Ok((encoded.into(), len + 1))
+}
+
 impl LogEntry {
     /// Deserialize `WriteOperation`s from the given bytes.
     pub(crate) fn deserialize(bytes: impl Into<Bytes>) -> anyhow::Result<Vec<WriteOperation>> {
@@ -40,13 +47,10 @@ impl LogEntry {
         let mut bytes = bytes.into();
 
         while !bytes.is_empty() {
-            let (query, consumed) = deserialize(bytes.clone())?;
+            let (query, consumed) = parse_custom_type(&bytes)?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::WriteOperation(write_operation) = query else {
-                return Err(anyhow::anyhow!("expected replicate"));
-            };
-            ops.push(write_operation);
+            ops.push(query);
         }
         Ok(ops)
     }

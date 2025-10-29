@@ -74,15 +74,16 @@ impl THasExpiry for CacheValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::query_io::SERDE_CONFIG;
+
     use super::*;
     use bincode::{decode_from_slice, encode_to_vec};
 
     #[test]
     fn test_string_variant_encode_decode() {
         let original = CacheValue::new("hello");
-        let encoded = encode_to_vec(&original, bincode::config::standard()).unwrap();
-        let (decoded, _): (CacheValue, usize) =
-            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+        let encoded = encode_to_vec(&original, SERDE_CONFIG).unwrap();
+        let (decoded, _): (CacheValue, usize) = decode_from_slice(&encoded, SERDE_CONFIG).unwrap();
         assert_eq!(decoded, original);
         assert_eq!(decoded.value, TypedValue::String(Bytes::copy_from_slice(b"hello").into()));
     }
@@ -95,9 +96,8 @@ mod tests {
             q_list.rpush(i);
         }
         let original = CacheValue { value: TypedValue::List(q_list.clone()), expiry: None };
-        let encoded = encode_to_vec(&original, bincode::config::standard()).unwrap();
-        let (decoded, _): (CacheValue, usize) =
-            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+        let encoded = encode_to_vec(&original, SERDE_CONFIG).unwrap();
+        let (decoded, _): (CacheValue, usize) = decode_from_slice(&encoded, SERDE_CONFIG).unwrap();
         assert_eq!(decoded, original);
         assert_eq!(decoded.value, TypedValue::List(q_list));
     }
