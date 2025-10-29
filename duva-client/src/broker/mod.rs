@@ -21,7 +21,7 @@ use duva::prelude::{Topology, anyhow};
 use duva::presentation::clients::request::{ClientAction, NonMutatingAction, ServerResponse};
 use futures::future::try_join_all;
 
-use duva::prelude::anyhow::{anyhow, bail};
+use duva::prelude::anyhow::bail;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
 use tracing::error;
