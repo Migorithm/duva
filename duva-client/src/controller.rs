@@ -1,6 +1,6 @@
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
-use duva::domains::caches::cache_manager::IndexedValueCodec;
+
 use duva::domains::query_io::QueryIO;
 use duva::domains::replications::LogEntry;
 use duva::prelude::PeerIdentifier;
@@ -70,8 +70,8 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
         ) => match res {
             QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
-                let s: Option<i64> = IndexedValueCodec::decode_value(s);
-                Response::Integer(s.unwrap().to_string().into())
+
+                Response::Integer(s.to_string().into())
             },
 
             _ => Response::FormatError,
@@ -97,8 +97,7 @@ fn render_return(kind: ClientAction, res: QueryIO) -> Response {
         Mutating(LogEntry::Append { .. }) => match res {
             QueryIO::BulkString(value) => {
                 let s = String::from_utf8_lossy(&value);
-                let s: Option<i64> = IndexedValueCodec::decode_value(s);
-                Response::String(s.unwrap().to_string().into())
+                Response::String(s.to_string().into())
             },
 
             _ => Response::FormatError,
