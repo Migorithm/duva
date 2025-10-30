@@ -11,6 +11,7 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 
 use crate::signals::TActorKillSwitch;
+use crate::types::BinBytes;
 use crate::types::Callback;
 use anyhow::Context;
 use anyhow::Result;
@@ -20,7 +21,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
-use std::fmt::Display;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::{hash::Hasher, iter::Zip};
@@ -80,32 +81,32 @@ impl CacheManager {
         let res = match log_entry {
             Set { entry } => {
                 self.route_set(entry).await?;
-                QueryIO::convert_str_res("", log_index)
+                QueryIO::BulkString(BinBytes::new(""))
             },
             Append { key, value } => {
                 let res = self.route_append(key, value).await?.to_string();
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             Delete { keys } => {
                 let res = self.route_delete(keys).await?.to_string();
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             IncrBy { key, delta: value } => {
                 let res = self.route_numeric_delta(key, value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             DecrBy { key, delta: value } => {
                 let res = self.route_numeric_delta(key, -value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
 
             LPush { key, value } => {
                 let res = self.route_lpush(key, value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             LPushX { key, value } => {
                 let res = self.route_lpushx(key, value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             LPop { key, count } => {
                 let values = self.route_lpop(key, count).await?;
@@ -116,11 +117,11 @@ impl CacheManager {
             },
             RPush { key, value } => {
                 let res = self.route_rpush(key, value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             RPushX { key, value } => {
                 let res = self.route_rpushx(key, value).await?;
-                QueryIO::convert_str_res(&res, log_index)
+                QueryIO::BulkString(BinBytes::new(res))
             },
             RPop { key, count } => {
                 let values = self.route_rpop(key, count).await?;
@@ -131,16 +132,16 @@ impl CacheManager {
             },
             LTrim { key, start, end } => {
                 self.route_ltrim(key, start, end).await?;
-                QueryIO::convert_str_res("", log_index)
+                QueryIO::BulkString(BinBytes::new(""))
             },
             LSet { key, index, value } => {
                 self.route_lset(key, index, value).await?;
-                QueryIO::convert_str_res("", log_index)
+                QueryIO::BulkString(BinBytes::new(""))
             },
 
             MSet { entries } => {
                 self.route_mset(entries).await;
-                QueryIO::convert_str_res("", log_index)
+                QueryIO::BulkString(BinBytes::new(""))
             },
             NoOp => QueryIO::Null,
         };
@@ -436,27 +437,6 @@ impl TActorKillSwitch for CacheManager {
         for v in receivers {
             let _ = v.await;
         }
-    }
-}
-
-pub struct IndexedValueCodec;
-impl IndexedValueCodec {
-    pub fn decode_value(s: std::borrow::Cow<'_, str>) -> Option<i64> {
-        s.split('|').next().and_then(|s| s.rsplit(':').next()).and_then(|id| id.parse::<i64>().ok())
-    }
-
-    pub fn decode_index(s: std::borrow::Cow<'_, str>) -> Option<u64> {
-        s.rsplit('|')
-            .next()
-            .and_then(|s| s.rsplit(':').next())
-            .and_then(|id| id.parse::<u64>().ok())
-    }
-
-    pub fn encode<T>(value: T, idx: u64) -> String
-    where
-        T: Display,
-    {
-        format!("s:{value}|idx:{idx}")
     }
 }
 

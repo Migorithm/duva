@@ -3,7 +3,7 @@ mod read_stream;
 mod write_stream;
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, InputContext, RoutingRule};
-use duva::domains::caches::cache_manager::IndexedValueCodec;
+
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::replications::ReplicationRole;
 use duva::domains::replications::{LogEntry, ReplicationId};
@@ -292,13 +292,11 @@ impl Broker {
             // ! otherwise, server will not be able to process the next command
 
             match res {
-                ServerResponse::WriteRes { res, .. } | ServerResponse::ReadRes { res, .. } => {
-                    if let QueryIO::BulkString(v) = res {
-                        let s = String::from_utf8_lossy(v);
-                        connection.request_id = IndexedValueCodec::decode_index(s)
-                            .filter(|&id| id > connection.request_id)
-                            .unwrap_or(connection.request_id);
-                    }
+                ServerResponse::ReadRes { res: QueryIO::BulkString(..), request_id } => {
+                    connection.request_id = connection.request_id.max(*request_id);
+                },
+                ServerResponse::WriteRes { res: QueryIO::BulkString(..), log_index, .. } => {
+                    connection.request_id = connection.request_id.max(*log_index);
                 },
                 ServerResponse::Err { .. } => {
                     connection.request_id += 1;

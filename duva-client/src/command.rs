@@ -1,4 +1,3 @@
-use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::replications::LogEntry;
 use duva::prelude::BinBytes;
 use duva::prelude::anyhow::{self, Context};
@@ -122,10 +121,7 @@ impl InputContext {
                     ..
                 }) = iterator.next()
                 {
-                    let decoded_value =
-                        IndexedValueCodec::decode_value(String::from_utf8_lossy(&value)).unwrap();
-
-                    count += decoded_value;
+                    count += String::from_utf8_lossy(&value).parse::<u64>()?;
                     highest_req_id = highest_req_id.max(request_id);
                 }
 
