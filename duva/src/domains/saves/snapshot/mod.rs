@@ -1,5 +1,5 @@
 pub mod snapshot_loader;
-use crate::domains::{caches::cache_objects::CacheEntry, replications::ReplicationId};
+use crate::domains::{caches::cache_objects::CacheEntry, peers::command::ReplicationId};
 
 #[allow(dead_code)]
 #[derive(Debug, Default)]

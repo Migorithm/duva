@@ -2,8 +2,10 @@ use std::fmt::Debug;
 
 use crate::domains::{
     IoError, QueryIO,
-    peers::connections::connection_types::{ReadConnected, WriteConnected},
-    replications::messages::PeerMessage,
+    peers::{
+        command::PeerMessage,
+        connections::connection_types::{ReadConnected, WriteConnected},
+    },
 };
 use bytes::BytesMut;
 

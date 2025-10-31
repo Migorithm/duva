@@ -4,8 +4,9 @@ use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
 
+use crate::domains::peers::command::PeerMessage;
 use crate::domains::replications::TWriteAheadLog;
-use crate::domains::replications::messages::PeerMessage;
+
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
 use tokio::net::TcpStream;

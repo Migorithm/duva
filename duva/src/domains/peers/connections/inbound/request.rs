@@ -1,3 +1,4 @@
+use crate::domains::peers::command::ReplicationId;
 use crate::domains::replications::*;
 use crate::types::BinBytes;
 use crate::{domains::QueryIO, err, from_to, make_smart_pointer};

@@ -1,7 +1,7 @@
 use crate::{
     domains::{
-        peers::identifier::TPeerAddress,
-        replications::{ReplicationId, ReplicationRole},
+        peers::{command::ReplicationId, identifier::TPeerAddress},
+        replications::ReplicationRole,
     },
     prelude::PeerIdentifier,
 };

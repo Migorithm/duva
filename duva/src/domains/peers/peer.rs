@@ -2,9 +2,11 @@ use super::connections::connection_types::WriteConnected;
 
 use crate::domains::IoError;
 use crate::domains::TSerdeDynamicRead;
-use crate::domains::replications::messages::PeerMessage;
+use crate::domains::peers::command::PeerMessage;
+use crate::domains::peers::command::ReplicationId;
+
+use crate::domains::replications::ReplicationRole;
 use crate::domains::replications::state::ReplicationState;
-use crate::domains::replications::{ReplicationId, ReplicationRole};
 use crate::prelude::PeerIdentifier;
 use crate::types::Callback;
 use std::collections::VecDeque;

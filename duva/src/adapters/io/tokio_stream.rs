@@ -1,7 +1,7 @@
 use crate::domains::interface::{TRead, TWrite};
+use crate::domains::peers::command::*;
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
-use crate::domains::replications::messages::PeerMessage;
 use crate::domains::{
     IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead,
     TSerdeWrite,
