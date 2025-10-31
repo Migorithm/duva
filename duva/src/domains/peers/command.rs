@@ -7,7 +7,7 @@ use crate::{
     domains::{
         caches::cache_objects::CacheEntry,
         cluster_actors::{ClusterCommand, ConsensusRequest, hash_ring::HashRing},
-        replications::{ReplicationState, WriteOperation},
+        replications::{ReplicationId, ReplicationState, WriteOperation},
     },
     prelude::PeerIdentifier,
     types::Callback,
@@ -111,42 +111,6 @@ impl From<BatchEntries> for PeerMessage {
 impl From<BatchId> for PeerMessage {
     fn from(value: BatchId) -> Self {
         PeerMessage::MigrationBatchAck(value)
-    }
-}
-
-#[derive(
-    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash,
-)]
-pub enum ReplicationId {
-    #[default]
-    Undecided,
-    Key(String),
-}
-
-impl Display for ReplicationId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReplicationId::Undecided => write!(f, "?"),
-            ReplicationId::Key(key) => write!(f, "{key}"),
-        }
-    }
-}
-
-impl From<ReplicationId> for String {
-    fn from(value: ReplicationId) -> Self {
-        match value {
-            ReplicationId::Undecided => "?".to_string(),
-            ReplicationId::Key(key) => key,
-        }
-    }
-}
-
-impl From<String> for ReplicationId {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "?" => ReplicationId::Undecided,
-            _ => ReplicationId::Key(value),
-        }
     }
 }
 

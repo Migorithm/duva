@@ -3,7 +3,7 @@ use super::*;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
-use crate::domains::peers::command::ReplicationId;
+
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::err;

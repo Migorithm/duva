@@ -3,7 +3,7 @@ use super::connections::connection_types::WriteConnected;
 use crate::domains::IoError;
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::peers::command::PeerMessage;
-use crate::domains::peers::command::ReplicationId;
+use crate::domains::replications::ReplicationId;
 
 use crate::domains::replications::ReplicationRole;
 use crate::domains::replications::state::ReplicationState;

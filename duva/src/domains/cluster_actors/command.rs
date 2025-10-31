@@ -1,7 +1,7 @@
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::topology::Topology;
 
-use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask, ReplicationId};
+use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;

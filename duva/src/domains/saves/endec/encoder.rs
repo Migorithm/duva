@@ -143,7 +143,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 mod test {
     use crate::domains::{
         caches::cache_objects::TypedValue,
-        peers::command::ReplicationId,
+        replications::ReplicationId,
         saves::endec::{
             StoredDuration,
             decoder::{BytesDecoder, DecoderInit},

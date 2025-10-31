@@ -6,7 +6,7 @@ use super::{
     },
 };
 use crate::domains::{IoError, caches::cache_objects::CacheEntry};
-use crate::domains::{peers::command::ReplicationId, saves::snapshot::Metadata};
+use crate::domains::{replications::ReplicationId, saves::snapshot::Metadata};
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 

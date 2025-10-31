@@ -6,7 +6,7 @@ pub mod presentation;
 mod signals;
 mod types;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::peers::command::ReplicationId;
+
 use crate::domains::replications::*;
 use crate::domains::{TSerdeRead, TSerdeWrite};
 use crate::signals::SignalHandler;
@@ -46,8 +46,8 @@ use uuid::Uuid;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::Topology;
-    pub use crate::domains::peers::command::ReplicationId;
     pub use crate::domains::peers::identifier::PeerIdentifier;
+    pub use crate::domains::replications::state::ReplicationId;
     pub use crate::presentation::clients::ConnectionRequest;
     pub use crate::presentation::clients::ConnectionRequests;
     pub use crate::presentation::clients::ConnectionResponse;
