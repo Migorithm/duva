@@ -1,8 +1,3 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Display,
-};
-
 use crate::{
     domains::{
         caches::cache_objects::CacheEntry,
@@ -12,6 +7,7 @@ use crate::{
     prelude::PeerIdentifier,
     types::Callback,
 };
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PeerCommand {

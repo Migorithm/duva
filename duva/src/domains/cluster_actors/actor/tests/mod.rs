@@ -63,8 +63,8 @@ impl TSerdeDynamicRead for FakeReadWrite {
         Ok(values)
     }
 
-    async fn receive_connection_msgs(&mut self) -> Result<Vec<String>, IoError> {
-        Ok(vec![])
+    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+        Ok("".into())
     }
 }
 
@@ -76,7 +76,7 @@ impl TSerdeDynamicWrite for FakeReadWrite {
         Ok(())
     }
 
-    async fn send_connection_msg(&mut self) -> Result<(), IoError> {
+    async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
         Ok(())
     }
 }

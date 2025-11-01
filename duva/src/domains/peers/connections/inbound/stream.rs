@@ -1,18 +1,13 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
-use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-
-use crate::domains::replications::*;
-
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
-
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
-use crate::types::BinBytes;
+use crate::domains::replications::*;
 
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
@@ -46,7 +41,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.w.write(QueryIO::BulkString(BinBytes::new("PONG"))).await?;
+        self.w.send_connection_msg("PONG").await?;
         Ok(())
     }
 
@@ -55,15 +50,15 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.w.write(QueryIO::BulkString(BinBytes::new("OK"))).await?;
+        self.w.send_connection_msg("OK").await?;
 
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(BinBytes, BinBytes)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.w.write(QueryIO::BulkString(BinBytes::new("OK"))).await?;
+        self.w.send_connection_msg("OK").await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64, ReplicationRole, u64)> {
@@ -81,27 +76,22 @@ impl InboundStream {
         );
 
         self.w
-            .write(QueryIO::BulkString(BinBytes::new(format!(
+            .send_connection_msg(&format!(
                 "FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role} {term}"
-            ))))
+            ))
             .await?;
         self.recv_ok().await?;
         Ok((inbound_repl_id, offset, role, term))
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
-        let mut query_io = self.r.read_values().await?;
-        HandShakeRequest::new(query_io.swap_remove(0))
+        let msgs = self.r.receive_connection_msgs().await?;
+        HandShakeRequest::new(msgs)
     }
     async fn recv_ok(&mut self) -> anyhow::Result<()> {
-        let mut query_io = self.r.read_values().await?;
-        let Some(query) = query_io.pop() else {
-            return Err(anyhow::anyhow!("No query found"));
-        };
-        let QueryIO::BulkString(val) = query else {
-            return Err(anyhow::anyhow!("Invalid query"));
-        };
-        if val.as_ref() != b"ok" {
+        let val = self.r.receive_connection_msgs().await?;
+
+        if val != "ok" {
             return Err(anyhow::anyhow!("Invalid response"));
         }
         Ok(())

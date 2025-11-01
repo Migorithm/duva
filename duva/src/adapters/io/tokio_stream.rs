@@ -96,8 +96,8 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
         }
         Ok(parsed_values)
     }
-    async fn receive_connection_msgs(&mut self) -> Result<Vec<String>, IoError> {
-        Ok(vec![])
+    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+        self.deserialized_read().await
     }
 }
 
@@ -119,8 +119,8 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
         self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
     }
 
-    async fn send_connection_msg(&mut self) -> Result<(), IoError> {
-        Ok(())
+    async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
+        self.serialized_write(arg).await
     }
 }
 
