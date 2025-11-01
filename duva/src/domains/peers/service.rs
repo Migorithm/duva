@@ -1,7 +1,7 @@
 use crate::{
     domains::{
-        cluster_actors::queue::ClusterActorSender, peers::peer::ListeningActorKillTrigger,
-        replications::messages::PeerMessage,
+        cluster_actors::queue::ClusterActorSender,
+        peers::{command::PeerMessage, peer::ListeningActorKillTrigger},
     },
     prelude::PeerIdentifier,
     types::Callback,

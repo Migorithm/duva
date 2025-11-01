@@ -62,6 +62,10 @@ impl TSerdeDynamicRead for FakeReadWrite {
         let values = guard.clone().drain(..).collect();
         Ok(values)
     }
+
+    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+        Ok("".into())
+    }
 }
 
 #[async_trait::async_trait]
@@ -69,6 +73,10 @@ impl TSerdeDynamicWrite for FakeReadWrite {
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError> {
         let mut guard = self.0.lock().await;
         guard.push_back(msg);
+        Ok(())
+    }
+
+    async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
         Ok(())
     }
 }

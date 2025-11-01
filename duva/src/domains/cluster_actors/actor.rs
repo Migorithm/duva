@@ -17,11 +17,7 @@ use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::BatchId;
-use crate::domains::replications::messages::ElectionVote;
-use crate::domains::replications::messages::PeerMessage;
-use crate::domains::replications::messages::RejectionReason;
-use crate::domains::replications::messages::ReplicationAck;
-use crate::domains::replications::messages::RequestVote;
+use crate::domains::peers::command::*;
 
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::PendingMigrationTask;

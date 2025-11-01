@@ -1,10 +1,11 @@
 use super::*;
 
 use crate::domains::peers::command::HeartBeat;
+use crate::domains::peers::command::RejectionReason;
+use crate::domains::peers::command::ReplicationAck;
+
+use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::replications::messages::RejectionReason;
-use crate::domains::replications::messages::ReplicationAck;
-use crate::domains::replications::messages::RequestVote;
 use crate::err;
 use crate::presentation::clients::request::ClientReq;
 use std::fmt::Display;
