@@ -96,6 +96,9 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
         }
         Ok(parsed_values)
     }
+    async fn receive_connection_msgs(&mut self) -> Result<Vec<String>, IoError> {
+        Ok(vec![])
+    }
 }
 
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeWrite for T {
@@ -114,6 +117,10 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
         let encoded = bincode::encode_to_vec(msg, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
         self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
+    }
+
+    async fn send_connection_msg(&mut self) -> Result<(), IoError> {
+        Ok(())
     }
 }
 

@@ -22,11 +22,13 @@ pub trait TReadBytes: Send + Sync + Debug + 'static {
 #[async_trait::async_trait]
 pub(crate) trait TSerdeDynamicRead: TRead + Send + Sync + Debug + 'static {
     async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError>;
+    async fn receive_connection_msgs(&mut self) -> Result<Vec<String>, IoError>;
 }
 
 #[async_trait::async_trait]
 pub(crate) trait TSerdeDynamicWrite: TWrite + Send + Sync + Debug + 'static {
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError>;
+    async fn send_connection_msg(&mut self) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]
