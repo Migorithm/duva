@@ -1,8 +1,7 @@
+use std::fmt::Display;
+
 use crate::{
-    domains::{
-        peers::identifier::TPeerAddress,
-        replications::{ReplicationId, ReplicationRole},
-    },
+    domains::{peers::identifier::TPeerAddress, replications::ReplicationRole},
     prelude::PeerIdentifier,
 };
 
@@ -124,5 +123,41 @@ impl ReplicationState {
             format!("last_log_index:{}", self.last_log_index),
             format!("self_identifier:{}", self.node_id),
         ]
+    }
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash,
+)]
+pub enum ReplicationId {
+    #[default]
+    Undecided,
+    Key(String),
+}
+
+impl Display for ReplicationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReplicationId::Undecided => write!(f, "?"),
+            ReplicationId::Key(key) => write!(f, "{key}"),
+        }
+    }
+}
+
+impl From<ReplicationId> for String {
+    fn from(value: ReplicationId) -> Self {
+        match value {
+            ReplicationId::Undecided => "?".to_string(),
+            ReplicationId::Key(key) => key,
+        }
+    }
+}
+
+impl From<String> for ReplicationId {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "?" => ReplicationId::Undecided,
+            _ => ReplicationId::Key(value),
+        }
     }
 }

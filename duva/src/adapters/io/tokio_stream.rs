@@ -1,7 +1,7 @@
 use crate::domains::interface::{TRead, TWrite};
+use crate::domains::peers::command::*;
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
-use crate::domains::replications::messages::PeerMessage;
 use crate::domains::{
     IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead,
     TSerdeWrite,
@@ -96,6 +96,9 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
         }
         Ok(parsed_values)
     }
+    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+        self.deserialized_read().await
+    }
 }
 
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeWrite for T {
@@ -114,6 +117,10 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
         let encoded = bincode::encode_to_vec(msg, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
         self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
+    }
+
+    async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
+        self.serialized_write(arg).await
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::broker::BrokerMessage;
 use duva::domains::TSerdeRead;
-use duva::domains::replications::ReplicationId;
+
+use duva::prelude::ReplicationId;
 use duva::prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot};
 
 pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
