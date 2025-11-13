@@ -1,6 +1,6 @@
 use super::ClusterCommand;
-use super::ConsensusClientResponse;
 use super::ConsensusRequest;
+use super::ConsensusResponse;
 use super::LazyOption;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
@@ -327,20 +327,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            req.callback.send(ConsensusClientResponse::Result {
+            req.callback.send(ConsensusResponse::Result {
                 res: Err(anyhow::anyhow!("Write given to follower")),
                 log_index: self.replication.last_log_index(),
             });
             return;
         }
 
-        if self.client_sessions.is_processed(&req.session_req) {
+        if self.client_sessions.is_processed(&req.conn_offset) {
             // mapping between early returned values to client result
             let key = req.entry.all_keys().into_iter().map(String::from).collect();
-            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
+            req.callback.send(ConsensusResponse::AlreadyProcessed {
                 key,
                 // TODO : remove unwrap
-                request_id: req.session_req.unwrap().request_id,
+                request_id: req.conn_offset.unwrap().offset,
             });
             return;
         };
@@ -358,14 +358,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
                 let moved_keys = replids.except(&self.log_state().replid).join(" ");
-                req.callback.send(ConsensusClientResponse::Result {
+                req.callback.send(ConsensusResponse::Result {
                     res: Err(anyhow::anyhow!("Moved! {moved_keys}")),
                     log_index: self.replication.last_log_index(),
                 })
             },
             Err(err) => {
                 err!("{}", err);
-                req.callback.send(ConsensusClientResponse::Result {
+                req.callback.send(ConsensusResponse::Result {
                     res: Err(anyhow::anyhow!(err)),
                     log_index: self.replication.last_log_index(),
                 });
@@ -377,7 +377,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let log_index = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
-            req.session_req.clone(),
+            req.conn_offset.clone(),
         );
 
         let repl_cnt = self.replicas().count();
@@ -387,11 +387,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.increase_con_idx_by(1);
             let _ = self.replication.flush();
             let res = self.commit_entry(entry.entry, log_index).await;
-            req.callback.send(ConsensusClientResponse::Result { res, log_index });
+            req.callback.send(ConsensusResponse::Result { res, log_index });
             return;
         }
         self.consensus_tracker
-            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.session_req));
+            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.conn_offset));
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
@@ -954,12 +954,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.replication.increase_con_idx_by(1);
-        self.client_sessions.set_response(voting.session_req.take());
+        self.client_sessions.set_response(voting.conn_offset.take());
         let log_entry = self.replication.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
         let _ = self.replication.flush();
 
-        voting.callback.send(ConsensusClientResponse::Result { res, log_index });
+        voting.callback.send(ConsensusResponse::Result { res, log_index });
     }
 
     async fn commit_entry(&mut self, entry: LogEntry, index: u64) -> anyhow::Result<QueryIO> {
@@ -1343,7 +1343,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let req = ConsensusRequest {
             entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
             callback,
-            session_req: None,
+            conn_offset: None,
         };
         self.make_consensus_in_batch(req).await;
 
@@ -1387,7 +1387,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let req = ConsensusRequest {
             entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
-            session_req: None,
+            conn_offset: None,
         };
         self.make_consensus_in_batch(req).await;
 
@@ -1428,7 +1428,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 while let Some(req) = pending_reqs.pop_front() {
                     if let Err(err) = handler
-                        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
+                        .send(ClusterCommand::Client(ClusterClientRequest::MakeConsensus(req)))
                         .await
                     {
                         error!("{}", err)

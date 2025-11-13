@@ -102,7 +102,7 @@ impl Broker {
                     } else {
                         context.callback(ServerResponse::Err {
                             reason: "Failed to route command. Try again after ttl time".to_string(),
-                            request_id: 0,
+                            conn_offset: 0,
                         })
                     };
                 },
@@ -292,7 +292,10 @@ impl Broker {
             // ! otherwise, server will not be able to process the next command
 
             match res {
-                ServerResponse::ReadRes { res: QueryIO::BulkString(..), request_id } => {
+                ServerResponse::ReadRes {
+                    res: QueryIO::BulkString(..),
+                    conn_offset: request_id,
+                } => {
                     connection.request_id = connection.request_id.max(*request_id);
                 },
                 ServerResponse::WriteRes { res: QueryIO::BulkString(..), log_index, .. } => {

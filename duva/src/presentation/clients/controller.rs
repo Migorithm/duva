@@ -3,11 +3,13 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
+use crate::domains::cluster_actors::{
+    ClusterClientRequest, ConnectionOffset, ConsensusRequest, ConsensusResponse,
+};
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::{ClientReq, NonMutatingAction, ServerResponse};
+use crate::presentation::clients::request::{NonMutatingAction, ServerResponse};
 
 use crate::types::{BinBytes, Callback};
 use tracing::info;
@@ -133,31 +135,31 @@ impl ClientController {
         };
         info!("{response:?}");
 
-        Ok(ServerResponse::ReadRes { res: response, request_id })
+        Ok(ServerResponse::ReadRes { res: response, conn_offset: request_id })
     }
 
     pub(crate) async fn handle_mutating(
         &self,
-        session_req: ClientReq,
+        conn_offset: u64,
+        conn_id: String,
         entry: LogEntry,
     ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
-        let request_id = session_req.request_id;
 
         self.cluster_actor_sender
-            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest {
+            .send(ClusterClientRequest::MakeConsensus(ConsensusRequest {
                 entry,
                 callback,
-                session_req: Some(session_req),
+                conn_offset: Some(ConnectionOffset::new(conn_offset, conn_id)),
             }))
             .await?;
 
         let result = match res.recv().await {
-            ConsensusClientResponse::Result { res, log_index } => {
-                ServerResponse::WriteRes { res: res?, log_index, request_id }
+            ConsensusResponse::Result { res, log_index } => {
+                ServerResponse::WriteRes { res: res?, log_index, conn_offset }
             },
-            ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
+            ConsensusResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action, request_id).await?

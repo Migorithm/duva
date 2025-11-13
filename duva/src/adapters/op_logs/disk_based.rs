@@ -547,7 +547,7 @@ mod tests {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             log_index: index,
             term,
-            session_req: None,
+            conn_offset: None,
         }
     }
 
@@ -576,7 +576,7 @@ mod tests {
         let request = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
 
         let write_op =
-            WriteOperation { entry: request.clone(), log_index: 0, term: 0, session_req: None };
+            WriteOperation { entry: request.clone(), log_index: 0, term: 0, conn_offset: None };
 
         // WHEN
         op_logs.write_many(vec![write_op]).unwrap();
@@ -743,7 +743,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 1,
-                session_req: None,
+                conn_offset: None,
             }])?;
         }
         // Force rotation
@@ -753,7 +753,7 @@ mod tests {
             entry: LogEntry::Set { entry: CacheEntry::new("new".to_string(), "value") },
             log_index: 100,
             term: 1,
-            session_req: None,
+            conn_offset: None,
         }])?;
 
         // WHEN
@@ -826,7 +826,7 @@ mod tests {
                 },
                 log_index: start_index + i as u64,
                 term,
-                session_req: None,
+                conn_offset: None,
             })
             .collect()
     }
@@ -1065,7 +1065,7 @@ mod tests {
                     },
                     log_index: i as u64,
                     term: 1,
-                    session_req: None,
+                    conn_offset: None,
                 })
                 .collect(),
         )?;
@@ -1084,7 +1084,7 @@ mod tests {
             entry: LogEntry::Set { entry: CacheEntry::new("new".to_string(), "value") },
             log_index: 100,
             term: 1,
-            session_req: None,
+            conn_offset: None,
         }])?;
 
         // Verify index data in active segment
@@ -1110,7 +1110,7 @@ mod tests {
                     },
                     log_index: i as u64,
                     term: 1,
-                    session_req: None,
+                    conn_offset: None,
                 })
                 .collect(),
         )?;

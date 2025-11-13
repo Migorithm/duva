@@ -1,5 +1,5 @@
-use crate::domains::cluster_actors::ClientMessage;
 use crate::domains::cluster_actors::ClusterActor;
+use crate::domains::cluster_actors::ClusterClientRequest;
 use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
@@ -73,8 +73,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, client_message))]
-    async fn process_client_message(&mut self, client_message: ClientMessage) {
-        use ClientMessage::*;
+    async fn process_client_message(&mut self, client_message: ClusterClientRequest) {
+        use ClusterClientRequest::*;
 
         match client_message {
             CanEnter(callback) => {
@@ -96,7 +96,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     callback.send(None);
                 }
             },
-            LeaderReqConsensus(req) => {
+            MakeConsensus(req) => {
                 self.leader_req_consensus(req).await;
             },
             ReplicaOf(peer_addr, callback) => {

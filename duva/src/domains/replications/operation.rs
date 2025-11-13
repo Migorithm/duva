@@ -1,6 +1,5 @@
-use crate::{
-    domains::{caches::cache_objects::CacheEntry, query_io::SERDE_CONFIG},
-    presentation::clients::request::ClientReq,
+use crate::domains::{
+    caches::cache_objects::CacheEntry, cluster_actors::ConnectionOffset, query_io::SERDE_CONFIG,
 };
 use bytes::Bytes;
 
@@ -9,7 +8,7 @@ pub struct WriteOperation {
     pub(crate) entry: LogEntry,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
-    pub(crate) session_req: Option<ClientReq>,
+    pub(crate) conn_offset: Option<ConnectionOffset>,
 }
 
 /// Operations that appear in the Append-Only File (WAL).
