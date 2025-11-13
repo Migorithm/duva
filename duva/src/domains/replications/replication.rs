@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::domains::cluster_actors::ConnectionOffset;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
@@ -7,7 +8,7 @@ use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::err;
-use crate::presentation::clients::request::ClientReq;
+
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -175,13 +176,13 @@ impl<T: TWriteAheadLog> Replication<T> {
         &mut self,
         entry: LogEntry,
         current_term: u64,
-        session_req: Option<ClientReq>,
+        conn_offset: Option<ConnectionOffset>,
     ) -> u64 {
         let op = WriteOperation {
             entry,
             log_index: self.last_log_index() + 1,
             term: current_term,
-            session_req,
+            conn_offset,
         };
 
         self.in_mem_buffer.push(op);
@@ -294,15 +295,15 @@ impl<T: TWriteAheadLog> Replication<T> {
         operations: Vec<WriteOperation>,
         prev_log_index: u64,
         prev_log_term: u64,
-        session_reqs: &mut Vec<ClientReq>,
+        conn_offsets: &mut Vec<ConnectionOffset>,
     ) -> Result<ReplicationAck, RejectionReason> {
         let mut entries = Vec::with_capacity(operations.len());
 
         let last_log_index = self.state.last_log_index;
         for mut log in operations {
             if log.log_index > last_log_index {
-                if let Some(session_req) = log.session_req.take() {
-                    session_reqs.push(session_req);
+                if let Some(session_req) = log.conn_offset.take() {
+                    conn_offsets.push(session_req);
                 }
                 entries.push(log);
             }

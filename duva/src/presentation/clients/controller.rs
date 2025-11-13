@@ -3,11 +3,13 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
+use crate::domains::cluster_actors::{
+    ClusterClientRequest, ConnectionOffset, ConsensusClientResponse, ConsensusReq,
+};
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
-use crate::presentation::clients::request::{ClientReq, NonMutatingAction, ServerResponse};
+use crate::presentation::clients::request::{NonMutatingAction, ServerResponse};
 
 use crate::types::{BinBytes, Callback};
 use tracing::info;
@@ -138,18 +140,18 @@ impl ClientController {
 
     pub(crate) async fn handle_mutating(
         &self,
-        session_req: ClientReq,
+        session_req: ConnectionOffset,
         entry: LogEntry,
     ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
-        let request_id = session_req.request_id;
+        let request_id = session_req.offset;
 
         self.cluster_actor_sender
-            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest {
+            .send(ClusterClientRequest::MakeConsensus(ConsensusReq {
                 entry,
                 callback,
-                session_req: Some(session_req),
+                conn_offset: Some(session_req),
             }))
             .await?;
 

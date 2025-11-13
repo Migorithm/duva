@@ -1,5 +1,6 @@
 use super::{ClientController, request::ClientRequest};
 use crate::domains::TSerdeRead;
+use crate::domains::cluster_actors::ConnectionOffset;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
@@ -9,9 +10,7 @@ use crate::make_smart_pointer;
 use crate::prelude::ConnectionRequest;
 use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
-use crate::presentation::clients::request::{
-    ClientAction, ClientReq, ServerResponse, SessionRequest,
-};
+use crate::presentation::clients::request::{ClientAction, ServerResponse, SessionRequest};
 
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -49,7 +48,7 @@ impl ClientStreamReader {
             let requests = query_ios.unwrap().into_iter().map(|query_io| {
                 Ok(ClientRequest {
                     action: query_io.action,
-                    session_req: ClientReq::new(query_io.request_id, self.client_id.clone()),
+                    session_req: ConnectionOffset::new(query_io.request_id, self.client_id.clone()),
                 })
             });
 
@@ -62,7 +61,7 @@ impl ClientStreamReader {
                         break;
                     },
                     Ok(ClientRequest { action, session_req }) => {
-                        let request_id = session_req.request_id;
+                        let request_id = session_req.offset;
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {

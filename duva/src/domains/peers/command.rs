@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         caches::cache_objects::CacheEntry,
-        cluster_actors::{ClusterCommand, ConsensusRequest, hash_ring::HashRing},
+        cluster_actors::{ClusterCommand, ConsensusReq, hash_ring::HashRing},
         replications::{ReplicationId, ReplicationState, WriteOperation},
     },
     prelude::PeerIdentifier,
@@ -188,12 +188,12 @@ pub(crate) struct QueuedKeysToMigrate {
 
 #[derive(Debug, Default)]
 pub(crate) struct PendingRequests {
-    requests: VecDeque<ConsensusRequest>,
+    requests: VecDeque<ConsensusReq>,
     batches: HashMap<BatchId, QueuedKeysToMigrate>,
     pub(crate) callbacks: Vec<Callback<()>>,
 }
 impl PendingRequests {
-    pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
+    pub(crate) fn add_req(&mut self, req: ConsensusReq) {
         self.requests.push_back(req);
     }
     pub(crate) fn store_batch(&mut self, id: BatchId, batch: QueuedKeysToMigrate) {
@@ -202,7 +202,7 @@ impl PendingRequests {
     pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
         self.batches.remove(id)
     }
-    pub(crate) fn extract_requests(&mut self) -> VecDeque<ConsensusRequest> {
+    pub(crate) fn extract_requests(&mut self) -> VecDeque<ConsensusReq> {
         std::mem::take(&mut self.requests)
     }
 

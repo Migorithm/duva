@@ -2,7 +2,7 @@ use crate::{
     domains::{
         QueryIO,
         caches::cache_objects::CacheEntry,
-        cluster_actors::LazyOption,
+        cluster_actors::{ConnectionOffset, LazyOption},
         peers::identifier::{PeerIdentifier, TPeerAddress},
         replications::LogEntry,
     },
@@ -16,17 +16,6 @@ use std::str::FromStr;
 pub struct SessionRequest {
     pub request_id: u64,
     pub action: ClientAction,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub struct ClientReq {
-    pub(crate) request_id: u64,
-    pub(crate) client_id: String,
-}
-impl ClientReq {
-    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
-        Self { request_id, client_id }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -313,7 +302,7 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
-    pub(crate) session_req: ClientReq,
+    pub(crate) session_req: ConnectionOffset,
 }
 
 #[derive(Clone, Debug, bincode::Decode, bincode::Encode)]

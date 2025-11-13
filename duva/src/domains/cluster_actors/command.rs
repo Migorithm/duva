@@ -7,7 +7,6 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
 
-use crate::presentation::clients::request::ClientReq;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
@@ -15,7 +14,7 @@ use std::str::FromStr;
 pub enum ClusterCommand {
     ConnectionReq(ConnectionMessage),
     Scheduler(SchedulerMessage),
-    Client(ClientMessage),
+    Client(ClusterClientRequest),
     Peer(PeerCommand),
     ShutdownGracefully(Callback<()>),
 }
@@ -53,12 +52,12 @@ impl From<ConnectionMessage> for ClusterCommand {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ClientMessage {
+pub enum ClusterClientRequest {
     GetPeers(Callback<Vec<PeerIdentifier>>),
     ReplicationState(Callback<ReplicationState>),
     Forget(PeerIdentifier, Callback<Option<()>>),
     ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
-    LeaderReqConsensus(ConsensusRequest),
+    MakeConsensus(ConsensusReq),
     ClusterNodes(Callback<Vec<ReplicationState>>),
     GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
@@ -69,23 +68,33 @@ pub enum ClientMessage {
     GetLeaderId(Callback<Option<PeerIdentifier>>),
 }
 
-impl From<ClientMessage> for ClusterCommand {
-    fn from(msg: ClientMessage) -> Self {
+impl From<ClusterClientRequest> for ClusterCommand {
+    fn from(msg: ClusterClientRequest) -> Self {
         ClusterCommand::Client(msg)
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ConsensusRequest {
+pub(crate) struct ConsensusReq {
     pub(crate) entry: LogEntry,
     pub(crate) callback: Callback<ConsensusClientResponse>,
-    pub(crate) session_req: Option<ClientReq>,
+    pub(crate) conn_offset: Option<ConnectionOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub struct ConnectionOffset {
+    pub(crate) offset: u64,
+    pub(crate) conn_id: String,
+}
+impl ConnectionOffset {
+    pub(crate) fn new(offset: u64, conn_id: String) -> Self {
+        Self { offset, conn_id }
+    }
 }
 
 #[derive(Debug)]
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, request_id: u64 },
-
     Result { res: anyhow::Result<QueryIO>, log_index: u64 },
 }
 

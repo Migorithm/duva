@@ -1,7 +1,9 @@
 use crate::{
-    domains::{cluster_actors::ConsensusClientResponse, peers::identifier::PeerIdentifier},
+    domains::{
+        cluster_actors::{ConnectionOffset, ConsensusClientResponse},
+        peers::identifier::PeerIdentifier,
+    },
     make_smart_pointer,
-    presentation::clients::request::ClientReq,
     types::Callback,
 };
 use std::collections::HashMap;
@@ -16,15 +18,15 @@ pub struct LogConsensusVoting {
     pub(crate) voters: Vec<PeerIdentifier>,
     pub(crate) callback: Callback<ConsensusClientResponse>,
     pub(crate) cnt: u8,
-    pub(crate) session_req: Option<ClientReq>,
+    pub(crate) conn_offset: Option<ConnectionOffset>,
 }
 impl LogConsensusVoting {
     pub(crate) fn new(
         callback: Callback<ConsensusClientResponse>,
         replica_count: usize,
-        session_req: Option<ClientReq>,
+        conn_offset: Option<ConnectionOffset>,
     ) -> Self {
-        Self { callback, cnt: 1, voters: Vec::with_capacity(replica_count), session_req }
+        Self { callback, cnt: 1, voters: Vec::with_capacity(replica_count), conn_offset }
     }
 
     pub(crate) fn increase_vote(&mut self, voter: PeerIdentifier) {

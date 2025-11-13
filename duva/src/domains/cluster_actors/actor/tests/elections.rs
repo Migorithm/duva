@@ -99,7 +99,7 @@ async fn test_vote_election_deny_vote_older_log() {
             log_index: initial_term + 2,
             term: initial_term,
             entry: LogEntry::Set { entry: CacheEntry::new("k".to_string(), "v") },
-            session_req: None,
+            conn_offset: None,
         }])
         .unwrap(); // Follower log: idx 2, term 2
 
@@ -189,7 +189,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
             entry: LogEntry::NoOp,
             log_index: candidate_actor.replication.last_log_index(),
             term: candidate_actor.replication.last_log_term(),
-            session_req: None,
+            conn_offset: None,
         }],
         ..Default::default()
     };
@@ -231,12 +231,12 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     // GIVEN: A candidate actor
     let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let (tx, rx) = Callback::create();
-    let session_req = ClientReq::new(1, "client1".to_string());
+    let session_req = ConnectionOffset::new(1, "client1".to_string());
 
-    let consensus_request = ConsensusRequest {
+    let consensus_request = ConsensusReq {
         entry: LogEntry::Set { entry: CacheEntry::new("key".to_string(), "value") },
         callback: tx,
-        session_req: Some(session_req),
+        conn_offset: Some(session_req),
     };
     // WHEN: A write request is received
     candidate_actor.become_candidate();

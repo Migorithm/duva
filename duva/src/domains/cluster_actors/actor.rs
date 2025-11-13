@@ -1,6 +1,6 @@
 use super::ClusterCommand;
 use super::ConsensusClientResponse;
-use super::ConsensusRequest;
+use super::ConsensusReq;
 use super::LazyOption;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
@@ -325,7 +325,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
+    pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusReq) {
         if !self.replication.is_leader() {
             req.callback.send(ConsensusClientResponse::Result {
                 res: Err(anyhow::anyhow!("Write given to follower")),
@@ -334,13 +334,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        if self.client_sessions.is_processed(&req.session_req) {
+        if self.client_sessions.is_processed(&req.conn_offset) {
             // mapping between early returned values to client result
             let key = req.entry.all_keys().into_iter().map(String::from).collect();
             req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 // TODO : remove unwrap
-                request_id: req.session_req.unwrap().request_id,
+                request_id: req.conn_offset.unwrap().offset,
             });
             return;
         };
@@ -373,11 +373,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn req_consensus(&mut self, req: ConsensusRequest, send_in_mills: Option<u64>) {
+    async fn req_consensus(&mut self, req: ConsensusReq, send_in_mills: Option<u64>) {
         let log_index = self.replication.write_single_entry(
             req.entry,
             self.log_state().term,
-            req.session_req.clone(),
+            req.conn_offset.clone(),
         );
 
         let repl_cnt = self.replicas().count();
@@ -391,7 +391,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.consensus_tracker
-            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.session_req));
+            .insert(log_index, LogConsensusVoting::new(req.callback, repl_cnt, req.conn_offset));
 
         if let Some(send_in_mills) = send_in_mills {
             tokio::spawn({
@@ -954,7 +954,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.replication.increase_con_idx_by(1);
-        self.client_sessions.set_response(voting.session_req.take());
+        self.client_sessions.set_response(voting.conn_offset.take());
         let log_entry = self.replication.read_at(log_index).unwrap();
         let res = self.commit_entry(log_entry.entry, log_index).await;
         let _ = self.replication.flush();
@@ -1340,10 +1340,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (callback, rx) = Callback::create();
-        let req = ConsensusRequest {
+        let req = ConsensusReq {
             entry: LogEntry::MSet { entries: migrate_batch.entries.clone() },
             callback,
-            session_req: None,
+            conn_offset: None,
         };
         self.make_consensus_in_batch(req).await;
 
@@ -1365,7 +1365,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
-    async fn make_consensus_in_batch(&mut self, req: ConsensusRequest) {
+    async fn make_consensus_in_batch(&mut self, req: ConsensusReq) {
         self.req_consensus(req, None).await;
         let _ = self.replication.flush();
         self.send_rpc().await;
@@ -1384,10 +1384,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // make consensus request for delete
         let (callback, rx) = Callback::create();
-        let req = ConsensusRequest {
+        let req = ConsensusReq {
             entry: LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
-            session_req: None,
+            conn_offset: None,
         };
         self.make_consensus_in_batch(req).await;
 
@@ -1428,7 +1428,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 while let Some(req) = pending_reqs.pop_front() {
                     if let Err(err) = handler
-                        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
+                        .send(ClusterCommand::Client(ClusterClientRequest::MakeConsensus(req)))
                         .await
                     {
                         error!("{}", err)

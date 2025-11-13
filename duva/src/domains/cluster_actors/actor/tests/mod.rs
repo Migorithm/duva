@@ -15,7 +15,6 @@ use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::presentation::clients::request::ClientReq;
 
 use crate::domains::peers::command::HeartBeat;
 
@@ -50,7 +49,7 @@ impl FakeReadWrite {
 }
 #[async_trait::async_trait]
 impl TWrite for FakeReadWrite {
-    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+    async fn write(&mut self, _io: QueryIO) -> Result<(), IoError> {
         panic!()
     }
 }
@@ -76,7 +75,7 @@ impl TSerdeDynamicWrite for FakeReadWrite {
         Ok(())
     }
 
-    async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
+    async fn send_connection_msg(&mut self, _arg: &str) -> Result<(), IoError> {
         Ok(())
     }
 }
@@ -139,7 +138,7 @@ impl Helper {
             log_index: index_num,
             entry: LogEntry::Set { entry: CacheEntry::new(key, value) },
             term,
-            session_req: None,
+            conn_offset: None,
         }
     }
     pub(crate) fn session_write(
@@ -147,13 +146,13 @@ impl Helper {
         term: u64,
         key: &str,
         value: &str,
-        session_req: ClientReq,
+        session_req: ConnectionOffset,
     ) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
             entry: LogEntry::Set { entry: CacheEntry::new(key, value) },
             term,
-            session_req: Some(session_req),
+            conn_offset: Some(session_req),
         }
     }
 
@@ -239,12 +238,12 @@ impl Helper {
 
     fn consensus_request(
         callback: Callback<ConsensusClientResponse>,
-        session_req: Option<ClientReq>,
-    ) -> ConsensusRequest {
-        ConsensusRequest {
+        session_req: Option<ConnectionOffset>,
+    ) -> ConsensusReq {
+        ConsensusReq {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
-            session_req,
+            conn_offset: session_req,
         }
     }
 }

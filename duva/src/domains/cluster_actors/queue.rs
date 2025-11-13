@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        cluster_actors::{ClientMessage, ClusterCommand, ConnectionMessage, LazyOption},
+        cluster_actors::{ClusterClientRequest, ClusterCommand, ConnectionMessage, LazyOption},
         replications::state::ReplicationState,
     },
     prelude::{PeerIdentifier, Topology},
@@ -52,19 +52,19 @@ impl ClusterActorSender {
 
     pub(crate) async fn wait_for_acceptance(&self) {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::CanEnter(tx)).await;
+        let _ = self.send(ClusterClientRequest::CanEnter(tx)).await;
         rx.wait().await;
     }
     pub(crate) async fn route_get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::GetPeers(tx)).await?;
+        self.send(ClusterClientRequest::GetPeers(tx)).await?;
         let peers = rx.recv().await;
         Ok(peers)
     }
 
     pub(crate) async fn route_get_topology(&self) -> anyhow::Result<Topology> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::GetTopology(tx)).await?;
+        self.send(ClusterClientRequest::GetTopology(tx)).await?;
         let peers = rx.recv().await;
         Ok(peers)
     }
@@ -81,13 +81,13 @@ impl ClusterActorSender {
 
     pub(crate) async fn route_get_node_state(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ReplicationState(tx)).await?;
+        self.send(ClusterClientRequest::ReplicationState(tx)).await?;
         Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_get_leader_id(&self) -> anyhow::Result<Option<PeerIdentifier>> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::GetLeaderId(tx)).await?;
+        self.send(ClusterClientRequest::GetLeaderId(tx)).await?;
         Ok(rx.recv().await)
     }
 
@@ -113,7 +113,7 @@ impl ClusterActorSender {
         peer_identifier: PeerIdentifier,
     ) -> anyhow::Result<bool> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::Forget(peer_identifier, tx)).await?;
+        self.send(ClusterClientRequest::Forget(peer_identifier, tx)).await?;
         let Some(_) = rx.recv().await else { return Ok(false) };
         Ok(true)
     }
@@ -123,7 +123,7 @@ impl ClusterActorSender {
         peer_identifier: PeerIdentifier,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ReplicaOf(peer_identifier, tx)).await?;
+        self.send(ClusterClientRequest::ReplicaOf(peer_identifier, tx)).await?;
         rx.recv().await
     }
 
@@ -133,24 +133,24 @@ impl ClusterActorSender {
         lazy_option: LazyOption,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx)).await?;
+        self.send(ClusterClientRequest::ClusterMeet(peer_identifier, lazy_option, tx)).await?;
         rx.recv().await
     }
     pub(crate) async fn route_cluster_reshard(&self) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ClusterReshard(tx)).await?;
+        self.send(ClusterClientRequest::ClusterReshard(tx)).await?;
         rx.recv().await
     }
 
     pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<ReplicationState>> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ClusterNodes(tx)).await?;
+        self.send(ClusterClientRequest::ClusterNodes(tx)).await?;
         Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_get_roles(&self) -> anyhow::Result<Vec<String>> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::GetRoles(tx)).await?;
+        self.send(ClusterClientRequest::GetRoles(tx)).await?;
         Ok(rx.recv().await.into_iter().map(|(id, role)| format!("{}:{}", id.0, role)).collect())
     }
 
@@ -158,7 +158,7 @@ impl ClusterActorSender {
         &self,
     ) -> tokio::sync::broadcast::Receiver<Topology> {
         let (tx, rx) = Callback::create();
-        let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
+        let _ = self.send(ClusterClientRequest::SubscribeToTopologyChange(tx)).await;
         rx.recv().await
     }
 }

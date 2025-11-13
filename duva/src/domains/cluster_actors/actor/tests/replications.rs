@@ -1,5 +1,3 @@
-use crate::presentation::clients::request::ClientReq;
-
 use super::*;
 
 #[test]
@@ -156,10 +154,10 @@ async fn replicate_stores_only_latest_session_per_client() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     let target_client = uuid::Uuid::now_v7().to_string();
-    let session1 = ClientReq::new(1, uuid::Uuid::now_v7().to_string());
-    let session2 = ClientReq::new(1, target_client.clone());
+    let session1 = ConnectionOffset::new(1, uuid::Uuid::now_v7().to_string());
+    let session2 = ConnectionOffset::new(1, target_client.clone());
     // ! For the same client, hold only one request
-    let session3 = ClientReq::new(2, target_client);
+    let session3 = ConnectionOffset::new(2, target_client);
 
     let heartbeat = Helper::heartbeat(
         0,
@@ -432,13 +430,10 @@ async fn req_consensus_inserts_consensus_voting() {
 
     let (callback, _) = Callback::create();
     let client_id = Uuid::now_v7().to_string();
-    let session_request = ClientReq::new(1, client_id);
+    let session_request = ConnectionOffset::new(1, client_id);
     let w_req = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
-    let consensus_request = ConsensusRequest {
-        entry: w_req.clone(),
-        callback,
-        session_req: Some(session_request.clone()),
-    };
+    let consensus_request =
+        ConsensusReq { entry: w_req.clone(), callback, conn_offset: Some(session_request.clone()) };
 
     // WHEN
     leader_c_actor.req_consensus(consensus_request, None).await;
@@ -448,7 +443,7 @@ async fn req_consensus_inserts_consensus_voting() {
     assert_eq!(leader_c_actor.log_state().last_log_index, 0); // * buffer
 
     assert_eq!(
-        leader_c_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
+        leader_c_actor.consensus_tracker.get(&1).unwrap().conn_offset.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
         session_request
     );
 }
@@ -459,7 +454,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let client_id = Uuid::now_v7().to_string();
-    let client_req = ClientReq::new(1, client_id);
+    let client_req = ConnectionOffset::new(1, client_id);
 
     // WHEN - session request is already processed
     cluster_actor.client_sessions.set_response(Some(client_req.clone()));
@@ -467,10 +462,10 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     tokio::spawn(cluster_actor.handle());
     let (callback, rx) = Callback::create();
     handler
-        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
+        .send(ClusterCommand::Client(ClusterClientRequest::MakeConsensus(ConsensusReq {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
-            session_req: Some(client_req),
+            conn_offset: Some(client_req),
         })))
         .await
         .unwrap();
@@ -502,7 +497,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let (client_request_sender, client_wait) = Callback::create();
 
     let client_id = Uuid::now_v7().to_string();
-    let client_request = ClientReq::new(3, client_id);
+    let client_request = ConnectionOffset::new(3, client_id);
     let consensus_request =
         Helper::consensus_request(client_request_sender, Some(client_request.clone()));
 
@@ -617,17 +612,17 @@ async fn test_leader_req_consensus_with_processed_session() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let client_id = Uuid::now_v7().to_string();
-    let session_req = ClientReq::new(1, client_id);
+    let session_req = ConnectionOffset::new(1, client_id);
 
     // Mark the session as already processed
     cluster_actor.client_sessions.set_response(Some(session_req.clone()));
 
     // WHEN - send request with already processed session
     let (tx, rx) = Callback::create();
-    let consensus_request = ConsensusRequest {
+    let consensus_request = ConsensusReq {
         entry: LogEntry::Set { entry: CacheEntry::new("test_key".to_string(), "test_value") },
         callback: tx,
-        session_req: Some(session_req),
+        conn_offset: Some(session_req),
     };
 
     cluster_actor.leader_req_consensus(consensus_request).await;
