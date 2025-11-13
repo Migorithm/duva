@@ -37,7 +37,7 @@ pub fn parse_custom_type(buffer: &Bytes) -> anyhow::Result<(WriteOperation, usiz
     let (encoded, len): (WriteOperation, usize) =
         bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
             .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
-    Ok((encoded.into(), len + 1))
+    Ok((encoded, len + 1))
 }
 
 impl LogEntry {

@@ -38,7 +38,7 @@ impl OutboundStream {
                     ok_count += 1;
                     let msg = {
                         match ok_count {
-                            1 => format!("REPLCONF capa psync2"),
+                            1 => "REPLCONF capa psync2".into(),
                             // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                             2 => {
                                 format!(
