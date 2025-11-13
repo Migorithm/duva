@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        cluster_actors::{ConnectionOffset, ConsensusClientResponse},
+        cluster_actors::{ConnectionOffset, ConsensusResponse},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
@@ -16,13 +16,13 @@ make_smart_pointer!(LogConsensusTracker, HashMap<u64, LogConsensusVoting>);
 #[derive(Debug)]
 pub struct LogConsensusVoting {
     pub(crate) voters: Vec<PeerIdentifier>,
-    pub(crate) callback: Callback<ConsensusClientResponse>,
+    pub(crate) callback: Callback<ConsensusResponse>,
     pub(crate) cnt: u8,
     pub(crate) conn_offset: Option<ConnectionOffset>,
 }
 impl LogConsensusVoting {
     pub(crate) fn new(
-        callback: Callback<ConsensusClientResponse>,
+        callback: Callback<ConsensusResponse>,
         replica_count: usize,
         conn_offset: Option<ConnectionOffset>,
     ) -> Self {

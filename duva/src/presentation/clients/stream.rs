@@ -1,6 +1,5 @@
 use super::{ClientController, request::ClientRequest};
 use crate::domains::TSerdeRead;
-use crate::domains::cluster_actors::ConnectionOffset;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
@@ -20,11 +19,11 @@ use tracing::{error, info, instrument};
 
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
-    pub(crate) client_id: String,
+    pub(crate) conn_id: String,
 }
 
 impl ClientStreamReader {
-    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, stream_writer_sender),fields(client_id= %self.client_id))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, stream_writer_sender),fields(client_id= %self.conn_id))]
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,
@@ -39,7 +38,7 @@ impl ClientStreamReader {
                     return;
                 }
                 let _ = stream_writer_sender
-                    .send(ServerResponse::Err { reason: err.to_string(), request_id: 0 })
+                    .send(ServerResponse::Err { reason: err.to_string(), conn_offset: 0 })
                     .await;
                 continue;
             }
@@ -48,7 +47,8 @@ impl ClientStreamReader {
             let requests = query_ios.unwrap().into_iter().map(|query_io| {
                 Ok(ClientRequest {
                     action: query_io.action,
-                    session_req: ConnectionOffset::new(query_io.request_id, self.client_id.clone()),
+                    conn_offset: query_io.conn_offset,
+                    conn_id: self.conn_id.clone(),
                 })
             });
 
@@ -56,25 +56,24 @@ impl ClientStreamReader {
                 match req {
                     Err(err) => {
                         let _ = stream_writer_sender
-                            .send(ServerResponse::Err { reason: err, request_id: 0 })
+                            .send(ServerResponse::Err { reason: err, conn_offset: 0 })
                             .await;
                         break;
                     },
-                    Ok(ClientRequest { action, session_req }) => {
-                        let request_id = session_req.offset;
+                    Ok(ClientRequest { action, conn_offset, conn_id }) => {
                         // * processing part
                         let result = match action {
                             ClientAction::NonMutating(non_mutating_action) => {
-                                handler.handle_non_mutating(non_mutating_action, request_id).await
+                                handler.handle_non_mutating(non_mutating_action, conn_offset).await
                             },
                             ClientAction::Mutating(log_entry) => {
-                                handler.handle_mutating(session_req, log_entry).await
+                                handler.handle_mutating(conn_offset, conn_id, log_entry).await
                             },
                         };
 
                         let response = result.unwrap_or_else(|e| {
                             error!("failure on state change / query {e}");
-                            ServerResponse::Err { reason: e.to_string(), request_id }
+                            ServerResponse::Err { reason: e.to_string(), conn_offset }
                         });
                         if stream_writer_sender.send(response).await.is_err() {
                             return;

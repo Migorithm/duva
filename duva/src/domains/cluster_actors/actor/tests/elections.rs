@@ -233,7 +233,7 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     let (tx, rx) = Callback::create();
     let session_req = ConnectionOffset::new(1, "client1".to_string());
 
-    let consensus_request = ConsensusReq {
+    let consensus_request = ConsensusRequest {
         entry: LogEntry::Set { entry: CacheEntry::new("key".to_string(), "value") },
         callback: tx,
         conn_offset: Some(session_req),
@@ -248,5 +248,5 @@ async fn test_become_candidate_not_allow_write_request_processing() {
     assert!(value.is_null());
 
     let res = rx.0.await.unwrap();
-    assert!(matches!(res, ConsensusClientResponse::Result { res: Err(_), log_index: _ }))
+    assert!(matches!(res, ConsensusResponse::Result { res: Err(_), log_index: _ }))
 }

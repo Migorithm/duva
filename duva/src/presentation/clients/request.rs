@@ -2,7 +2,7 @@ use crate::{
     domains::{
         QueryIO,
         caches::cache_objects::CacheEntry,
-        cluster_actors::{ConnectionOffset, LazyOption},
+        cluster_actors::LazyOption,
         peers::identifier::{PeerIdentifier, TPeerAddress},
         replications::LogEntry,
     },
@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct SessionRequest {
-    pub request_id: u64,
+    pub conn_offset: u64,
     pub action: ClientAction,
 }
 
@@ -302,23 +302,24 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
-    pub(crate) session_req: ConnectionOffset,
+    pub(crate) conn_offset: u64,
+    pub(crate) conn_id: String,
 }
 
 #[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
 pub enum ServerResponse {
-    WriteRes { res: QueryIO, log_index: u64, request_id: u64 },
-    ReadRes { res: QueryIO, request_id: u64 },
+    WriteRes { res: QueryIO, log_index: u64, conn_offset: u64 },
+    ReadRes { res: QueryIO, conn_offset: u64 },
     TopologyChange(Topology),
-    Err { reason: String, request_id: u64 },
+    Err { reason: String, conn_offset: u64 },
 }
 
 impl ServerResponse {
     pub fn request_id(&self) -> Option<u64> {
         match self {
-            ServerResponse::WriteRes { request_id, .. }
-            | ServerResponse::ReadRes { request_id, .. }
-            | ServerResponse::Err { request_id, .. } => Some(*request_id),
+            ServerResponse::WriteRes { conn_offset, .. }
+            | ServerResponse::ReadRes { conn_offset, .. }
+            | ServerResponse::Err { conn_offset, .. } => Some(*conn_offset),
 
             ServerResponse::TopologyChange(..) => None,
         }

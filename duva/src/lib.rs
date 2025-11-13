@@ -255,7 +255,7 @@ impl StartUpFacade {
                     cache_manager: self.cache_manager.clone(),
                 };
                 tokio::spawn(
-                    ClientStreamReader { client_id, r: read_half }
+                    ClientStreamReader { conn_id: client_id, r: read_half }
                         .handle_client_stream(client_controller, writer.run(observer)),
                 );
             },

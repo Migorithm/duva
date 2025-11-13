@@ -57,7 +57,7 @@ pub enum ClusterClientRequest {
     ReplicationState(Callback<ReplicationState>),
     Forget(PeerIdentifier, Callback<Option<()>>),
     ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
-    MakeConsensus(ConsensusReq),
+    MakeConsensus(ConsensusRequest),
     ClusterNodes(Callback<Vec<ReplicationState>>),
     GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
@@ -74,13 +74,6 @@ impl From<ClusterClientRequest> for ClusterCommand {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ConsensusReq {
-    pub(crate) entry: LogEntry,
-    pub(crate) callback: Callback<ConsensusClientResponse>,
-    pub(crate) conn_offset: Option<ConnectionOffset>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct ConnectionOffset {
     pub(crate) offset: u64,
@@ -92,8 +85,15 @@ impl ConnectionOffset {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ConsensusRequest {
+    pub(crate) entry: LogEntry,
+    pub(crate) callback: Callback<ConsensusResponse>,
+    pub(crate) conn_offset: Option<ConnectionOffset>,
+}
+
 #[derive(Debug)]
-pub(crate) enum ConsensusClientResponse {
+pub(crate) enum ConsensusResponse {
     AlreadyProcessed { key: Vec<String>, request_id: u64 },
     Result { res: anyhow::Result<QueryIO>, log_index: u64 },
 }

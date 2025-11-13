@@ -35,7 +35,7 @@ impl CommandQueue {
 
         let result = context
             .get_result()
-            .unwrap_or_else(|err| ServerResponse::Err { reason: err.to_string(), request_id: 0 });
+            .unwrap_or_else(|err| ServerResponse::Err { reason: err.to_string(), conn_offset: 0 });
         context.callback(result);
     }
 }
@@ -84,11 +84,13 @@ impl InputContext {
             ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
                 let mut init = QueryIO::Array(Vec::with_capacity(iterator.len()));
 
-                while let Some(ServerResponse::ReadRes { res, request_id }) = iterator.next() {
+                while let Some(ServerResponse::ReadRes { res, conn_offset: request_id }) =
+                    iterator.next()
+                {
                     init = init.merge(res)?;
                     highest_req_id = highest_req_id.max(request_id);
                 }
-                Ok(ServerResponse::ReadRes { res: init, request_id: highest_req_id })
+                Ok(ServerResponse::ReadRes { res: init, conn_offset: highest_req_id })
             },
 
             ClientAction::NonMutating(Exists { keys: _ }) => {
@@ -96,7 +98,7 @@ impl InputContext {
 
                 while let Some(ServerResponse::ReadRes {
                     res: QueryIO::BulkString(byte),
-                    request_id,
+                    conn_offset: request_id,
                 }) = iterator.next()
                 {
                     let num = String::from_utf8(byte.to_vec())
@@ -109,7 +111,7 @@ impl InputContext {
 
                 Ok(ServerResponse::ReadRes {
                     res: QueryIO::BulkString(BinBytes::new(count.to_string())),
-                    request_id: highest_req_id,
+                    conn_offset: highest_req_id,
                 })
             },
             ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
@@ -117,7 +119,7 @@ impl InputContext {
 
                 while let Some(ServerResponse::WriteRes {
                     res: QueryIO::BulkString(value),
-                    request_id,
+                    conn_offset: request_id,
                     ..
                 }) = iterator.next()
                 {
@@ -128,7 +130,7 @@ impl InputContext {
                 Ok(ServerResponse::WriteRes {
                     res: QueryIO::BulkString(BinBytes::new(count.to_string())),
                     log_index: 0, // TODO
-                    request_id: highest_req_id,
+                    conn_offset: highest_req_id,
                 })
             },
             _ => iterator.next().ok_or(anyhow::anyhow!("Expected exactly one result")),

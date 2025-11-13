@@ -237,10 +237,10 @@ impl Helper {
     }
 
     fn consensus_request(
-        callback: Callback<ConsensusClientResponse>,
+        callback: Callback<ConsensusResponse>,
         session_req: Option<ConnectionOffset>,
-    ) -> ConsensusReq {
-        ConsensusReq {
+    ) -> ConsensusRequest {
+        ConsensusRequest {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
             conn_offset: session_req,

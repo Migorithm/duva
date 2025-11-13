@@ -4,7 +4,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::{
-    ClusterClientRequest, ConnectionOffset, ConsensusClientResponse, ConsensusReq,
+    ClusterClientRequest, ConnectionOffset, ConsensusRequest, ConsensusResponse,
 };
 use crate::domains::replications::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
@@ -135,31 +135,31 @@ impl ClientController {
         };
         info!("{response:?}");
 
-        Ok(ServerResponse::ReadRes { res: response, request_id })
+        Ok(ServerResponse::ReadRes { res: response, conn_offset: request_id })
     }
 
     pub(crate) async fn handle_mutating(
         &self,
-        session_req: ConnectionOffset,
+        conn_offset: u64,
+        conn_id: String,
         entry: LogEntry,
     ) -> anyhow::Result<ServerResponse> {
         // * Consensus / Persisting logs
         let (callback, res) = Callback::create();
-        let request_id = session_req.offset;
 
         self.cluster_actor_sender
-            .send(ClusterClientRequest::MakeConsensus(ConsensusReq {
+            .send(ClusterClientRequest::MakeConsensus(ConsensusRequest {
                 entry,
                 callback,
-                conn_offset: Some(session_req),
+                conn_offset: Some(ConnectionOffset::new(conn_offset, conn_id)),
             }))
             .await?;
 
         let result = match res.recv().await {
-            ConsensusClientResponse::Result { res, log_index } => {
-                ServerResponse::WriteRes { res: res?, log_index, request_id }
+            ConsensusResponse::Result { res, log_index } => {
+                ServerResponse::WriteRes { res: res?, log_index, conn_offset }
             },
-            ConsensusClientResponse::AlreadyProcessed { key: keys, request_id } => {
+            ConsensusResponse::AlreadyProcessed { key: keys, request_id } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(action, request_id).await?

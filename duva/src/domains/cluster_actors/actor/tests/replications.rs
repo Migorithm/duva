@@ -433,7 +433,7 @@ async fn req_consensus_inserts_consensus_voting() {
     let session_request = ConnectionOffset::new(1, client_id);
     let w_req = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
     let consensus_request =
-        ConsensusReq { entry: w_req.clone(), callback, conn_offset: Some(session_request.clone()) };
+        ConsensusRequest { entry: w_req.clone(), callback, conn_offset: Some(session_request.clone()) };
 
     // WHEN
     leader_c_actor.req_consensus(consensus_request, None).await;
@@ -462,7 +462,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     tokio::spawn(cluster_actor.handle());
     let (callback, rx) = Callback::create();
     handler
-        .send(ClusterCommand::Client(ClusterClientRequest::MakeConsensus(ConsensusReq {
+        .send(ClusterCommand::Client(ClusterClientRequest::MakeConsensus(ConsensusRequest {
             entry: LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") },
             callback,
             conn_offset: Some(client_req),
@@ -619,7 +619,7 @@ async fn test_leader_req_consensus_with_processed_session() {
 
     // WHEN - send request with already processed session
     let (tx, rx) = Callback::create();
-    let consensus_request = ConsensusReq {
+    let consensus_request = ConsensusRequest {
         entry: LogEntry::Set { entry: CacheEntry::new("test_key".to_string(), "test_value") },
         callback: tx,
         conn_offset: Some(session_req),
@@ -632,7 +632,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     assert_eq!(cluster_actor.log_state().last_log_index, 0);
 
     // Verify the response indicates already processed
-    let ConsensusClientResponse::AlreadyProcessed { key, request_id: 1 } = rx.recv().await else {
+    let ConsensusResponse::AlreadyProcessed { key, request_id: 1 } = rx.recv().await else {
         panic!("Expected AlreadyProcessed response");
     };
     assert_eq!(key, vec!["test_key".to_string()]);
