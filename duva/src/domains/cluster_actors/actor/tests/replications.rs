@@ -432,8 +432,11 @@ async fn req_consensus_inserts_consensus_voting() {
     let client_id = Uuid::now_v7().to_string();
     let session_request = ConnectionOffset::new(1, client_id);
     let w_req = LogEntry::Set { entry: CacheEntry::new("foo".to_string(), "bar") };
-    let consensus_request =
-        ConsensusRequest { entry: w_req.clone(), callback, conn_offset: Some(session_request.clone()) };
+    let consensus_request = ConsensusRequest {
+        entry: w_req.clone(),
+        callback,
+        conn_offset: Some(session_request.clone()),
+    };
 
     // WHEN
     leader_c_actor.req_consensus(consensus_request, None).await;
