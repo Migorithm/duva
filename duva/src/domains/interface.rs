@@ -26,14 +26,9 @@ pub(crate) trait TSerdeDynamicRead: TRead + Send + Sync + Debug + 'static {
 }
 
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicWrite: TWrite + Send + Sync + Debug + 'static {
+pub(crate) trait TSerdeDynamicWrite: Send + Sync + Debug + 'static {
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError>;
     async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError>;
-}
-
-#[async_trait::async_trait]
-pub(crate) trait TWrite: Send + Sync + Debug + 'static {
-    async fn write(&mut self, io: QueryIO) -> Result<(), IoError>;
 }
 
 pub trait TSerdeWrite {

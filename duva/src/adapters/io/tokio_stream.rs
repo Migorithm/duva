@@ -1,4 +1,4 @@
-use crate::domains::interface::{TRead, TWrite};
+use crate::domains::interface::TRead;
 use crate::domains::peers::command::*;
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
@@ -15,13 +15,6 @@ use tokio::net::TcpStream;
 
 const BUFFER_SIZE: usize = 512;
 const INITIAL_CAPACITY: usize = 1024;
-
-#[async_trait::async_trait]
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
-    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
-        self.write_all(&io.serialize()).await.map_err(|e| io_error_from_kind(e.kind()))
-    }
-}
 
 #[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TReadBytes for T {

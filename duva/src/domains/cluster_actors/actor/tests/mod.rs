@@ -24,7 +24,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
 use crate::{
-    domains::{IoError, TRead, TWrite},
+    domains::{IoError, TRead},
     make_smart_pointer,
 };
 use std::collections::VecDeque;
@@ -45,12 +45,6 @@ make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<PeerMessage>>>);
 impl FakeReadWrite {
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(VecDeque::new())))
-    }
-}
-#[async_trait::async_trait]
-impl TWrite for FakeReadWrite {
-    async fn write(&mut self, _io: QueryIO) -> Result<(), IoError> {
-        panic!()
     }
 }
 
