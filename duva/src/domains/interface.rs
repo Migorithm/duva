@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::domains::{
-    IoError, QueryIO,
+    IoError,
     peers::{
         command::PeerMessage,
         connections::connection_types::{ReadConnected, WriteConnected},
@@ -10,30 +10,20 @@ use crate::domains::{
 use bytes::BytesMut;
 
 #[async_trait::async_trait]
-pub trait TRead: Send + Sync + Debug + 'static {
-    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError>;
-}
-
-#[async_trait::async_trait]
 pub trait TReadBytes: Send + Sync + Debug + 'static {
     async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicRead: TRead + Send + Sync + Debug + 'static {
+pub(crate) trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
     async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError>;
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError>;
 }
 
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicWrite: TWrite + Send + Sync + Debug + 'static {
+pub(crate) trait TSerdeDynamicWrite: Send + Sync + Debug + 'static {
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError>;
     async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError>;
-}
-
-#[async_trait::async_trait]
-pub(crate) trait TWrite: Send + Sync + Debug + 'static {
-    async fn write(&mut self, io: QueryIO) -> Result<(), IoError>;
 }
 
 pub trait TSerdeWrite {

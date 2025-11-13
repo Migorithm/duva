@@ -9,7 +9,6 @@ use crate::CacheManager;
 use crate::Replication;
 use crate::ReplicationId;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
-use crate::domains::QueryIO;
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;
@@ -23,10 +22,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
-use crate::{
-    domains::{IoError, TRead, TWrite},
-    make_smart_pointer,
-};
+use crate::{domains::IoError, make_smart_pointer};
 use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::sync::Arc;
@@ -45,12 +41,6 @@ make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<PeerMessage>>>);
 impl FakeReadWrite {
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(VecDeque::new())))
-    }
-}
-#[async_trait::async_trait]
-impl TWrite for FakeReadWrite {
-    async fn write(&mut self, _io: QueryIO) -> Result<(), IoError> {
-        panic!()
     }
 }
 
@@ -77,13 +67,6 @@ impl TSerdeDynamicWrite for FakeReadWrite {
 
     async fn send_connection_msg(&mut self, _arg: &str) -> Result<(), IoError> {
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl TRead for FakeReadWrite {
-    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        panic!()
     }
 }
 
