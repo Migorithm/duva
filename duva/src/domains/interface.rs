@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::domains::{
-    IoError, QueryIO,
+    IoError,
     peers::{
         command::PeerMessage,
         connections::connection_types::{ReadConnected, WriteConnected},
@@ -10,17 +10,12 @@ use crate::domains::{
 use bytes::BytesMut;
 
 #[async_trait::async_trait]
-pub trait TRead: Send + Sync + Debug + 'static {
-    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError>;
-}
-
-#[async_trait::async_trait]
 pub trait TReadBytes: Send + Sync + Debug + 'static {
     async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicRead: TRead + Send + Sync + Debug + 'static {
+pub(crate) trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
     async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError>;
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError>;
 }

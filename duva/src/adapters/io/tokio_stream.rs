@@ -1,4 +1,3 @@
-use crate::domains::interface::TRead;
 use crate::domains::peers::command::*;
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
@@ -6,7 +5,7 @@ use crate::domains::{
     IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead,
     TSerdeWrite,
 };
-use crate::domains::{QueryIO, deserialize};
+
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
@@ -48,30 +47,6 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
             }
         }
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead for T {
-    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
-
-        let mut parsed_values = Vec::new();
-        let mut remaining_buffer = buffer;
-
-        while !remaining_buffer.is_empty() {
-            match deserialize(remaining_buffer.clone()) {
-                Ok((query_io, consumed)) => {
-                    parsed_values.push(query_io);
-                    remaining_buffer = remaining_buffer.split_off(consumed);
-                },
-                Err(e) => {
-                    return Err(IoError::Custom(format!("Parsing error: {e:?}")));
-                },
-            }
-        }
-        Ok(parsed_values)
     }
 }
 
@@ -182,8 +157,6 @@ impl From<ErrorKind> for IoError {
 
 #[cfg(test)]
 pub mod test_tokio_stream_impl {
-    use crate::types::BinBytes;
-
     use super::*;
     #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode)]
     struct TestMessage {
@@ -241,47 +214,6 @@ pub mod test_tokio_stream_impl {
 
         //THEN
         assert_eq!(socket.ip().to_string(), "127.0.0.1")
-    }
-
-    #[tokio::test]
-    async fn test_read_values() {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        // add a simple string to buffer
-        let sync_msg = "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0";
-
-        buffer.extend_from_slice(
-            format!(
-                "${}\r\nFULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n",
-                sync_msg.len()
-            )
-            .as_bytes(),
-        );
-
-        let peer_info_msg = "PEERS 127.0.0.1:6378";
-        buffer.extend_from_slice(
-            format!("${}\r\nPEERS 127.0.0.1:6378\r\n", peer_info_msg.len()).as_bytes(),
-        );
-        // add an integer to buffer
-
-        let mut parsed_values = vec![];
-        while !buffer.is_empty() {
-            if let Ok((query_io, consumed)) = deserialize(buffer.clone()) {
-                parsed_values.push(query_io);
-
-                // * Remove the parsed portion from the buffer
-                buffer = buffer.split_off(consumed);
-            }
-        }
-
-        assert_eq!(parsed_values.len(), 2);
-        assert_eq!(
-            parsed_values[0],
-            QueryIO::BulkString(BinBytes::new(
-                "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"
-            ))
-        );
-
-        assert_eq!(parsed_values[1], QueryIO::BulkString(BinBytes::new("PEERS 127.0.0.1:6378")));
     }
 
     #[tokio::test]
