@@ -9,6 +9,7 @@ use crate::CacheManager;
 use crate::Replication;
 use crate::ReplicationId;
 
+use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;

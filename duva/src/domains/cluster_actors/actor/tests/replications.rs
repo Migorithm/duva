@@ -1,3 +1,5 @@
+use crate::adapters::loggers::op_logs::OperationLogs;
+
 use super::*;
 
 #[test]
@@ -356,7 +358,8 @@ async fn follower_truncates_log_on_term_mismatch() {
     //prefill
 
     inmemory
-        .write_many(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
+        .write_many(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")])
+        .unwrap();
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.replication.set_target(inmemory);

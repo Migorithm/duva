@@ -6,7 +6,6 @@ use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
 use super::*;
-use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -59,7 +58,7 @@ const FANOUT: usize = 2;
 #[derive(Debug)]
 pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: Replication<OperationLogs>,
+    pub(crate) replication: Replication,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: ClusterActorReceiver,
     pub(crate) self_handler: ClusterActorSender,
@@ -98,7 +97,7 @@ impl ClusterActor {
     pub(crate) fn run(
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
-        replication: Replication<OperationLogs>,
+        replication: Replication,
         cache_manager: CacheManager,
     ) -> ClusterActorSender {
         let cluster_actor =
@@ -113,7 +112,7 @@ impl ClusterActor {
     }
 
     fn new(
-        init_repl_state: Replication<OperationLogs>,
+        init_repl: Replication,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
         cache_manager: CacheManager,
@@ -121,19 +120,19 @@ impl ClusterActor {
         let (self_handler, receiver) = ClusterActorQueue::create(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
-            init_repl_state.is_leader(),
+            init_repl.is_leader(),
             heartbeat_interval_in_mills,
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default().add_partitions(vec![(
-            init_repl_state.clone_state().replid.clone(),
-            init_repl_state.self_identifier(),
+            init_repl.clone_state().replid.clone(),
+            init_repl.self_identifier(),
         )]);
 
         Self {
             heartbeat_scheduler,
-            replication: init_repl_state,
+            replication: init_repl,
             receiver,
             self_handler,
             topology_writer,

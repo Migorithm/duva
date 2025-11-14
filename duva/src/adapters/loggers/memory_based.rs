@@ -5,7 +5,7 @@ use anyhow::Result;
 
 #[derive(Default, Clone, Debug)]
 pub struct MemoryOpLogs {
-    pub writer: Vec<WriteOperation>,
+    writer: Vec<WriteOperation>,
 }
 
 impl TWriteAheadLog for MemoryOpLogs {

@@ -16,10 +16,10 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
-pub(crate) struct Replication<T> {
+pub(crate) struct Replication {
     pub(crate) self_port: u16,
     election_votes: ElectionVotes,
-    logger: T,
+    logger: OperationLogs,
     state: ReplicationState,
     last_log_term: u64,
     con_idx: Arc<AtomicU64>,
@@ -27,7 +27,7 @@ pub(crate) struct Replication<T> {
     in_mem_buffer: Vec<WriteOperation>,
 }
 
-impl Replication<OperationLogs> {
+impl Replication {
     pub(crate) fn new(self_port: u16, logger: OperationLogs, state: ReplicationState) -> Self {
         Self {
             election_votes: ElectionVotes::default(),

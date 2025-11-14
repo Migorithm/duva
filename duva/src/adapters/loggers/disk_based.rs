@@ -179,7 +179,7 @@ impl Segment {
 }
 
 impl FileOpLogs {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub(super) fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         Self::validate_folder(&path)?;
         let segment_paths = Self::detect_and_sort_existing_segments(&path)?;
