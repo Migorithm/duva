@@ -14,10 +14,7 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn replay<F>(&mut self, mut f: F) -> Result<()>
-    where
-        F: FnMut(WriteOperation) + Send,
-    {
+    fn replay(&mut self, f: &mut dyn FnMut(WriteOperation)) -> Result<()> {
         for op in self.writer.iter() {
             f(op.clone());
         }

@@ -414,10 +414,7 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Replays all existing operations in the op_logs, invoking a callback for each.
-    fn replay<F>(&mut self, mut replay_handler: F) -> Result<()>
-    where
-        F: FnMut(WriteOperation) + Send,
-    {
+    fn replay(&mut self, mut replay_handler: &mut dyn FnMut(WriteOperation)) -> Result<()> {
         // Replay all segments in order with streaming to avoid loading everything into memory
         for segment in self.segments.iter_mut().chain(std::iter::once(&mut self.active_segment)) {
             if segment.lookups.is_empty() {
@@ -610,7 +607,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(&path)?;
         let mut ops = Vec::new();
 
-        op_logs.replay(|op| {
+        op_logs.replay(&mut |op| {
             ops.push(op);
         })?;
 
@@ -657,7 +654,7 @@ mod tests {
 
         assert!(
             op_logs
-                .replay(|op| {
+                .replay(&mut |op| {
                     ops.push(op);
                 })
                 .is_err()
@@ -775,7 +772,7 @@ mod tests {
 
         // Verify we can read operations from both segments
         let mut ops = Vec::new();
-        op_logs.replay(|op| ops.push(op))?;
+        op_logs.replay(&mut |op| ops.push(op))?;
         assert_eq!(ops.len(), 101);
 
         Ok(())
