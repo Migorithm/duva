@@ -1,6 +1,6 @@
 use duva::{
     ENV, Environment, StartUpFacade,
-    adapters::op_logs::{disk_based::FileOpLogs, memory_based::MemoryOpLogs},
+    adapters::loggers::{disk_based::FileOpLogs, memory_based::MemoryOpLogs},
 };
 
 #[tokio::main]

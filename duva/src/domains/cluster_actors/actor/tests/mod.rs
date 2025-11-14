@@ -8,7 +8,7 @@ use super::*;
 use crate::CacheManager;
 use crate::Replication;
 use crate::ReplicationId;
-use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+use crate::adapters::loggers::memory_based::MemoryOpLogs;
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;

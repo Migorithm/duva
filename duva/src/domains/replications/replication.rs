@@ -415,7 +415,7 @@ impl From<String> for ReplicationRole {
 
 #[test]
 fn test_cloning_replication_state() {
-    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+    use crate::adapters::loggers::memory_based::MemoryOpLogs;
 
     //GIVEN
     let state = ReplicationState {
