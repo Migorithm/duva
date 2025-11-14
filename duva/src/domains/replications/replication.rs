@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 pub(crate) struct Replication<T> {
     pub(crate) self_port: u16,
     election_votes: ElectionVotes,
-    target: T,
+    logger: T,
     state: ReplicationState,
     last_log_term: u64,
     con_idx: Arc<AtomicU64>,
@@ -27,11 +27,11 @@ pub(crate) struct Replication<T> {
 }
 
 impl<T: TWriteAheadLog> Replication<T> {
-    pub(crate) fn new(self_port: u16, target: T, state: ReplicationState) -> Self {
+    pub(crate) fn new(self_port: u16, logger: T, state: ReplicationState) -> Self {
         Self {
             election_votes: ElectionVotes::default(),
             self_port,
-            target,
+            logger,
             last_log_term: state.term,
             con_idx: Arc::new(state.last_log_index.into()),
             state,
@@ -63,7 +63,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
     #[inline]
     pub(crate) fn is_empty_log(&self) -> bool {
-        self.target.is_empty()
+        self.logger.is_empty()
     }
 
     #[inline]
@@ -205,7 +205,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         }
 
         self.update_metadata(&entries);
-        self.target.write_many(entries)?;
+        self.logger.write_many(entries)?;
         Ok(self.last_log_index())
     }
 
@@ -216,7 +216,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         {
             return self.in_mem_buffer.get((at - self.state.last_log_index - 1) as usize).cloned();
         }
-        self.target.read_at(at)
+        self.logger.read_at(at)
     }
 
     #[inline]
@@ -236,7 +236,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.con_idx.store(0, Ordering::Release);
         self.state.last_log_index = 0;
         self.last_log_term = 0;
-        self.target.truncate_after(0);
+        self.logger.truncate_after(0);
         self.set_replid(ReplicationId::Undecided);
         self.in_mem_buffer.clear();
     }
@@ -250,14 +250,14 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.range(start_exclusive, end_inclusive)
     }
     pub(crate) fn truncate_after(&mut self, log_index: u64) {
-        self.target.truncate_after(log_index);
+        self.logger.truncate_after(log_index);
     }
 
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let last_persisted_idx = self.state.last_log_index;
         let end_for_target = end_inclusive.min(last_persisted_idx);
 
-        let mut result = self.target.range(start_exclusive, end_for_target);
+        let mut result = self.logger.range(start_exclusive, end_for_target);
 
         if self.in_mem_buffer.is_empty() || end_inclusive <= last_persisted_idx {
             return result;
@@ -348,7 +348,7 @@ impl<T: TWriteAheadLog> Replication<T> {
 
     #[cfg(test)]
     pub fn set_target(&mut self, target: T) {
-        self.target = target;
+        self.logger = target;
     }
 
     #[cfg(test)]
