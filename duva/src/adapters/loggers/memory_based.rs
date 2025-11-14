@@ -1,9 +1,9 @@
 //! A local write-ahead-lof file (WAL) adapter.
-use crate::domains::replications::WriteOperation;
-use crate::domains::replications::interfaces::TWriteAheadLog;
+use crate::{adapters::loggers::TWriteAheadLog, domains::replications::WriteOperation};
+
 use anyhow::Result;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct MemoryOpLogs {
     pub writer: Vec<WriteOperation>,
 }

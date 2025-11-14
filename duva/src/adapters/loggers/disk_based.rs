@@ -1,8 +1,9 @@
+use crate::adapters::loggers::TWriteAheadLog;
 use crate::domains::query_io::SERDE_CONFIG;
 use crate::domains::query_io::serialized_len_with_bincode;
 use crate::domains::replications::LogEntry;
 use crate::domains::replications::WriteOperation;
-use crate::domains::replications::interfaces::TWriteAheadLog;
+
 use anyhow::Result;
 use bytes::Bytes;
 use std::fs::{File, OpenOptions};
@@ -16,6 +17,7 @@ const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 const WRITE_OP_PREFIX: char = '#';
 
 /// A local write-ahead-log (WAL) file (op_logs) implementation using segmented logs.
+#[derive(Debug)]
 pub struct FileOpLogs {
     path: PathBuf,
     active_segment: Segment,

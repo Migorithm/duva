@@ -8,7 +8,7 @@ use super::*;
 use crate::CacheManager;
 use crate::Replication;
 use crate::ReplicationId;
-use crate::adapters::loggers::memory_based::MemoryOpLogs;
+
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::TSerdeDynamicWrite;
 use crate::domains::caches::actor::CacheCommandSender;
@@ -159,7 +159,7 @@ impl Helper {
         }
     }
 
-    pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
+    pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("duva.tp");
 
@@ -173,13 +173,13 @@ impl Helper {
             last_log_index: 0,
             term: 0,
         };
-        let replication = Replication::new(8080, MemoryOpLogs::default(), state);
+        let replication = Replication::new(8080, OperationLogs::new_inmemory(), state);
         let (_, cache_manager) = Helper::cache_manager();
         ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }
 
     fn cluster_member(
-        actor: &mut ClusterActor<MemoryOpLogs>,
+        actor: &mut ClusterActor,
         fake_bufs: Vec<FakeReadWrite>,
         cluster_sender: ClusterActorSender,
         follower_con_idx: u64,
@@ -232,9 +232,7 @@ impl Helper {
 }
 
 // Helper function to setup blocked cluster actor with pending requests
-pub(crate) async fn setup_blocked_cluster_actor_with_requests(
-    num_requests: usize,
-) -> ClusterActor<MemoryOpLogs> {
+pub(crate) async fn setup_blocked_cluster_actor_with_requests(num_requests: usize) -> ClusterActor {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.block_write_reqs();
 
@@ -263,7 +261,7 @@ pub(crate) async fn assert_expected_queryio(
 }
 
 #[cfg(test)]
-impl<T: TWriteAheadLog> ClusterActor<T> {
+impl ClusterActor {
     pub(crate) fn test_add_peer(
         &mut self,
         port: u16,
@@ -292,7 +290,7 @@ async fn test_hop_count_when_one() {
     let fanout = 2;
 
     // WHEN
-    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 1);
+    let hop_count = ClusterActor::hop_count(fanout, 1);
     // THEN
     assert_eq!(hop_count, 0);
 }
@@ -303,7 +301,7 @@ async fn test_hop_count_when_two() {
     let fanout = 2;
 
     // WHEN
-    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 2);
+    let hop_count = ClusterActor::hop_count(fanout, 2);
     // THEN
     assert_eq!(hop_count, 0);
 }
@@ -314,7 +312,7 @@ async fn test_hop_count_when_three() {
     let fanout = 2;
 
     // WHEN
-    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 3);
+    let hop_count = ClusterActor::hop_count(fanout, 3);
     // THEN
     assert_eq!(hop_count, 1);
 }
@@ -325,7 +323,7 @@ async fn test_hop_count_when_thirty() {
     let fanout = 2;
 
     // WHEN
-    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 30);
+    let hop_count = ClusterActor::hop_count(fanout, 30);
     // THEN
     assert_eq!(hop_count, 4);
 }

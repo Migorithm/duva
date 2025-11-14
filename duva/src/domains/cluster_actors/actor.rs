@@ -6,6 +6,7 @@ use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
 use super::*;
+use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -56,9 +57,9 @@ mod tests;
 const FANOUT: usize = 2;
 
 #[derive(Debug)]
-pub struct ClusterActor<T> {
+pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: Replication<T>,
+    pub(crate) replication: Replication<OperationLogs>,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: ClusterActorReceiver,
     pub(crate) self_handler: ClusterActorSender,
@@ -93,11 +94,11 @@ impl ClusterJoinSync {
     }
 }
 
-impl<T: TWriteAheadLog> ClusterActor<T> {
+impl ClusterActor {
     pub(crate) fn run(
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
-        replication: Replication<T>,
+        replication: Replication<OperationLogs>,
         cache_manager: CacheManager,
     ) -> ClusterActorSender {
         let cluster_actor =
@@ -112,7 +113,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     fn new(
-        init_repl_state: Replication<T>,
+        init_repl_state: Replication<OperationLogs>,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
         cache_manager: CacheManager,

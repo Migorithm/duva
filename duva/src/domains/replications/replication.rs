@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::cluster_actors::ConnectionOffset;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
@@ -26,8 +27,8 @@ pub(crate) struct Replication<T> {
     in_mem_buffer: Vec<WriteOperation>,
 }
 
-impl<T: TWriteAheadLog> Replication<T> {
-    pub(crate) fn new(self_port: u16, logger: T, state: ReplicationState) -> Self {
+impl Replication<OperationLogs> {
+    pub(crate) fn new(self_port: u16, logger: OperationLogs, state: ReplicationState) -> Self {
         Self {
             election_votes: ElectionVotes::default(),
             self_port,
@@ -347,7 +348,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     #[cfg(test)]
-    pub fn set_target(&mut self, target: T) {
+    pub fn set_target(&mut self, target: OperationLogs) {
         self.logger = target;
     }
 
@@ -415,8 +416,6 @@ impl From<String> for ReplicationRole {
 
 #[test]
 fn test_cloning_replication_state() {
-    use crate::adapters::loggers::memory_based::MemoryOpLogs;
-
     //GIVEN
     let state = ReplicationState {
         node_id: PeerIdentifier::new("127.0.0.1", 1231),
@@ -425,7 +424,7 @@ fn test_cloning_replication_state() {
         last_log_index: 0,
         term: 0,
     };
-    let target = MemoryOpLogs { writer: vec![] };
+    let target = OperationLogs::new_inmemory();
     let replication_state = Replication::new(1231, target, state);
     let cloned = replication_state.con_idx.clone();
 
