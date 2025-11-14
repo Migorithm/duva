@@ -11,12 +11,14 @@ pub enum OperationLogs {
 }
 
 impl OperationLogs {
-    pub fn new_inmemory() -> Self {
-        Self::Memory(Default::default())
+    pub fn new(append_only: bool) -> Self {
+        if append_only {
+            Self::OnDisk(FileOpLogs::new(ENV.dir.clone()).unwrap())
+        } else {
+            Self::Memory(Default::default())
+        }
     }
-    pub fn new_ondisk() -> Self {
-        Self::OnDisk(FileOpLogs::new(ENV.dir.clone()).unwrap())
-    }
+
     fn get_mut(&mut self) -> &mut dyn TWriteAheadLog {
         match self {
             OperationLogs::Memory(m) => m as &mut dyn TWriteAheadLog,

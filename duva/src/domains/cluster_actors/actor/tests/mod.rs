@@ -174,7 +174,7 @@ impl Helper {
             last_log_index: 0,
             term: 0,
         };
-        let replication = Replication::new(8080, OperationLogs::new_inmemory(), state);
+        let replication = Replication::new(8080, OperationLogs::new(false), state);
         let (_, cache_manager) = Helper::cache_manager();
         ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }

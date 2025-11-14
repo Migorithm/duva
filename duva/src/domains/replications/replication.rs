@@ -424,7 +424,7 @@ fn test_cloning_replication_state() {
         last_log_index: 0,
         term: 0,
     };
-    let target = OperationLogs::new_inmemory();
+    let target = OperationLogs::new(false);
     let replication_state = Replication::new(1231, target, state);
     let cloned = replication_state.con_idx.clone();
 

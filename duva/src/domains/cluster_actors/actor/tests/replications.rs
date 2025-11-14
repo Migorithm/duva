@@ -18,7 +18,7 @@ fn logger_create_entries_from_lowest() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    let mut repl_state = Replication::new(8080, OperationLogs::new_inmemory(), state);
+    let mut repl_state = Replication::new(8080, OperationLogs::new(false), state);
     repl_state.persist_many(test_logs.clone()).unwrap();
 
     // WHEN
@@ -354,7 +354,7 @@ async fn follower_truncates_log_on_term_mismatch() {
         last_log_index: 3,
         term: 1,
     };
-    let mut inmemory = OperationLogs::new_inmemory();
+    let mut inmemory = OperationLogs::new(false);
     //prefill
 
     inmemory
