@@ -5,7 +5,6 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
 
 use crate::domains::peers::command::PeerMessage;
-use crate::domains::replications::TWriteAheadLog;
 
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
@@ -13,7 +12,7 @@ use tokio::net::TcpStream;
 use tracing::warn;
 use tracing::{instrument, trace};
 
-impl<T: TWriteAheadLog> ClusterActor<T> {
+impl ClusterActor {
     pub(super) async fn handle(mut self) -> anyhow::Result<Self> {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
