@@ -137,7 +137,6 @@ where
                     slice = &slice[size..];
                 },
                 Err(_) => {
-                    // Stop if we can't decode anymore (partial packet)
                     break;
                 },
             }

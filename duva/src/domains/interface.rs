@@ -8,7 +8,6 @@ use crate::domains::{
     },
 };
 use bincode::BorrowDecode;
-use bincode::config::Configuration;
 use bytes::BytesMut;
 
 #[async_trait::async_trait]
