@@ -7,6 +7,8 @@ use crate::domains::{
         connections::connection_types::{ReadConnected, WriteConnected},
     },
 };
+use bincode::BorrowDecode;
+use bincode::config::Configuration;
 use bytes::BytesMut;
 
 #[async_trait::async_trait]
@@ -33,14 +35,18 @@ pub trait TSerdeWrite {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
+#[async_trait::async_trait]
 pub trait TSerdeRead {
-    fn deserialized_read<U: bincode::Decode<()>>(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
+    async fn deserialized_read<'a, U>(&mut self, buffer: &'a mut BytesMut) -> Result<U, IoError>
+    where
+        U: BorrowDecode<'a, ()> + Send; // 'U' lives as long as 'buffer'
 
-    fn deserialized_reads<U: bincode::Decode<()>>(
+    async fn deserialized_reads<'a, U>(
         &mut self,
-    ) -> impl std::future::Future<Output = Result<Vec<U>, IoError>> + Send;
+        buffer: &'a mut BytesMut,
+    ) -> Result<Vec<U>, IoError>
+    where
+        U: BorrowDecode<'a, ()> + Send;
 }
 
 pub(crate) trait TAsyncReadWrite {

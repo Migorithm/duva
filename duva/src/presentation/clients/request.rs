@@ -12,19 +12,19 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::BorrowDecode)]
 pub struct SessionRequest {
     pub conn_offset: u64,
     pub action: ClientAction,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::BorrowDecode)]
 pub enum ClientAction {
     NonMutating(NonMutatingAction),
     Mutating(LogEntry),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::BorrowDecode)]
 pub enum NonMutatingAction {
     Ping,
     Echo(String),
@@ -306,7 +306,7 @@ pub struct ClientRequest {
     pub(crate) conn_id: String,
 }
 
-#[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
+#[derive(Clone, Debug, bincode::BorrowDecode, bincode::Encode)]
 pub enum ServerResponse {
     WriteRes { res: QueryIO, log_index: u64, conn_offset: u64 },
     ReadRes { res: QueryIO, conn_offset: u64 },

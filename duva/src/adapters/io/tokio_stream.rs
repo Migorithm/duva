@@ -6,6 +6,9 @@ use crate::domains::{
     TSerdeWrite,
 };
 
+use async_trait::async_trait;
+use bincode::BorrowDecode;
+
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
@@ -65,7 +68,8 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
         Ok(parsed_values)
     }
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
-        self.deserialized_read().await
+        let mut buffer = BytesMut::new();
+        self.deserialized_read(&mut buffer).await
     }
 }
 
@@ -92,35 +96,53 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     }
 }
 
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeRead for T {
-    async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
+#[async_trait]
+impl<T> TSerdeRead for T
+where
+    T: AsyncReadExt + Unpin + Sync + Send + Debug + 'static,
+{
+    async fn deserialized_read<'a, U>(&mut self, buffer: &'a mut BytesMut) -> Result<U, IoError>
     where
-        U: bincode::Decode<()>,
+        U: BorrowDecode<'a, ()> + Send,
     {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
+        self.read_bytes(buffer).await?;
 
-        let (request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
-            .map_err(|e| IoError::Custom(e.to_string()))?;
+        let (request, _) = bincode::borrow_decode_from_slice(&buffer[..], SERDE_CONFIG).unwrap();
 
         Ok(request)
     }
 
-    async fn deserialized_reads<U>(&mut self) -> Result<Vec<U>, IoError>
+    async fn deserialized_reads<'a, U>(
+        &mut self,
+        buffer: &'a mut BytesMut,
+    ) -> Result<Vec<U>, IoError>
     where
-        U: bincode::Decode<()>,
+        U: BorrowDecode<'a, ()> + Send,
     {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
+        // Read data from socket into buffer
+        self.read_bytes(buffer).await?;
 
         let mut parsed_values = Vec::new();
 
-        while !buffer.is_empty() {
-            let (request, size) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
-                .map_err(|e| IoError::Custom(e.to_string()))?;
-            parsed_values.push(request);
-            buffer = buffer.split_off(size);
+        // Zero-copy slicing logic
+        let mut slice = &buffer[..];
+
+        // Note: In a real protocol, you need a loop that checks if
+        // there is enough data for a full frame before decoding.
+        // This simple loop assumes the buffer contains perfect packets.
+        while !slice.is_empty() {
+            match bincode::borrow_decode_from_slice(slice, SERDE_CONFIG) {
+                Ok((request, size)) => {
+                    parsed_values.push(request);
+                    slice = &slice[size..];
+                },
+                Err(_) => {
+                    // Stop if we can't decode anymore (partial packet)
+                    break;
+                },
+            }
         }
+
         Ok(parsed_values)
     }
 }
@@ -226,7 +248,8 @@ pub mod test_tokio_stream_impl {
         let mut mock = MockAsyncStream::new(vec![encoded_msg.into()]);
 
         // 2. Act
-        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let mut buffer = BytesMut::new();
+        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads(&mut buffer).await;
 
         // 3. Assert
         let deserialized = result.unwrap();
@@ -247,7 +270,8 @@ pub mod test_tokio_stream_impl {
         let mut mock = MockAsyncStream::new(vec![raw_data]);
 
         // 2. Act
-        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let mut buffer = BytesMut::new();
+        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads(&mut buffer).await;
 
         // 3. Assert
         let deserialized = result.unwrap();

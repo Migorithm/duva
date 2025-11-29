@@ -1,8 +1,8 @@
 use crate::broker::BrokerMessage;
 use duva::domains::TSerdeRead;
 
-use duva::prelude::ReplicationId;
 use duva::prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot};
+use duva::prelude::{BytesMut, ReplicationId};
 
 pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
 impl ServerStreamReader {
@@ -15,9 +15,9 @@ impl ServerStreamReader {
 
         let future = async move {
             let controller_sender = controller_sender.clone();
-
             loop {
-                match self.0.deserialized_reads().await {
+                let mut buffer = BytesMut::new();
+                match self.0.deserialized_reads(&mut buffer).await {
                     Ok(server_responses) => {
                         for res in server_responses {
                             if controller_sender
