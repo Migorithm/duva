@@ -12,6 +12,7 @@ use crate::domains::replications::*;
 use crate::domains::{TSerdeRead, TSerdeWrite};
 use crate::signals::SignalHandler;
 use anyhow::{Context, Result};
+use bytes::BytesMut;
 pub use config::Environment;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
@@ -235,7 +236,8 @@ impl StartUpFacade {
     async fn handle_client_stream(&self, stream: tokio::net::TcpStream) -> anyhow::Result<()> {
         let (mut read_half, write_half) = stream.into_split();
         let mut writer = ClientStreamWriter(write_half);
-        let request = read_half.deserialized_read().await?;
+        let mut buffer = BytesMut::new();
+        let request = read_half.deserialized_read(&mut buffer).await?;
 
         match request {
             ConnectionRequests::Discovery => {

@@ -11,6 +11,7 @@ use crate::prelude::ConnectionResponse;
 use crate::prelude::ConnectionResponses;
 use crate::presentation::clients::request::{ClientAction, ServerResponse, SessionRequest};
 
+use bytes::BytesMut;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
@@ -31,7 +32,8 @@ impl ClientStreamReader {
     ) {
         loop {
             // * extract queries
-            let query_ios = self.r.deserialized_reads::<SessionRequest>().await;
+            let mut buffer = BytesMut::new();
+            let query_ios = self.r.deserialized_reads::<SessionRequest>(&mut buffer).await;
             if let Err(err) = query_ios {
                 info!("{}", err);
                 if err.should_break() {

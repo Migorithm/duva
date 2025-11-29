@@ -14,7 +14,8 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{
-    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses, ReplicationId,
+    BytesMut, ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses,
+    ReplicationId,
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};
@@ -115,8 +116,10 @@ impl Broker {
         conn_req: ConnectionRequest,
     ) -> anyhow::Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse)> {
         stream.serialized_write(ConnectionRequests::Authenticate(conn_req)).await?; // client_id not exist
-
-        let ConnectionResponses::Authenticated(response) = stream.deserialized_read().await? else {
+        let mut buffer = BytesMut::new();
+        let ConnectionResponses::Authenticated(response) =
+            stream.deserialized_read(&mut buffer).await?
+        else {
             bail!("Authentication failed");
         };
 
@@ -161,7 +164,10 @@ impl Broker {
     async fn discover_leader_from(&mut self, follower: PeerIdentifier) -> anyhow::Result<()> {
         let mut stream = TcpStream::connect(follower.as_str()).await?;
         stream.serialized_write(ConnectionRequests::Discovery).await?;
-        let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await? else {
+        let mut buffer = BytesMut::new();
+        let ConnectionResponses::Discovery { leader_id } =
+            stream.deserialized_read(&mut buffer).await?
+        else {
             bail!("Discovery failed!");
         };
 

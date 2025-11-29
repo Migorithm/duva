@@ -19,18 +19,18 @@ impl ConnectionRequest {
         Ok((client_id.to_string(), self.request_id))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::BorrowDecode, bincode::Encode)]
 pub enum ConnectionRequests {
     Discovery,
     Authenticate(ConnectionRequest),
 }
-#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone, bincode::BorrowDecode, bincode::Encode)]
 pub enum ConnectionResponses {
     Discovery { leader_id: PeerIdentifier },
     Authenticated(ConnectionResponse),
 }
 
-#[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone, Default, bincode::BorrowDecode, bincode::Encode)]
 pub struct ConnectionResponse {
     pub client_id: String,
     pub request_id: u64,
