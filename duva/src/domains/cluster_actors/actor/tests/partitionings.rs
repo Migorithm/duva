@@ -267,12 +267,9 @@ async fn test_send_migrate_and_wait_happypath() {
         }
     });
 
-    ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
-        batch,
-        cluster_actor.self_handler.clone(),
-    )
-    .await
-    .unwrap();
+    ClusterActor::schedule_migration_in_batch(batch, cluster_actor.self_handler.clone())
+        .await
+        .unwrap();
 
     // THEN
     task.await.unwrap();
@@ -300,8 +297,7 @@ async fn test_send_migrate_and_wait_callback_error() {
         }
     });
 
-    let result =
-        ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(batch, fake_handler).await;
+    let result = ClusterActor::schedule_migration_in_batch(batch, fake_handler).await;
 
     // THEN - should return the error
     assert!(result.is_err());

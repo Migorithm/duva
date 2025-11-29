@@ -1,3 +1,5 @@
+use crate::adapters::loggers::op_logs::OperationLogs;
+
 use super::*;
 
 #[test]
@@ -16,7 +18,7 @@ fn logger_create_entries_from_lowest() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    let mut repl_state = Replication::new(8080, MemoryOpLogs::default(), state);
+    let mut repl_state = Replication::new(8080, OperationLogs::new(false), state);
     repl_state.persist_many(test_logs.clone()).unwrap();
 
     // WHEN
@@ -352,12 +354,12 @@ async fn follower_truncates_log_on_term_mismatch() {
         last_log_index: 3,
         term: 1,
     };
-    let mut inmemory = MemoryOpLogs::default();
+    let mut inmemory = OperationLogs::new(false);
     //prefill
 
     inmemory
-        .writer
-        .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
+        .write_many(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")])
+        .unwrap();
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.replication.set_target(inmemory);

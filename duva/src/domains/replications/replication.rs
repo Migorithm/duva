@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::cluster_actors::ConnectionOffset;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
@@ -15,10 +16,10 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
-pub(crate) struct Replication<T> {
+pub(crate) struct Replication {
     pub(crate) self_port: u16,
     election_votes: ElectionVotes,
-    target: T,
+    logger: OperationLogs,
     state: ReplicationState,
     last_log_term: u64,
     con_idx: Arc<AtomicU64>,
@@ -26,12 +27,12 @@ pub(crate) struct Replication<T> {
     in_mem_buffer: Vec<WriteOperation>,
 }
 
-impl<T: TWriteAheadLog> Replication<T> {
-    pub(crate) fn new(self_port: u16, target: T, state: ReplicationState) -> Self {
+impl Replication {
+    pub(crate) fn new(self_port: u16, logger: OperationLogs, state: ReplicationState) -> Self {
         Self {
             election_votes: ElectionVotes::default(),
             self_port,
-            target,
+            logger,
             last_log_term: state.term,
             con_idx: Arc::new(state.last_log_index.into()),
             state,
@@ -63,7 +64,7 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
     #[inline]
     pub(crate) fn is_empty_log(&self) -> bool {
-        self.target.is_empty()
+        self.logger.is_empty()
     }
 
     #[inline]
@@ -205,7 +206,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         }
 
         self.update_metadata(&entries);
-        self.target.write_many(entries)?;
+        self.logger.write_many(entries)?;
         Ok(self.last_log_index())
     }
 
@@ -216,7 +217,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         {
             return self.in_mem_buffer.get((at - self.state.last_log_index - 1) as usize).cloned();
         }
-        self.target.read_at(at)
+        self.logger.read_at(at)
     }
 
     #[inline]
@@ -236,7 +237,7 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.con_idx.store(0, Ordering::Release);
         self.state.last_log_index = 0;
         self.last_log_term = 0;
-        self.target.truncate_after(0);
+        self.logger.truncate_after(0);
         self.set_replid(ReplicationId::Undecided);
         self.in_mem_buffer.clear();
     }
@@ -250,14 +251,14 @@ impl<T: TWriteAheadLog> Replication<T> {
         self.range(start_exclusive, end_inclusive)
     }
     pub(crate) fn truncate_after(&mut self, log_index: u64) {
-        self.target.truncate_after(log_index);
+        self.logger.truncate_after(log_index);
     }
 
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let last_persisted_idx = self.state.last_log_index;
         let end_for_target = end_inclusive.min(last_persisted_idx);
 
-        let mut result = self.target.range(start_exclusive, end_for_target);
+        let mut result = self.logger.range(start_exclusive, end_for_target);
 
         if self.in_mem_buffer.is_empty() || end_inclusive <= last_persisted_idx {
             return result;
@@ -347,8 +348,8 @@ impl<T: TWriteAheadLog> Replication<T> {
     }
 
     #[cfg(test)]
-    pub fn set_target(&mut self, target: T) {
-        self.target = target;
+    pub fn set_target(&mut self, target: OperationLogs) {
+        self.logger = target;
     }
 
     #[cfg(test)]
@@ -415,8 +416,6 @@ impl From<String> for ReplicationRole {
 
 #[test]
 fn test_cloning_replication_state() {
-    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
-
     //GIVEN
     let state = ReplicationState {
         node_id: PeerIdentifier::new("127.0.0.1", 1231),
@@ -425,7 +424,7 @@ fn test_cloning_replication_state() {
         last_log_index: 0,
         term: 0,
     };
-    let target = MemoryOpLogs { writer: vec![] };
+    let target = OperationLogs::new(false);
     let replication_state = Replication::new(1231, target, state);
     let cloned = replication_state.con_idx.clone();
 

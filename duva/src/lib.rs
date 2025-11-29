@@ -5,6 +5,7 @@ pub mod macros;
 pub mod presentation;
 mod signals;
 mod types;
+use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
 use crate::domains::replications::*;
@@ -98,7 +99,7 @@ impl StartUpFacade {
         Snapshot::default_with_repl_id(repl_id_from_topp)
     }
 
-    pub fn new(wal: impl TWriteAheadLog, writer: File) -> Self {
+    pub fn new(wal: OperationLogs, writer: File) -> Self {
         let snapshot_info = Self::initialize_with_snapshot();
         let (replid, con_idx) = snapshot_info.extract_replication_info();
 

@@ -1,11 +1,11 @@
 //! A local write-ahead-lof file (WAL) adapter.
-use crate::domains::replications::WriteOperation;
-use crate::domains::replications::interfaces::TWriteAheadLog;
+use crate::{adapters::loggers::TWriteAheadLog, domains::replications::WriteOperation};
+
 use anyhow::Result;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct MemoryOpLogs {
-    pub writer: Vec<WriteOperation>,
+    writer: Vec<WriteOperation>,
 }
 
 impl TWriteAheadLog for MemoryOpLogs {
@@ -14,10 +14,7 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn replay<F>(&mut self, mut f: F) -> Result<()>
-    where
-        F: FnMut(WriteOperation) + Send,
-    {
+    fn replay(&mut self, f: &mut dyn FnMut(WriteOperation)) -> Result<()> {
         for op in self.writer.iter() {
             f(op.clone());
         }
