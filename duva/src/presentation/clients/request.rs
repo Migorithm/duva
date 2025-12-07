@@ -299,13 +299,6 @@ pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
     Ok((Utc::now() + chrono::Duration::milliseconds(expiry.parse::<i64>()?)).timestamp_millis())
 }
 
-#[derive(Clone, Debug)]
-pub struct ClientRequest {
-    pub(crate) action: ClientAction,
-    pub(crate) conn_offset: u64,
-    pub(crate) conn_id: String,
-}
-
 #[derive(Clone, Debug, bincode::Decode, bincode::Encode)]
 pub enum ServerResponse {
     WriteRes { res: QueryIO, log_index: u64, conn_offset: u64 },

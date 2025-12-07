@@ -1,4 +1,4 @@
-use super::{ClientController, request::ClientRequest};
+use super::ClientController;
 use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
@@ -31,8 +31,8 @@ impl ClientStreamReader {
     ) {
         loop {
             // * extract queries
-            let query_ios = self.r.deserialized_reads::<SessionRequest>().await;
-            if let Err(err) = query_ios {
+            let query_io = self.r.deserialized_read::<SessionRequest>().await;
+            if let Err(err) = query_io {
                 info!("{}", err);
                 if err.should_break() {
                     return;
@@ -44,42 +44,24 @@ impl ClientStreamReader {
             }
 
             // * map client request
-            let requests = query_ios.unwrap().into_iter().map(|query_io| {
-                Ok(ClientRequest {
-                    action: query_io.action,
-                    conn_offset: query_io.conn_offset,
-                    conn_id: self.conn_id.clone(),
-                })
+            let req = query_io.unwrap();
+
+            // * processing part
+            let result = match req.action {
+                ClientAction::NonMutating(non_mutating_action) => {
+                    handler.handle_non_mutating(non_mutating_action, req.conn_offset).await
+                },
+                ClientAction::Mutating(log_entry) => {
+                    handler.handle_mutating(req.conn_offset, self.conn_id.clone(), log_entry).await
+                },
+            };
+
+            let response = result.unwrap_or_else(|e| {
+                error!("failure on state change / query {e}");
+                ServerResponse::Err { reason: e.to_string(), conn_offset: req.conn_offset }
             });
-
-            for req in requests {
-                match req {
-                    Err(err) => {
-                        let _ = stream_writer_sender
-                            .send(ServerResponse::Err { reason: err, conn_offset: 0 })
-                            .await;
-                        break;
-                    },
-                    Ok(ClientRequest { action, conn_offset, conn_id }) => {
-                        // * processing part
-                        let result = match action {
-                            ClientAction::NonMutating(non_mutating_action) => {
-                                handler.handle_non_mutating(non_mutating_action, conn_offset).await
-                            },
-                            ClientAction::Mutating(log_entry) => {
-                                handler.handle_mutating(conn_offset, conn_id, log_entry).await
-                            },
-                        };
-
-                        let response = result.unwrap_or_else(|e| {
-                            error!("failure on state change / query {e}");
-                            ServerResponse::Err { reason: e.to_string(), conn_offset }
-                        });
-                        if stream_writer_sender.send(response).await.is_err() {
-                            return;
-                        }
-                    },
-                }
+            if stream_writer_sender.send(response).await.is_err() {
+                return;
             }
         }
     }

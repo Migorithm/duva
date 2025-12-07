@@ -47,10 +47,10 @@ impl FakeReadWrite {
 
 #[async_trait::async_trait]
 impl TSerdeDynamicRead for FakeReadWrite {
-    async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError> {
+    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
         let guard = self.0.lock().await;
-        let values = guard.clone().drain(..).collect();
-        Ok(values)
+        let values: Vec<_> = guard.clone().drain(..).collect();
+        Ok(values[values.len() - 1].clone())
     }
 
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {

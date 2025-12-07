@@ -7,6 +7,8 @@ pub struct ServerStreamWriter(pub(crate) OwnedWriteHalf);
 
 impl ServerStreamWriter {
     pub async fn write_all(&mut self, buf: &[u8]) -> anyhow::Result<()> {
+        let len = buf.len() as u32;
+        self.0.write_u32(len).await.context("Failed to write length prefix")?;
         self.0.write_all(buf).await.context("Failed to send command")?;
         self.0.flush().await.context("Failed to flush stream")?;
         Ok(())

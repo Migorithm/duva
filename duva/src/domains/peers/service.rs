@@ -39,15 +39,17 @@ impl PeerListener {
     }
 
     async fn start(&mut self) {
-        while let Ok(cmds) = self.read_command().await {
-            let _ = self
-                .cluster_handler
-                .send(PeerCommand { from: self.peer_id.clone(), msg: cmds })
-                .await;
+        loop {
+            if let Ok(msg) = self.read_command().await {
+                let _ = self
+                    .cluster_handler
+                    .send(PeerCommand { from: self.peer_id.clone(), msg })
+                    .await;
+            }
         }
     }
 
-    async fn read_command(&mut self) -> anyhow::Result<Vec<PeerMessage>> {
+    async fn read_command(&mut self) -> anyhow::Result<PeerMessage> {
         Ok(self.read_connected.receive_peer_msgs().await?)
     }
 }

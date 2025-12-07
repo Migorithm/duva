@@ -7,16 +7,16 @@ use crate::domains::{
         connections::connection_types::{ReadConnected, WriteConnected},
     },
 };
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
-#[async_trait::async_trait]
 pub trait TReadBytes: Send + Sync + Debug + 'static {
-    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
+    fn read_bytes(&mut self)
+    -> impl std::future::Future<Output = Result<BytesMut, IoError>> + Send;
 }
 
 #[async_trait::async_trait]
 pub(crate) trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
-    async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError>;
+    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError>;
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError>;
 }
 
@@ -37,10 +37,6 @@ pub trait TSerdeRead {
     fn deserialized_read<U: bincode::Decode<()>>(
         &mut self,
     ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
-
-    fn deserialized_reads<U: bincode::Decode<()>>(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<Vec<U>, IoError>> + Send;
 }
 
 pub(crate) trait TAsyncReadWrite {
