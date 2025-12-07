@@ -12,7 +12,7 @@ use std::collections::{HashMap, VecDeque};
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PeerCommand {
     pub(crate) from: PeerIdentifier,
-    pub(crate) msg: Vec<PeerMessage>,
+    pub(crate) msg: PeerMessage,
 }
 
 impl From<PeerCommand> for ClusterCommand {

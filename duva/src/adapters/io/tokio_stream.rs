@@ -54,17 +54,14 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
 
 #[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeDynamicRead for T {
-    async fn receive_peer_msgs(&mut self) -> Result<Vec<PeerMessage>, IoError> {
+    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
         let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
         self.read_bytes(&mut buffer).await?;
-        let mut parsed_values = Vec::new();
-        while !buffer.is_empty() {
-            let (request, size) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
-                .map_err(|e| IoError::Custom(e.to_string()))?;
-            parsed_values.push(request);
-            buffer = buffer.split_off(size);
-        }
-        Ok(parsed_values)
+
+        let (peer_message, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
+            .map_err(|e| IoError::Custom(e.to_string()))?;
+
+        Ok(peer_message)
     }
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
         self.deserialized_read().await

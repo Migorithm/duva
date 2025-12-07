@@ -1,4 +1,4 @@
-use super::{ClientController, request::ClientRequest};
+use super::ClientController;
 use crate::domains::TSerdeRead;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
