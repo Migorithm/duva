@@ -117,24 +117,6 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
 
         Ok(request)
     }
-
-    async fn deserialized_reads<U>(&mut self) -> Result<Vec<U>, IoError>
-    where
-        U: bincode::Decode<()>,
-    {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
-
-        let mut parsed_values = Vec::new();
-
-        while !buffer.is_empty() {
-            let (request, size) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
-                .map_err(|e| IoError::Custom(e.to_string()))?;
-            parsed_values.push(request);
-            buffer = buffer.split_off(size);
-        }
-        Ok(parsed_values)
-    }
 }
 
 impl TAsyncReadWrite for TcpStream {
@@ -236,12 +218,12 @@ pub mod test_tokio_stream_impl {
         let mut mock = MockAsyncStream::new(vec![framed_msg]);
 
         // 2. Act
-        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let result: Result<TestMessage, IoError> = mock.deserialized_read().await;
 
         // 3. Assert
         let deserialized = result.unwrap();
-        assert_eq!(deserialized.len(), 1);
-        assert_eq!(deserialized[0], msg);
+
+        assert_eq!(deserialized, msg);
     }
 
     #[tokio::test]
@@ -266,19 +248,19 @@ pub mod test_tokio_stream_impl {
         let mut mock = MockAsyncStream::new(vec![combined_data]);
 
         // 2. Act: read first message
-        let result1: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let result1: Result<TestMessage, IoError> = mock.deserialized_read().await;
 
         // 3. Assert: first message is correct
         let deserialized1 = result1.unwrap();
-        assert_eq!(deserialized1.len(), 1);
-        assert_eq!(deserialized1[0], message_one);
+
+        assert_eq!(deserialized1, message_one);
 
         // 4. Act: read second message
-        let result2: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let result2: Result<TestMessage, IoError> = mock.deserialized_read().await;
 
         // 5. Assert: second message is correct
         let deserialized2 = result2.unwrap();
-        assert_eq!(deserialized2.len(), 1);
-        assert_eq!(deserialized2[0], message_two);
+
+        assert_eq!(deserialized2, message_two);
     }
 }
