@@ -7,13 +7,11 @@ use crate::domains::{
         connections::connection_types::{ReadConnected, WriteConnected},
     },
 };
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 pub trait TReadBytes: Send + Sync + Debug + 'static {
-    fn read_bytes(
-        &mut self,
-        buf: &mut BytesMut,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+    fn read_bytes(&mut self)
+    -> impl std::future::Future<Output = Result<BytesMut, IoError>> + Send;
 }
 
 #[async_trait::async_trait]

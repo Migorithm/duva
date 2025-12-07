@@ -6,13 +6,12 @@ use crate::domains::{
     TSerdeWrite,
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use std::fmt::Debug;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-const INITIAL_CAPACITY: usize = 1024;
 // Arbitrary limit to prevent memory exhaustion.
 const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
@@ -21,7 +20,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
     // The protocol is:
     // - 4 bytes (u32, big-endian) for the message length.
     // - N bytes for the message body, where N is the length read.
-    async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), IoError> {
+    async fn read_bytes(&mut self) -> Result<BytesMut, IoError> {
         let len = self.read_u32().await.map_err(|e| {
             if e.kind() == ErrorKind::UnexpectedEof {
                 IoError::ConnectionAborted
@@ -36,28 +35,29 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
             )));
         }
 
-        buffer.reserve(len);
-        let mut body_buffer = vec![0u8; len];
-        if let Err(e) = self.read_exact(&mut body_buffer).await {
-            return if e.kind() == ErrorKind::UnexpectedEof {
-                Err(IoError::ConnectionAborted)
-            } else {
-                Err(io_error_from_kind(e.kind()))
-            };
+        // Reserve space in the buffer (Allocates, but doesn't write zeros yet)
+        let mut buffer = BytesMut::with_capacity(len);
+
+        // Unsafe-ish trick made safe by Tokio
+        // Tokio's read_buf can read directly into uninitialized memory
+        // preventing the "Double Write".
+        while buffer.len() < len {
+            let n = self.read_buf(&mut buffer).await.map_err(|e| io_error_from_kind(e.kind()))?;
+            if n == 0 {
+                return Err(IoError::ConnectionAborted);
+            }
         }
 
-        buffer.extend_from_slice(&body_buffer);
-        Ok(())
+        Ok(buffer)
     }
 }
 
 #[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeDynamicRead for T {
     async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
+        let body = self.read_bytes().await?;
 
-        let (peer_message, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
+        let (peer_message, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
 
         Ok(peer_message)
@@ -105,10 +105,9 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerd
     where
         U: bincode::Decode<()>,
     {
-        let mut buffer = BytesMut::with_capacity(INITIAL_CAPACITY);
-        self.read_bytes(&mut buffer).await?;
+        let body = self.read_bytes().await?;
 
-        let (request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
+        let (request, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
 
         Ok(request)
