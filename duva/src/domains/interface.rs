@@ -9,9 +9,11 @@ use crate::domains::{
 };
 use bytes::BytesMut;
 
-#[async_trait::async_trait]
 pub trait TReadBytes: Send + Sync + Debug + 'static {
-    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
+    fn read_bytes(
+        &mut self,
+        buf: &mut BytesMut,
+    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
 #[async_trait::async_trait]

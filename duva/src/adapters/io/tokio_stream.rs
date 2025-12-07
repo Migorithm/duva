@@ -16,7 +16,6 @@ const INITIAL_CAPACITY: usize = 1024;
 // Arbitrary limit to prevent memory exhaustion.
 const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
-#[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TReadBytes for T {
     // Reads a length-prefixed message from the stream.
     // The protocol is:
