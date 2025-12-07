@@ -12,40 +12,42 @@ use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-const BUFFER_SIZE: usize = 512;
 const INITIAL_CAPACITY: usize = 1024;
+// Arbitrary limit to prevent memory exhaustion.
+const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
 #[async_trait::async_trait]
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TReadBytes for T {
-    // TCP doesn't inherently delimit messages.
-    // The data arrives in a continuous stream of bytes. And
-    // we might not receive all the data in one go.
-    // So, we need to read the data in chunks until we have received all the data for the message.
+    // Reads a length-prefixed message from the stream.
+    // The protocol is:
+    // - 4 bytes (u32, big-endian) for the message length.
+    // - N bytes for the message body, where N is the length read.
     async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), IoError> {
-        let mut temp_buffer = [0u8; BUFFER_SIZE];
-        loop {
-            let bytes_read =
-                self.read(&mut temp_buffer).await.map_err(|err| io_error_from_kind(err.kind()))?;
-
-            if bytes_read == 0 {
-                // read 0 bytes AND buffer is empty - connection closed
-                if buffer.is_empty() {
-                    return Err(IoError::ConnectionAborted);
-                }
-                // read 0 bytes but buffer is not empty - end of message
-                return Ok(());
+        let len = self.read_u32().await.map_err(|e| {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                IoError::ConnectionAborted
+            } else {
+                io_error_from_kind(e.kind())
             }
+        })? as usize;
 
-            // Extend the buffer with the newly read data
-            buffer.extend_from_slice(&temp_buffer[..bytes_read]);
-
-            // If fewer bytes than the buffer size are read, it suggests that
-            // - The sender has sent all the data currently available for this message.
-            // - You have reached the end of the message.
-            if bytes_read < temp_buffer.len() {
-                break;
-            }
+        if len > MAX_MSG_SIZE {
+            return Err(IoError::Custom(format!(
+                "Incoming message too large: {len} bytes, max is {MAX_MSG_SIZE}"
+            )));
         }
+
+        buffer.reserve(len);
+        let mut body_buffer = vec![0u8; len];
+        if let Err(e) = self.read_exact(&mut body_buffer).await {
+            return if e.kind() == ErrorKind::UnexpectedEof {
+                Err(IoError::ConnectionAborted)
+            } else {
+                Err(io_error_from_kind(e.kind()))
+            };
+        }
+
+        buffer.extend_from_slice(&body_buffer);
         Ok(())
     }
 }
@@ -73,7 +75,12 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
-        self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
+
+        let len = encoded.len() as u32;
+        self.write_u32(len).await.map_err(|e| io_error_from_kind(e.kind()))?;
+
+        self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))?;
+        self.flush().await.map_err(|e| io_error_from_kind(e.kind()))
     }
 }
 
@@ -84,7 +91,12 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(msg, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
-        self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))
+
+        let len = encoded.len() as u32;
+        self.write_u32(len).await.map_err(|e| io_error_from_kind(e.kind()))?;
+
+        self.write_all(&encoded).await.map_err(|e| io_error_from_kind(e.kind()))?;
+        self.flush().await.map_err(|e| io_error_from_kind(e.kind()))
     }
 
     async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError> {
@@ -164,17 +176,17 @@ pub mod test_tokio_stream_impl {
         data: String,
     }
 
-    /// A mock that implements AsyncRead for testing
+    /// A mock that implements AsyncRead for testing by simulating a byte stream.
     #[derive(Debug)]
     struct MockAsyncStream {
-        chunks: Vec<Vec<u8>>,
-        current_chunk: usize,
+        data: Vec<u8>,
+        pos: usize,
     }
+
     impl MockAsyncStream {
-        /// Creates a new mock stream from a vector of byte chunks.
-        /// Each inner Vec<u8> represents a single return from the `read` method.
+        /// Creates a new mock stream from a vector of byte chunks, which are flattened.
         fn new(chunks: Vec<Vec<u8>>) -> Self {
-            MockAsyncStream { chunks, current_chunk: 0 }
+            MockAsyncStream { data: chunks.into_iter().flatten().collect(), pos: 0 }
         }
     }
 
@@ -187,21 +199,16 @@ pub mod test_tokio_stream_impl {
         ) -> std::task::Poll<std::io::Result<()>> {
             let self_mut = self.get_mut();
 
-            if self_mut.current_chunk >= self_mut.chunks.len() {
-                // All chunks have been read, simulate EOF (read 0 bytes)
-                return std::task::Poll::Ready(Ok(()));
+            if self_mut.pos >= self_mut.data.len() {
+                return std::task::Poll::Ready(Ok(())); // EOF
             }
 
-            let chunk = &self_mut.chunks[self_mut.current_chunk];
-            let bytes_to_copy = std::cmp::min(buf.remaining(), chunk.len());
+            let remaining_data = &self_mut.data[self_mut.pos..];
+            let bytes_to_copy = std::cmp::min(buf.remaining(), remaining_data.len());
 
-            // Copy data into the ReadBuf
-            buf.put_slice(&chunk[..bytes_to_copy]);
+            buf.put_slice(&remaining_data[..bytes_to_copy]);
+            self_mut.pos += bytes_to_copy;
 
-            // Note: Real world scenarios would handle `Poll::Pending` here,
-            // but for unit tests, we usually return `Ready` to keep them synchronous.
-
-            self_mut.current_chunk += 1;
             std::task::Poll::Ready(Ok(()))
         }
     }
@@ -222,8 +229,11 @@ pub mod test_tokio_stream_impl {
         let msg = TestMessage { id: 1, data: "quick".to_string() };
 
         let encoded = bincode::encode_to_vec(&msg, SERDE_CONFIG).unwrap();
-        let encoded_msg = BytesMut::from(encoded.as_slice());
-        let mut mock = MockAsyncStream::new(vec![encoded_msg.into()]);
+        let len = encoded.len() as u32;
+        let mut framed_msg = len.to_be_bytes().to_vec();
+        framed_msg.extend_from_slice(&encoded);
+
+        let mut mock = MockAsyncStream::new(vec![framed_msg]);
 
         // 2. Act
         let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
@@ -236,23 +246,39 @@ pub mod test_tokio_stream_impl {
 
     #[tokio::test]
     async fn test_deserialize_reads_vec() {
-        // 1. Arrange: Single message in one chunk
-
+        // 1. Arrange: two messages sent sequentially
         let message_one = TestMessage { id: 1, data: "quick".to_string() };
         let message_two = TestMessage { id: 2, data: "silver".to_string() };
-        let mut raw_data = vec![];
-        raw_data.extend_from_slice(&bincode::encode_to_vec(message_one, SERDE_CONFIG).unwrap());
-        raw_data.extend_from_slice(&bincode::encode_to_vec(message_two, SERDE_CONFIG).unwrap());
 
-        let mut mock = MockAsyncStream::new(vec![raw_data]);
+        let encoded1 = bincode::encode_to_vec(&message_one, SERDE_CONFIG).unwrap();
+        let len1 = encoded1.len() as u32;
+        let mut framed_msg1 = len1.to_be_bytes().to_vec();
+        framed_msg1.extend_from_slice(&encoded1);
 
-        // 2. Act
-        let result: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+        let encoded2 = bincode::encode_to_vec(&message_two, SERDE_CONFIG).unwrap();
+        let len2 = encoded2.len() as u32;
+        let mut framed_msg2 = len2.to_be_bytes().to_vec();
+        framed_msg2.extend_from_slice(&encoded2);
 
-        // 3. Assert
-        let deserialized = result.unwrap();
-        assert_eq!(deserialized.len(), 2);
-        assert_eq!(deserialized[0], TestMessage { id: 1, data: "quick".to_string() });
-        assert_eq!(deserialized[1], TestMessage { id: 2, data: "silver".to_string() });
+        let mut combined_data = framed_msg1;
+        combined_data.extend_from_slice(&framed_msg2);
+
+        let mut mock = MockAsyncStream::new(vec![combined_data]);
+
+        // 2. Act: read first message
+        let result1: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+
+        // 3. Assert: first message is correct
+        let deserialized1 = result1.unwrap();
+        assert_eq!(deserialized1.len(), 1);
+        assert_eq!(deserialized1[0], message_one);
+
+        // 4. Act: read second message
+        let result2: Result<Vec<TestMessage>, IoError> = mock.deserialized_reads().await;
+
+        // 5. Assert: second message is correct
+        let deserialized2 = result2.unwrap();
+        assert_eq!(deserialized2.len(), 1);
+        assert_eq!(deserialized2[0], message_two);
     }
 }
