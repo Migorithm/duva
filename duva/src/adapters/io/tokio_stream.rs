@@ -38,11 +38,15 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
         // Reserve space in the buffer (Allocates, but doesn't write zeros yet)
         let mut buffer = BytesMut::with_capacity(len);
 
+        // This ensures we never pull more than 'len' bytes from the stream,
+        // even if the buffer has extra space.
+        let mut handle = self.take(len as u64);
+
         // Unsafe-ish trick made safe by Tokio
         // Tokio's read_buf can read directly into uninitialized memory
         // preventing the "Double Write".
         while buffer.len() < len {
-            let n = self.read_buf(&mut buffer).await.map_err(|e| io_error_from_kind(e.kind()))?;
+            let n = handle.read_buf(&mut buffer).await.map_err(|e| io_error_from_kind(e.kind()))?;
             if n == 0 {
                 return Err(IoError::ConnectionAborted);
             }
