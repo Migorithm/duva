@@ -1,10 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::queue::ClusterActorSender,
-        peers::{
-            command::PeerMessage, connections::connection_types::ReadConnection,
-            peer::ListeningActorKillTrigger,
-        },
+        peers::{connections::connection_types::ReadConnection, peer::ListeningActorKillTrigger},
     },
     prelude::PeerIdentifier,
     types::Callback,
@@ -43,16 +40,12 @@ impl PeerListener {
 
     async fn start(&mut self) {
         loop {
-            if let Ok(msg) = self.read_command().await {
+            if let Ok(msg) = self.read_connected.read_bincode().await {
                 let _ = self
                     .cluster_handler
                     .send(PeerCommand { from: self.peer_id.clone(), msg })
                     .await;
             }
         }
-    }
-
-    async fn read_command(&mut self) -> anyhow::Result<PeerMessage> {
-        Ok(self.read_connected.receive_peer_msgs().await?)
     }
 }

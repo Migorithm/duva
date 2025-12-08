@@ -17,7 +17,7 @@ impl ServerStreamReader {
             let controller_sender = controller_sender.clone();
 
             loop {
-                match self.0.deserialized_read::<ServerResponse>().await {
+                match self.0.read_bincode::<ServerResponse>().await {
                     Ok(res) => {
                         if controller_sender
                             .send(BrokerMessage::FromServer(replication_id.clone(), res))

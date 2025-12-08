@@ -88,11 +88,11 @@ impl InboundStream {
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
-        let msgs = self.r.receive_connection_msgs().await?;
+        let msgs = self.r.read_bincode().await?;
         HandShakeRequest::new(msgs)
     }
     async fn recv_ok(&mut self) -> anyhow::Result<()> {
-        let val = self.r.receive_connection_msgs().await?;
+        let val = self.r.read_bincode::<String>().await?;
 
         if val != "ok" {
             return Err(anyhow::anyhow!("Invalid response"));

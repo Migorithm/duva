@@ -120,8 +120,7 @@ impl Broker {
         w.serialized_write(ConnectionRequests::Authenticate(conn_req)).await?; // client_id not exist
 
         let mut read_half = ReadConnection::new(r);
-        let ConnectionResponses::Authenticated(response) = read_half.deserialized_read().await?
-        else {
+        let ConnectionResponses::Authenticated(response) = read_half.read_bincode().await? else {
             bail!("Authentication failed");
         };
 
@@ -168,8 +167,7 @@ impl Broker {
         let mut read_half = ReadConnection::new(r);
 
         w.serialized_write(ConnectionRequests::Discovery).await?;
-        let ConnectionResponses::Discovery { leader_id } = read_half.deserialized_read().await?
-        else {
+        let ConnectionResponses::Discovery { leader_id } = read_half.read_bincode().await? else {
             bail!("Discovery failed!");
         };
 

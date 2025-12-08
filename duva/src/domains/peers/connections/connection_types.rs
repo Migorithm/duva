@@ -37,6 +37,8 @@ impl Eq for WriteConnected {}
 #[derive(Debug)]
 pub struct ReadConnection<T> {
     pub(crate) stream: T,
+    // Persistent Buffer - instead of creating a new buffer for every message,
+    // we keep one buffer
     buffer: BytesMut,
 }
 
@@ -116,28 +118,14 @@ where
         Ok(Some(msg))
     }
 
-    pub async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
+    pub async fn read_bincode<U>(&mut self) -> Result<U, IoError>
     where
         U: bincode::Decode<()>,
     {
         let body = self.read_bytes().await.map_err(|e| e.kind())?;
-
         let (request, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
-
         Ok(request)
-    }
-
-    pub(crate) async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
-        let body = self.read_bytes().await.map_err(|e| e.kind())?;
-
-        let (peer_message, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
-            .map_err(|e| IoError::Custom(e.to_string()))?;
-
-        Ok(peer_message)
-    }
-    pub(crate) async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
-        self.deserialized_read().await
     }
 }
 

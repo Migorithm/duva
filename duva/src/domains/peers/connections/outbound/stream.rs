@@ -27,7 +27,7 @@ impl OutboundStream {
         let mut peer_state = ReplicationState::default();
 
         loop {
-            let res = self.r.receive_connection_msgs().await?;
+            let res = self.r.read_bincode::<String>().await?;
             trace!(?res, "Received handshake response");
 
             match ConnectionResponse::try_from(res)? {

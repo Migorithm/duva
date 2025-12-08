@@ -240,7 +240,7 @@ impl StartUpFacade {
         let (read_half, write_half) = stream.into_split();
         let mut writer = ClientStreamWriter(write_half);
         let mut read_half = ReadConnection::new(read_half);
-        let request = read_half.deserialized_read().await?;
+        let request = read_half.read_bincode().await?;
 
         match request {
             ConnectionRequests::Discovery => {

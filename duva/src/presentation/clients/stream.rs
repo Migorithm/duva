@@ -32,7 +32,7 @@ impl ClientStreamReader {
     ) {
         loop {
             // * extract queries
-            let query_io = self.r.deserialized_read::<SessionRequest>().await;
+            let query_io = self.r.read_bincode::<SessionRequest>().await;
             if let Err(err) = query_io {
                 info!("{}", err);
                 if err.should_break() {
