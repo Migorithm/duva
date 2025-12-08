@@ -16,6 +16,7 @@ use tokio::io::AsyncReadExt;
 
 const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
+// TODO: from DP -> OwnedType
 #[derive(Debug)]
 pub struct WriteConnected(pub(crate) Box<dyn TSerdeDynamicWrite>);
 make_smart_pointer!(WriteConnected, Box<dyn TSerdeDynamicWrite>);
@@ -45,10 +46,8 @@ impl<T> PartialEq for ReadConnection<T> {
     }
 }
 impl<T> Eq for ReadConnection<T> {}
-
 impl<T> Deref for ReadConnection<T> {
     type Target = T;
-
     fn deref(&self) -> &Self::Target {
         &self.stream
     }
