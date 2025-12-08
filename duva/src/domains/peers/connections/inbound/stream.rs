@@ -5,7 +5,6 @@ use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
-use crate::domains::interface::TSerdeDynamicRead;
 use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;

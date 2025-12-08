@@ -12,8 +12,6 @@ use anyhow::Context;
 use tokio::net::tcp::OwnedReadHalf;
 use tracing::trace;
 
-use crate::domains::interface::TSerdeDynamicRead;
-
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
     pub(crate) r: ReadConnection<OwnedReadHalf>,

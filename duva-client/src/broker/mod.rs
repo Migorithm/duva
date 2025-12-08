@@ -8,8 +8,8 @@ use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::replications::LogEntry;
 use duva::domains::replications::ReplicationRole;
 
+use duva::domains::TSerdeWrite;
 use duva::domains::{IoError, query_io::QueryIO};
-use duva::domains::{TSerdeRead, TSerdeWrite};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;

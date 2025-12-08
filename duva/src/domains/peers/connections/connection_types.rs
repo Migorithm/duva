@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 
 use crate::domains::IoError;
-use crate::domains::TSerdeDynamicRead;
+
 use crate::domains::TSerdeDynamicWrite;
 
 use crate::domains::peers::command::PeerMessage;
@@ -128,13 +128,8 @@ where
 
         Ok(request)
     }
-}
 
-#[async_trait::async_trait]
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'static>
-    TSerdeDynamicRead for ReadConnection<T>
-{
-    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
+    pub(crate) async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
         let body = self.read_bytes().await.map_err(|e| e.kind())?;
 
         let (peer_message, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
@@ -142,7 +137,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'sta
 
         Ok(peer_message)
     }
-    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+    pub(crate) async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
         self.deserialized_read().await
     }
 }

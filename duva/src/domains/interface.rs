@@ -7,19 +7,12 @@ use crate::domains::{
         connections::connection_types::{ReadConnection, WriteConnected},
     },
 };
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use tokio::net::tcp::OwnedReadHalf;
 
 pub trait TReadBytes: Send + Sync + Debug + 'static {
     fn read_bytes(&mut self)
     -> impl std::future::Future<Output = Result<BytesMut, IoError>> + Send;
-}
-
-// deprecated
-#[async_trait::async_trait]
-pub trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
-    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError>;
-    async fn receive_connection_msgs(&mut self) -> Result<String, IoError>;
 }
 
 #[async_trait::async_trait]

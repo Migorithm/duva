@@ -1,6 +1,5 @@
 use crate::{
     domains::{
-        TSerdeDynamicRead,
         cluster_actors::queue::ClusterActorSender,
         peers::{
             command::PeerMessage, connections::connection_types::ReadConnection,
