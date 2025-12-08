@@ -8,8 +8,9 @@ mod types;
 use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
+use crate::domains::TSerdeWrite;
+use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::replications::*;
-use crate::domains::{TSerdeRead, TSerdeWrite};
 use crate::signals::SignalHandler;
 use anyhow::{Context, Result};
 pub use config::Environment;
@@ -45,8 +46,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use uuid::Uuid;
 pub mod prelude {
+
+    pub use crate::domains::TAsyncReadWrite;
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::Topology;
+    pub use crate::domains::peers::connections::connection_types::ReadConnection;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::domains::replications::state::ReplicationId;
     pub use crate::presentation::clients::ConnectionRequest;
@@ -194,7 +198,7 @@ impl StartUpFacade {
                     let host_ip = socket_addr.ip().to_string();
                     if ca_sender
                         .send(ConnectionMessage::AcceptInboundPeer {
-                            read: read.into(),
+                            read: ReadConnection::new(read),
                             write: write.into(),
                             host_ip,
                         })
@@ -233,9 +237,10 @@ impl StartUpFacade {
     // ! `sleep` in Discovery will block all the subsequent connection attempts leading to a huge failure
     // ! However, accepting indiscriminately would also cause a problem of CPU spike.
     async fn handle_client_stream(&self, stream: tokio::net::TcpStream) -> anyhow::Result<()> {
-        let (mut read_half, write_half) = stream.into_split();
+        let (read_half, write_half) = stream.into_split();
         let mut writer = ClientStreamWriter(write_half);
-        let request = read_half.deserialized_read().await?;
+        let mut read_half = ReadConnection::new(read_half);
+        let request = read_half.read_bincode().await?;
 
         match request {
             ConnectionRequests::Discovery => {

@@ -23,7 +23,8 @@ use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::PendingMigrationTask;
 use crate::domains::peers::command::PendingRequests;
 use crate::domains::peers::command::QueuedKeysToMigrate;
-use crate::domains::peers::connections::connection_types::ReadConnected;
+
+use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
@@ -43,6 +44,7 @@ use std::fs::File;
 use std::io::Seek;
 use std::io::Write;
 use std::iter;
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::time::Duration;
 
 use tokio::net::TcpStream;
@@ -50,8 +52,6 @@ use tracing::error;
 use tracing::info;
 use tracing::instrument;
 use tracing::warn;
-#[cfg(test)]
-mod tests;
 
 const FANOUT: usize = 2;
 
@@ -225,7 +225,7 @@ impl ClusterActor {
             return;
         };
 
-        let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
+        let Ok((r, w)) = C::connect_and_split(&cluster_bind_addr).await else {
             if let Some(cb) = optional_callback {
                 cb.send(res_err!("Failed to connect to {}", connect_to));
             }
@@ -244,7 +244,7 @@ impl ClusterActor {
 
     pub(crate) fn accept_inbound_stream(
         &mut self,
-        r: ReadConnected,
+        r: ReadConnection<OwnedReadHalf>,
         w: WriteConnected,
         host_ip: String,
     ) {

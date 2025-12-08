@@ -1,7 +1,7 @@
 use super::connections::connection_types::WriteConnected;
 
 use crate::domains::IoError;
-use crate::domains::TSerdeDynamicRead;
+
 use crate::domains::peers::command::PeerMessage;
 use crate::domains::replications::ReplicationId;
 
@@ -11,6 +11,7 @@ use crate::prelude::PeerIdentifier;
 use crate::types::Callback;
 use std::collections::VecDeque;
 use std::time::Instant;
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +60,7 @@ impl Peer {
         self.w_conn.send(io.into()).await
     }
 
-    pub(crate) async fn kill(self) -> Box<dyn TSerdeDynamicRead> {
+    pub(crate) async fn kill(self) -> OwnedReadHalf {
         self.listener_kill_trigger.kill().await
     }
 
@@ -81,15 +82,15 @@ impl Peer {
 }
 
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(Callback<()>, JoinHandle<Box<dyn TSerdeDynamicRead>>);
+pub(crate) struct ListeningActorKillTrigger(Callback<()>, JoinHandle<OwnedReadHalf>);
 impl ListeningActorKillTrigger {
     pub(crate) fn new(
         kill_trigger: Callback<()>,
-        listning_task: JoinHandle<Box<dyn TSerdeDynamicRead>>,
+        listning_task: JoinHandle<OwnedReadHalf>,
     ) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(crate) async fn kill(self) -> Box<dyn TSerdeDynamicRead> {
+    pub(crate) async fn kill(self) -> OwnedReadHalf {
         self.0.send(());
         self.1.await.unwrap()
     }
