@@ -70,12 +70,12 @@ where
     }
     pub async fn read_bytes(&mut self) -> Result<BytesMut, std::io::Error> {
         loop {
-            // 1. Attempt to parse what we already have
+            // 1. Attempt to parse what we already have (consumer)
             if let Some(msg) = self.parse_frame()? {
                 return Ok(msg);
             }
 
-            // 2. If we don't have a full message, read more data
+            // 2. If we don't have a full message, read more data (producer)
             // We assume 0 means connection closed
             if 0 == self.stream.read_buf(&mut self.buffer).await? {
                 // If we hit EOF but still have partial data, that's an error
