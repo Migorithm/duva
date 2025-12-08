@@ -1,12 +1,20 @@
+use std::io::ErrorKind;
+use std::ops::Deref;
+use std::ops::DerefMut;
+
+use crate::domains::IoError;
+use crate::domains::TSerdeDynamicRead;
+use crate::domains::TSerdeDynamicWrite;
+use crate::domains::interface::TSerdeRead;
+use crate::domains::peers::command::PeerMessage;
+use crate::domains::query_io::SERDE_CONFIG;
+use crate::make_smart_pointer;
 use anyhow::bail;
 use bytes::Buf;
 use bytes::BytesMut;
 use tokio::io::AsyncReadExt;
 
-use crate::domains::IoError;
-use crate::domains::TSerdeDynamicRead;
-use crate::domains::TSerdeDynamicWrite;
-use crate::make_smart_pointer;
+const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
 #[derive(Debug)]
 pub(crate) struct WriteConnected(pub(crate) Box<dyn TSerdeDynamicWrite>);
@@ -26,39 +34,40 @@ impl PartialEq for WriteConnected {
 impl Eq for WriteConnected {}
 
 #[derive(Debug)]
-pub(crate) struct ReadConnected(pub(crate) Box<dyn TSerdeDynamicRead>);
-
-make_smart_pointer!(ReadConnected, Box<dyn TSerdeDynamicRead>);
-
-impl<T: TSerdeDynamicRead> From<T> for ReadConnected {
-    fn from(value: T) -> Self {
-        Self(Box::new(value))
-    }
+pub(crate) struct ReadConnection<T> {
+    pub(crate) stream: T,
+    buffer: BytesMut,
 }
 
-impl PartialEq for ReadConnected {
+impl<T> PartialEq for ReadConnection<T> {
     fn eq(&self, _: &Self) -> bool {
         true
     }
 }
-impl Eq for ReadConnected {}
+impl<T> Eq for ReadConnection<T> {}
 
-#[derive(Debug)]
-pub(crate) struct ReadConnection<T>
-where
-    T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'static,
-{
-    stream: T,
-    buffer: BytesMut,
+impl<T> Deref for ReadConnection<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stream
+    }
 }
 
-const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
+impl<T> DerefMut for ReadConnection<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.stream
+    }
+}
 
 impl<T> ReadConnection<T>
 where
     T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'static,
 {
-    async fn read_bytes(&mut self) -> anyhow::Result<BytesMut> {
+    pub fn new(stream: T) -> Self {
+        Self { stream, buffer: BytesMut::with_capacity(1024) }
+    }
+    pub async fn read_bytes(&mut self) -> Result<BytesMut, std::io::Error> {
         loop {
             // 1. Attempt to parse what we already have
             if let Some(msg) = self.parse_frame()? {
@@ -70,15 +79,15 @@ where
             if 0 == self.stream.read_buf(&mut self.buffer).await? {
                 // If we hit EOF but still have partial data, that's an error
                 if self.buffer.is_empty() {
-                    bail!("ConnectionAborted")
+                    return Err(std::io::Error::new(ErrorKind::ConnectionAborted, ""));
                 } else {
-                    bail!("UnexpectedEof")
+                    return Err(std::io::Error::new(ErrorKind::UnexpectedEof, ""));
                 }
             }
         }
     }
 
-    fn parse_frame(&mut self) -> anyhow::Result<Option<BytesMut>> {
+    pub fn parse_frame(&mut self) -> Result<Option<BytesMut>, std::io::Error> {
         // Do we have enough for the length prefix?
         if self.buffer.len() < 4 {
             return Ok(None);
@@ -89,7 +98,10 @@ where
         let len = len_bytes.get_u32() as usize;
 
         if len > MAX_MSG_SIZE {
-            bail!("Incoming message too large: {len} bytes, max is {MAX_MSG_SIZE}");
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("Incoming message too large: {len} bytes, max is {MAX_MSG_SIZE}"),
+            ));
         }
 
         // Do we have the full message? (4 bytes header + len bytes body)
@@ -103,5 +115,37 @@ where
 
         // Whatever is left in self.buffer stays there for the next call.
         Ok(Some(msg))
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'static>
+    TSerdeDynamicRead for ReadConnection<T>
+{
+    async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
+        let body = self.read_bytes().await.map_err(|e| io_error_from_kind(e.kind()))?;
+
+        let (peer_message, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
+            .map_err(|e| IoError::Custom(e.to_string()))?;
+
+        Ok(peer_message)
+    }
+    async fn receive_connection_msgs(&mut self) -> Result<String, IoError> {
+        self.deserialized_read().await
+    }
+}
+
+fn io_error_from_kind(kind: ErrorKind) -> IoError {
+    match kind {
+        ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+        ErrorKind::ConnectionReset => IoError::ConnectionReset,
+        ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+        ErrorKind::NotConnected => IoError::NotConnected,
+        ErrorKind::BrokenPipe => IoError::BrokenPipe,
+        ErrorKind::TimedOut => IoError::TimedOut,
+        _ => {
+            eprintln!("unknown error: {kind:?}");
+            IoError::Custom(format!("unknown error: {kind:?}"))
+        },
     }
 }

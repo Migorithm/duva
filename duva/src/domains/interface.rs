@@ -4,10 +4,11 @@ use crate::domains::{
     IoError,
     peers::{
         command::PeerMessage,
-        connections::connection_types::{ReadConnected, WriteConnected},
+        connections::connection_types::{ReadConnection, WriteConnected},
     },
 };
 use bytes::{Bytes, BytesMut};
+use tokio::net::tcp::OwnedReadHalf;
 
 pub trait TReadBytes: Send + Sync + Debug + 'static {
     fn read_bytes(&mut self)
@@ -42,5 +43,7 @@ pub trait TSerdeRead {
 pub(crate) trait TAsyncReadWrite {
     fn connect(
         connect_to: &str,
-    ) -> impl std::future::Future<Output = Result<(ReadConnected, WriteConnected), IoError>> + Send;
+    ) -> impl std::future::Future<
+        Output = Result<(ReadConnection<OwnedReadHalf>, WriteConnected), IoError>,
+    > + Send;
 }

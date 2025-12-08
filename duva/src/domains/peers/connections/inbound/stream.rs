@@ -1,8 +1,12 @@
+use tokio::net::tcp::OwnedReadHalf;
+
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
-use crate::domains::peers::connections::connection_types::ReadConnected;
+
+use crate::domains::interface::TSerdeDynamicRead;
+use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -12,7 +16,7 @@ use crate::domains::replications::*;
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
 pub(crate) struct InboundStream {
-    pub(crate) r: ReadConnected,
+    pub(crate) r: ReadConnection<OwnedReadHalf>,
     pub(crate) w: WriteConnected,
     pub(crate) host_ip: String,
     pub(crate) self_state: ReplicationState,

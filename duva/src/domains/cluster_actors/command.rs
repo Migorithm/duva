@@ -1,8 +1,10 @@
+use tokio::net::tcp::OwnedReadHalf;
+
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::topology::Topology;
 
 use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
-use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
+use crate::domains::peers::connections::connection_types::{ReadConnection, WriteConnected};
 use crate::domains::peers::peer::Peer;
 use crate::domains::replications::*;
 use crate::prelude::PeerIdentifier;
@@ -38,8 +40,15 @@ impl From<SchedulerMessage> for ClusterCommand {
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionMessage {
-    ConnectToServer { connect_to: PeerIdentifier, callback: Callback<anyhow::Result<()>> },
-    AcceptInboundPeer { read: ReadConnected, write: WriteConnected, host_ip: String },
+    ConnectToServer {
+        connect_to: PeerIdentifier,
+        callback: Callback<anyhow::Result<()>>,
+    },
+    AcceptInboundPeer {
+        read: ReadConnection<OwnedReadHalf>,
+        write: WriteConnected,
+        host_ip: String,
+    },
     AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
     ActivateClusterSync(Callback<()>),

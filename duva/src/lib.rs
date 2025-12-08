@@ -8,6 +8,7 @@ mod types;
 use crate::adapters::loggers::op_logs::OperationLogs;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 
+use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::replications::*;
 use crate::domains::{TSerdeRead, TSerdeWrite};
 use crate::signals::SignalHandler;
@@ -194,7 +195,7 @@ impl StartUpFacade {
                     let host_ip = socket_addr.ip().to_string();
                     if ca_sender
                         .send(ConnectionMessage::AcceptInboundPeer {
-                            read: read.into(),
+                            read: ReadConnection::new(read),
                             write: write.into(),
                             host_ip,
                         })

@@ -1,25 +1,29 @@
 use crate::{
     domains::{
+        TSerdeDynamicRead,
         cluster_actors::queue::ClusterActorSender,
-        peers::{command::PeerMessage, peer::ListeningActorKillTrigger},
+        peers::{
+            command::PeerMessage, connections::connection_types::ReadConnection,
+            peer::ListeningActorKillTrigger,
+        },
     },
     prelude::PeerIdentifier,
     types::Callback,
 };
-use tokio::select;
+use tokio::{net::tcp::OwnedReadHalf, select};
 
-use super::{command::PeerCommand, connections::connection_types::ReadConnected};
+use super::command::PeerCommand;
 
 #[derive(Debug)]
 pub(crate) struct PeerListener {
-    pub(crate) read_connected: ReadConnected,
+    pub(crate) read_connected: ReadConnection<OwnedReadHalf>,
     pub(crate) cluster_handler: ClusterActorSender,
     pub(crate) peer_id: PeerIdentifier,
 }
 
 impl PeerListener {
     pub(crate) fn spawn(
-        read_connected: impl Into<ReadConnected>,
+        read_connected: impl Into<ReadConnection<OwnedReadHalf>>,
         cluster_handler: ClusterActorSender,
         peer_id: PeerIdentifier,
     ) -> ListeningActorKillTrigger {
@@ -28,9 +32,9 @@ impl PeerListener {
         let handle = tokio::spawn({
             async move {
                 select! {
-                    _ = listener.start() => listener.read_connected.0,
+                    _ = listener.start() => listener.read_connected.stream ,
                     // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-                    _ = kill_switch.recv() => listener.read_connected.0
+                    _ = kill_switch.recv() => listener.read_connected.stream
                 }
             }
         });
