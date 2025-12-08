@@ -1,8 +1,9 @@
 use super::ClientController;
-use crate::domains::TSerdeRead;
+
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::interface::TSerdeWrite;
+use crate::domains::peers::connections::connection_types::ReadConnection;
 use crate::domains::replications::ReplicationRole;
 
 use crate::make_smart_pointer;
@@ -18,7 +19,7 @@ use tokio::{
 use tracing::{error, info, instrument};
 
 pub struct ClientStreamReader {
-    pub(crate) r: OwnedReadHalf,
+    pub(crate) r: ReadConnection<OwnedReadHalf>,
     pub(crate) conn_id: String,
 }
 

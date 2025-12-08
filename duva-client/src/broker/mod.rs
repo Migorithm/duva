@@ -7,6 +7,7 @@ use crate::command::{CommandQueue, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::replications::LogEntry;
 use duva::domains::replications::ReplicationRole;
+
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::domains::{TSerdeRead, TSerdeWrite};
 use duva::prelude::tokio::net::TcpStream;
@@ -14,7 +15,8 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{
-    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses, ReplicationId,
+    ConnectionRequest, ConnectionRequests, ConnectionResponse, ConnectionResponses, ReadConnection,
+    ReplicationId,
 };
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::prelude::{Topology, anyhow};
@@ -111,17 +113,19 @@ impl Broker {
     }
 
     pub(crate) async fn authenticate(
-        mut stream: TcpStream,
+        stream: TcpStream,
         conn_req: ConnectionRequest,
     ) -> anyhow::Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse)> {
-        stream.serialized_write(ConnectionRequests::Authenticate(conn_req)).await?; // client_id not exist
+        let (r, mut w) = stream.into_split();
+        w.serialized_write(ConnectionRequests::Authenticate(conn_req)).await?; // client_id not exist
 
-        let ConnectionResponses::Authenticated(response) = stream.deserialized_read().await? else {
+        let mut read_half = ReadConnection::new(r);
+        let ConnectionResponses::Authenticated(response) = read_half.deserialized_read().await?
+        else {
             bail!("Authentication failed");
         };
 
-        let (r, w) = stream.into_split();
-        Ok((ServerStreamReader(r), ServerStreamWriter(w), response))
+        Ok((ServerStreamReader(read_half), ServerStreamWriter(w), response))
     }
 
     // pull-based leader discovery
@@ -159,9 +163,13 @@ impl Broker {
     }
 
     async fn discover_leader_from(&mut self, follower: PeerIdentifier) -> anyhow::Result<()> {
-        let mut stream = TcpStream::connect(follower.as_str()).await?;
-        stream.serialized_write(ConnectionRequests::Discovery).await?;
-        let ConnectionResponses::Discovery { leader_id } = stream.deserialized_read().await? else {
+        let stream = TcpStream::connect(follower.as_str()).await?;
+        let (r, mut w) = stream.into_split();
+        let mut read_half = ReadConnection::new(r);
+
+        w.serialized_write(ConnectionRequests::Discovery).await?;
+        let ConnectionResponses::Discovery { leader_id } = read_half.deserialized_read().await?
+        else {
             bail!("Discovery failed!");
         };
 

@@ -1,10 +1,7 @@
 use crate::domains::peers::command::*;
 use crate::domains::peers::connections::connection_types::{ReadConnection, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
-use crate::domains::{
-    IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicRead, TSerdeDynamicWrite, TSerdeRead,
-    TSerdeWrite,
-};
+use crate::domains::{IoError, TAsyncReadWrite, TReadBytes, TSerdeDynamicWrite, TSerdeWrite};
 
 use bytes::{Bytes, BytesMut};
 use std::fmt::Debug;
@@ -90,22 +87,8 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSer
     }
 }
 
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeRead for T {
-    async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
-    where
-        U: bincode::Decode<()>,
-    {
-        let body = self.read_bytes().await?;
-
-        let (request, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
-            .map_err(|e| IoError::Custom(e.to_string()))?;
-
-        Ok(request)
-    }
-}
-
 impl TAsyncReadWrite for TcpStream {
-    async fn connect(
+    async fn connect_and_split(
         connect_to: &str,
     ) -> Result<(ReadConnection<OwnedReadHalf>, WriteConnected), IoError> {
         let stream =
@@ -127,127 +110,5 @@ fn io_error_from_kind(kind: ErrorKind) -> IoError {
             eprintln!("unknown error: {kind:?}");
             IoError::Custom(format!("unknown error: {kind:?}"))
         },
-    }
-}
-
-impl From<ErrorKind> for IoError {
-    fn from(value: ErrorKind) -> Self {
-        io_error_from_kind(value)
-    }
-}
-
-#[cfg(test)]
-pub mod test_tokio_stream_impl {
-    use super::*;
-    #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode)]
-    struct TestMessage {
-        id: u32,
-        data: String,
-    }
-
-    /// A mock that implements AsyncRead for testing by simulating a byte stream.
-    #[derive(Debug)]
-    struct MockAsyncStream {
-        data: Vec<u8>,
-        pos: usize,
-    }
-
-    impl MockAsyncStream {
-        /// Creates a new mock stream from a vector of byte chunks, which are flattened.
-        fn new(chunks: Vec<Vec<u8>>) -> Self {
-            MockAsyncStream { data: chunks.into_iter().flatten().collect(), pos: 0 }
-        }
-    }
-
-    // Must implement AsyncRead for the blanket impl of TRead to work
-    impl tokio::io::AsyncRead for MockAsyncStream {
-        fn poll_read(
-            self: std::pin::Pin<&mut Self>,
-            _cx: &mut std::task::Context<'_>,
-            buf: &mut tokio::io::ReadBuf<'_>,
-        ) -> std::task::Poll<std::io::Result<()>> {
-            let self_mut = self.get_mut();
-
-            if self_mut.pos >= self_mut.data.len() {
-                return std::task::Poll::Ready(Ok(())); // EOF
-            }
-
-            let remaining_data = &self_mut.data[self_mut.pos..];
-            let bytes_to_copy = std::cmp::min(buf.remaining(), remaining_data.len());
-
-            buf.put_slice(&remaining_data[..bytes_to_copy]);
-            self_mut.pos += bytes_to_copy;
-
-            std::task::Poll::Ready(Ok(()))
-        }
-    }
-
-    #[test]
-    fn test_socket_to_string() {
-        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-        //WHEN
-        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-
-        //THEN
-        assert_eq!(socket.ip().to_string(), "127.0.0.1")
-    }
-
-    #[tokio::test]
-    async fn test_deserialize_reads() {
-        // 1. Arrange: Single message in one chunk
-        let msg = TestMessage { id: 1, data: "quick".to_string() };
-
-        let encoded = bincode::encode_to_vec(&msg, SERDE_CONFIG).unwrap();
-        let len = encoded.len() as u32;
-        let mut framed_msg = len.to_be_bytes().to_vec();
-        framed_msg.extend_from_slice(&encoded);
-
-        let mut mock = MockAsyncStream::new(vec![framed_msg]);
-
-        // 2. Act
-        let result: Result<TestMessage, IoError> = mock.deserialized_read().await;
-
-        // 3. Assert
-        let deserialized = result.unwrap();
-
-        assert_eq!(deserialized, msg);
-    }
-
-    #[tokio::test]
-    async fn test_deserialize_reads_vec() {
-        // 1. Arrange: two messages sent sequentially
-        let message_one = TestMessage { id: 1, data: "quick".to_string() };
-        let message_two = TestMessage { id: 2, data: "silver".to_string() };
-
-        let encoded1 = bincode::encode_to_vec(&message_one, SERDE_CONFIG).unwrap();
-        let len1 = encoded1.len() as u32;
-        let mut framed_msg1 = len1.to_be_bytes().to_vec();
-        framed_msg1.extend_from_slice(&encoded1);
-
-        let encoded2 = bincode::encode_to_vec(&message_two, SERDE_CONFIG).unwrap();
-        let len2 = encoded2.len() as u32;
-        let mut framed_msg2 = len2.to_be_bytes().to_vec();
-        framed_msg2.extend_from_slice(&encoded2);
-
-        let mut combined_data = framed_msg1;
-        combined_data.extend_from_slice(&framed_msg2);
-
-        let mut mock = MockAsyncStream::new(vec![combined_data]);
-
-        // 2. Act: read first message
-        let result1: Result<TestMessage, IoError> = mock.deserialized_read().await;
-
-        // 3. Assert: first message is correct
-        let deserialized1 = result1.unwrap();
-
-        assert_eq!(deserialized1, message_one);
-
-        // 4. Act: read second message
-        let result2: Result<TestMessage, IoError> = mock.deserialized_read().await;
-
-        // 5. Assert: second message is correct
-        let deserialized2 = result2.unwrap();
-
-        assert_eq!(deserialized2, message_two);
     }
 }

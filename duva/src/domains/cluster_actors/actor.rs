@@ -225,7 +225,7 @@ impl ClusterActor {
             return;
         };
 
-        let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
+        let Ok((r, w)) = C::connect_and_split(&cluster_bind_addr).await else {
             if let Some(cb) = optional_callback {
                 cb.send(res_err!("Failed to connect to {}", connect_to));
             }

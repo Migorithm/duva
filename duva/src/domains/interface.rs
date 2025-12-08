@@ -15,14 +15,15 @@ pub trait TReadBytes: Send + Sync + Debug + 'static {
     -> impl std::future::Future<Output = Result<BytesMut, IoError>> + Send;
 }
 
+// deprecated
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
+pub trait TSerdeDynamicRead: Send + Sync + Debug + 'static {
     async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError>;
     async fn receive_connection_msgs(&mut self) -> Result<String, IoError>;
 }
 
 #[async_trait::async_trait]
-pub(crate) trait TSerdeDynamicWrite: Send + Sync + Debug + 'static {
+pub trait TSerdeDynamicWrite: Send + Sync + Debug + 'static {
     async fn send(&mut self, msg: PeerMessage) -> Result<(), IoError>;
     async fn send_connection_msg(&mut self, arg: &str) -> Result<(), IoError>;
 }
@@ -34,14 +35,8 @@ pub trait TSerdeWrite {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
-pub trait TSerdeRead {
-    fn deserialized_read<U: bincode::Decode<()>>(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
-}
-
-pub(crate) trait TAsyncReadWrite {
-    fn connect(
+pub trait TAsyncReadWrite {
+    fn connect_and_split(
         connect_to: &str,
     ) -> impl std::future::Future<
         Output = Result<(ReadConnection<OwnedReadHalf>, WriteConnected), IoError>,

@@ -1,11 +1,10 @@
 use crate::broker::BrokerMessage;
-use duva::domains::TSerdeRead;
 
-use duva::prelude::ReplicationId;
 use duva::prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot};
+use duva::prelude::{ReadConnection, ReplicationId};
 use duva::presentation::clients::request::ServerResponse;
 
-pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
+pub struct ServerStreamReader(pub(crate) ReadConnection<OwnedReadHalf>);
 impl ServerStreamReader {
     pub fn run(
         mut self,

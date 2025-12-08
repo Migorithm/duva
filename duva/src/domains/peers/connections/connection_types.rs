@@ -5,11 +5,11 @@ use std::ops::DerefMut;
 use crate::domains::IoError;
 use crate::domains::TSerdeDynamicRead;
 use crate::domains::TSerdeDynamicWrite;
-use crate::domains::interface::TSerdeRead;
+
 use crate::domains::peers::command::PeerMessage;
 use crate::domains::query_io::SERDE_CONFIG;
 use crate::make_smart_pointer;
-use anyhow::bail;
+
 use bytes::Buf;
 use bytes::BytesMut;
 use tokio::io::AsyncReadExt;
@@ -17,7 +17,7 @@ use tokio::io::AsyncReadExt;
 const MAX_MSG_SIZE: usize = 4 * 1024 * 1024; // 4MB
 
 #[derive(Debug)]
-pub(crate) struct WriteConnected(pub(crate) Box<dyn TSerdeDynamicWrite>);
+pub struct WriteConnected(pub(crate) Box<dyn TSerdeDynamicWrite>);
 make_smart_pointer!(WriteConnected, Box<dyn TSerdeDynamicWrite>);
 
 impl<T: TSerdeDynamicWrite> From<T> for WriteConnected {
@@ -34,7 +34,7 @@ impl PartialEq for WriteConnected {
 impl Eq for WriteConnected {}
 
 #[derive(Debug)]
-pub(crate) struct ReadConnection<T> {
+pub struct ReadConnection<T> {
     pub(crate) stream: T,
     buffer: BytesMut,
 }
@@ -116,6 +116,18 @@ where
         // Whatever is left in self.buffer stays there for the next call.
         Ok(Some(msg))
     }
+
+    pub async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
+    where
+        U: bincode::Decode<()>,
+    {
+        let body = self.read_bytes().await.map_err(|e| e.kind())?;
+
+        let (request, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
+            .map_err(|e| IoError::Custom(e.to_string()))?;
+
+        Ok(request)
+    }
 }
 
 #[async_trait::async_trait]
@@ -123,7 +135,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'sta
     TSerdeDynamicRead for ReadConnection<T>
 {
     async fn receive_peer_msgs(&mut self) -> Result<PeerMessage, IoError> {
-        let body = self.read_bytes().await.map_err(|e| io_error_from_kind(e.kind()))?;
+        let body = self.read_bytes().await.map_err(|e| e.kind())?;
 
         let (peer_message, _) = bincode::decode_from_slice(&body, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
@@ -135,17 +147,19 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + std::fmt::Debug + 'sta
     }
 }
 
-fn io_error_from_kind(kind: ErrorKind) -> IoError {
-    match kind {
-        ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
-        ErrorKind::ConnectionReset => IoError::ConnectionReset,
-        ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
-        ErrorKind::NotConnected => IoError::NotConnected,
-        ErrorKind::BrokenPipe => IoError::BrokenPipe,
-        ErrorKind::TimedOut => IoError::TimedOut,
-        _ => {
-            eprintln!("unknown error: {kind:?}");
-            IoError::Custom(format!("unknown error: {kind:?}"))
-        },
+impl From<ErrorKind> for IoError {
+    fn from(value: ErrorKind) -> Self {
+        match value {
+            ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+            ErrorKind::ConnectionReset => IoError::ConnectionReset,
+            ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+            ErrorKind::NotConnected => IoError::NotConnected,
+            ErrorKind::BrokenPipe => IoError::BrokenPipe,
+            ErrorKind::TimedOut => IoError::TimedOut,
+            _ => {
+                eprintln!("unknown error: {value:?}");
+                IoError::Custom(format!("unknown error: {value:?}"))
+            },
+        }
     }
 }
